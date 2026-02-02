@@ -17,6 +17,7 @@ plan/*
 dist-ssr
 *.local
 .env
+log
 
 # Editor directories and files
 .vscode/* 
