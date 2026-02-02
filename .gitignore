@@ -11,7 +11,8 @@ node_modules
 dist
 .next
 .api
-.doc
+docs/*
+logs/*
 plan/*
 dist-ssr
 *.local
