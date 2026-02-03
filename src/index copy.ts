@@ -9,26 +9,13 @@ if (!appConfig) {
   throw new Error('App configuration is not defined');
 }
 
-// Initialize MongoDB connection (will be lazy-loaded on first request)
-let mongoConnected = false;
-const ensureMongoConnection = async () => {
-  if (!mongoConnected) {
-    try {
-      await connectMongo();
-      mongoConnected = true;
-      logger.info('MongoDB connected successfully');
-    } catch (err) {
-      logger.error('Failed to connect to MongoDB:', err);
-      throw err;
-    }
-  }
-};
+// Connect to MongoDB
+await connectMongo().catch((err) => {
+  logger.error('Failed to connect to MongoDB:', err);
+  process.exit(1);
+});
 
 const app = new Elysia()
-  // Ensure MongoDB connection on every request
-  .onBeforeHandle(async () => {
-    await ensureMongoConnection();
-  })
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get('/', () => ({
@@ -119,21 +106,16 @@ const app = new Elysia()
       error: errorObj.message || 'An error occurred',
       statusCode: set.status || 500,
     };
-  });
-
-// For local development with Bun
-if (import.meta.env?.DEV || process.env.NODE_ENV === 'development') {
-  app.listen({
+  })
+  .listen({
     port: appConfig.port,
     hostname: appConfig.host,
   });
-  
-  logger.info(
-    `🦊 Elysia is running at http://${appConfig.host}:${appConfig.port}`
-  );
-  logger.info(`API Version: ${appConfig.apiVersion}`);
-  logger.info(`Environment: ${appConfig.env}`);
-}
 
-// Export for Vercel serverless deployment
+logger.info(
+  `🦊 Elysia is running at http://${appConfig.host}:${app.server?.port}`
+);
+logger.info(`API Version: ${appConfig.apiVersion}`);
+logger.info(`Environment: ${appConfig.env}`);
+
 export default app;
