@@ -250,6 +250,60 @@ export class WebhookEventRepository {
   }
 
   /**
+   * Find webhook event by ID (alias for findByEventId or MongoDB _id)
+   */
+  async findById(id: string): Promise<WebhookEventDocument | null> {
+    try {
+      // Try finding by eventId first, then by _id
+      let doc = await this.webhookEventModel.base.findOne({ eventId: id }).exec();
+      if (!doc) {
+        doc = await this.webhookEventModel.base.findById(id).exec();
+      }
+      return doc;
+    } catch (error) {
+      console.error('Error fetching webhook event by id:', error);
+      throw new AppError(500, 'Failed to fetch webhook event');
+    }
+  }
+
+  /**
+   * Generic find with query object
+   */
+  async find(query: any, skip: number = 0, limit: number = 20): Promise<WebhookEventDocument[]> {
+    try {
+      const docs = await this.webhookEventModel.base
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec();
+      return docs;
+    } catch (error) {
+      console.error('Error finding webhook events:', error);
+      throw new AppError(500, 'Failed to fetch webhook events');
+    }
+  }
+
+  /**
+   * Update status of a webhook event
+   */
+  async updateStatus(eventId: string, status: WebhookDeliveryStatus): Promise<WebhookEventDocument | null> {
+    try {
+      const doc = await this.webhookEventModel.base
+        .findOneAndUpdate(
+          { eventId },
+          { $set: { status } },
+          { new: true }
+        )
+        .exec();
+      return doc;
+    } catch (error) {
+      console.error('Error updating webhook status:', error);
+      throw new AppError(500, 'Failed to update webhook status');
+    }
+  }
+
+  /**
    * Find webhook events by resource ID
    */
   async findByResourceId(

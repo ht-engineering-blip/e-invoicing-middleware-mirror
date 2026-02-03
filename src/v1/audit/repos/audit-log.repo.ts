@@ -193,6 +193,50 @@ export class AuditLogRepository {
   }
 
   /**
+   * Find audit log by ID (alias for findByEventId)
+   */
+  async findById(id: string): Promise<AuditLogDocument | null> {
+    return this.findByEventId(id);
+  }
+
+  /**
+   * Generic find with query object (for service layer compatibility)
+   */
+  async find(query: any, skip: number = 0, limit: number = 50): Promise<AuditLogDocument[]> {
+    try {
+      const docs = await this.auditLogModel.base
+        .find(query)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec();
+      return docs;
+    } catch (error) {
+      console.error('Error finding audit logs:', error);
+      throw new AppError(500, 'Failed to fetch audit logs');
+    }
+  }
+
+  /**
+   * Find audit logs by resource type and resource ID
+   */
+  async findByResource(resource: string, resourceId: string): Promise<AuditLogDocument[]> {
+    try {
+      const docs = await this.auditLogModel.base
+        .find({
+          'resource.resourceType': resource,
+          'resource.resourceId': resourceId,
+        })
+        .sort({ timestamp: -1 })
+        .exec();
+      return docs;
+    } catch (error) {
+      console.error('Error fetching audit logs by resource:', error);
+      throw new AppError(500, 'Failed to fetch audit logs');
+    }
+  }
+
+  /**
    * Find audit logs by resource ID
    */
   async findByResourceId(

@@ -5,6 +5,7 @@ import { OutboundInvoiceRepository } from '../repos/outbound-invoice.repo';
 import { InboundInvoiceRepository } from '../repos/inbound-invoice.repo';
 import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
 import { OutboundWorkflowService } from '../services/workflows/outbound.service';
+import { OutboundInvoiceStatus } from '../models/outbound-invoice.model';
 
 /**
  * Transaction Logs Routes
@@ -32,7 +33,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
 
         // Build filters
         const filters: any = {
-          tenantId: { _eq: auth.tenantId },
+          tenantId: { _eq: auth!.tenantId },
         };
 
         if (query.status) {
@@ -54,12 +55,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           success: true,
           data: invoices.map((inv) => ({
             irn: inv.irn,
-            invoiceNumber: inv.invoice?.InvoiceNumber || inv.metadata?.invoiceNumber,
+            invoiceNumber: inv.metadata?.invoiceNumber || inv.metadata?.InvoiceNumber,
             status: inv.status,
             workflowState: inv.workflowState,
-            customerName: inv.invoice?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name,
-            totalAmount: inv.invoice?.LegalMonetaryTotal?.PayableAmount?.value,
-            currency: inv.invoice?.DocumentCurrencyCode,
+            customerName: inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name,
+            totalAmount: inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value,
+            currency: inv.metadata?.DocumentCurrencyCode,
             createdAt: inv.createdAt,
             updatedAt: inv.updatedAt,
           })),
@@ -105,7 +106,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     async ({ params, auth, outboundRepo, auditRepo }) => {
       try {
         // Find invoice
-        const invoice = await outboundRepo.findByIRN(params.irn);
+        const invoice = await outboundRepo.findByIrn(params.irn);
 
         if (!invoice) {
           return {
@@ -116,7 +117,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Check ownership
-        if (invoice.tenantId !== auth.tenantId && !auth.isAdmin) {
+        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
           return {
             success: false,
             error: 'Not authorized to view this invoice',
@@ -125,7 +126,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Get status history from audit logs
-        const auditLogs = await auditRepo.findByResource('outbound_invoice', params.irn);
+        const auditResult = await auditRepo.findByResourceId(params.irn);
+        const auditLogs = auditResult.data || [];
 
         const statusHistory = auditLogs.map((log: any) => ({
           status: log.metadata?.status || log.eventType,
@@ -142,7 +144,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
               status: invoice.status,
               workflowState: invoice.workflowState,
               qrCode: invoice.qrCode,
-              invoice: invoice.invoice,
+              invoiceData: invoice.metadata,
               validationAttempts: invoice.validationAttempts,
               validationErrors: invoice.validationErrors,
               metadata: invoice.metadata,
@@ -184,7 +186,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     async ({ params, auth, outboundRepo, outboundService }) => {
       try {
         // Find invoice
-        const invoice = await outboundRepo.findByIRN(params.irn);
+        const invoice = await outboundRepo.findByIrn(params.irn);
 
         if (!invoice) {
           return {
@@ -195,7 +197,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Check ownership
-        if (invoice.tenantId !== auth.tenantId && !auth.isAdmin) {
+        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
           return {
             success: false,
             error: 'Not authorized',
@@ -204,7 +206,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Check if invoice is in failed state
-        if (invoice.status !== 'FAILED') {
+        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
           return {
             success: false,
             error: 'Only failed invoices can be resent',
@@ -225,10 +227,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Update status to allow retry
-        await outboundRepo.updateStatus(params.irn, 'VALIDATED');
+        await outboundRepo.updateStatus(params.irn, OutboundInvoiceStatus.VALIDATED);
 
         // Trigger workflow
-        const result = await outboundService.handleOutboundWorkflow(invoice.invoice, true);
+        const result = await outboundService.handleOutboundWorkflow(invoice.metadata, true);
 
         return {
           success: true,
@@ -236,7 +238,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           data: {
             irn: params.irn,
             restartedFrom: restartFrom,
-            newStatus: result.status,
+            result: result,
           },
         };
       } catch (error: any) {
@@ -279,10 +281,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         const filters: any = {};
 
         // Filter by businessId or tenantId
-        if (auth.businessId) {
-          filters.businessId = { _eq: auth.businessId };
+        if (auth!.businessId) {
+          filters.businessId = { _eq: auth!.businessId };
         } else {
-          filters.tenantId = { _eq: auth.tenantId };
+          filters.tenantId = { _eq: auth!.tenantId };
         }
 
         if (query.status) {
@@ -374,9 +376,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
 
         // Check ownership
         const isOwner =
-          invoice.tenantId === auth.tenantId ||
-          invoice.businessId === auth.businessId ||
-          auth.isAdmin;
+          invoice.tenantId === auth!.tenantId ||
+          invoice.businessId === auth!.businessId ||
+          auth!.isAdmin;
 
         if (!isOwner) {
           return {
@@ -387,7 +389,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         }
 
         // Get status history from audit logs
-        const auditLogs = await auditRepo.findByResource('inbound_invoice', params.irn);
+        const auditResult = await auditRepo.findByResourceId(params.irn);
+        const auditLogs = auditResult.data || [];
 
         const statusHistory = auditLogs.map((log: any) => ({
           status: log.metadata?.status || log.eventType,
