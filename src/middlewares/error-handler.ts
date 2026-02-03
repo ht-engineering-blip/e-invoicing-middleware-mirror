@@ -3,7 +3,7 @@ import { Elysia } from 'elysia';
 import { AppError } from '../@lib/errors';
 
 export const errorHandlerMiddleware = new Elysia({ name: 'error-handler' })
-  .onError(({ code, error, set }) => {
+  .onError(({ code, error, set }: any) => {
     if (error instanceof AppError) {
       set.status = error.statusCode;
       return {
