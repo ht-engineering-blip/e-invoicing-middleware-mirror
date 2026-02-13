@@ -8,12 +8,14 @@ import * as crypto from 'crypto';
 import axios from 'axios';
 import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
+import { WebhookService } from '../../webhook/services/webhook.service';
 
 /**
  * Public Onboarding Routes (no auth required)
  */
 export const publicOnboardingRoutes = new Elysia()
   .decorate('tenantService', new TenantService())
+  .decorate('webhookService', new WebhookService())
 
   /**
    * GET /tenants/activate/:token
@@ -76,7 +78,7 @@ export const publicOnboardingRoutes = new Elysia()
 
         // Return redirect info or token
         const webAppUrl = appConfig?.webAppURL || 'http://localhost:3000';
-        const redirectUrl = `${webAppUrl}/set-password?token=${setPasswordToken}`;
+        const redirectUrl = `${webAppUrl}/auth/set-password?token=${setPasswordToken}`;
 
         return {
           success: true,
@@ -116,7 +118,7 @@ export const publicOnboardingRoutes = new Elysia()
 export const protectedOnboardingRoutes = new Elysia()
   .use(requireAuth)
   .decorate('tenantService', new TenantService())
-
+  .decorate('webhookService', new WebhookService())
   /**
    * PUT /tenants/:tenantId/credentials
    * Update tenant's public key and certificate
@@ -126,7 +128,7 @@ export const protectedOnboardingRoutes = new Elysia()
     async ({ params, body, auth, tenantService }) => {
       try {
         // Check authorization
-       onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId)
 
         logger.info('Updating tenant credentials', { tenantId: params.tenantId });
 
@@ -204,7 +206,7 @@ export const protectedOnboardingRoutes = new Elysia()
    */
   .post(
     '/:tenantId/webhook/generate',
-    async ({ params, auth, tenantService }) => {
+    async ({ params, auth, tenantService, webhookService }) => {
       try {
         // Check authorization
         onlySelf(auth!, params.tenantId)
@@ -217,7 +219,7 @@ export const protectedOnboardingRoutes = new Elysia()
 
         // Build webhook URL
         const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-        const webhookUrl = `${baseUrl}/api/v1/webhook/inbound/${webhookPath}`;
+        const webhookUrl = `${baseUrl}/v1/webhook/inbound/${webhookPath}`;
 
         // Update tenant with webhook config
         const tenant = await tenantService.getTenantById(params.tenantId);
@@ -235,10 +237,13 @@ export const protectedOnboardingRoutes = new Elysia()
         await tenantService.updateTenant(params.tenantId, {
           metadata: {
             ...tenant.metadata,
+            webhookUrl,
             webhookPath,
             webhookSecretHash: crypto.createHash('sha256').update(webhookSecret).digest('hex'),
           },
         } as any);
+
+        await webhookService.configureWebhook({ enabled: true, tenantId: params.tenantId, webhookUrl, webhookSecret })
 
         return {
           success: true,
@@ -281,13 +286,13 @@ export const protectedOnboardingRoutes = new Elysia()
     async ({ params, body, auth, tenantService }) => {
       try {
         // Check authorization
-       onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId)
 
         logger.info('Testing webhook', { tenantId: params.tenantId });
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
-        if (!tenant.config?.webhookUrl) {
+        if (!tenant.metadata?.webhookUrl) {
           return {
             success: false,
             error: 'Webhook URL not configured. Generate one first.',
@@ -325,7 +330,7 @@ export const protectedOnboardingRoutes = new Elysia()
         const startTime = Date.now();
 
         try {
-          const response = await axios.post(tenant.config.webhookUrl, testPayload, {
+          const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
               'X-Webhook-Signature': signature,
@@ -341,6 +346,7 @@ export const protectedOnboardingRoutes = new Elysia()
             response: response.data,
           };
         } catch (webhookError: any) {
+          console.log({ webhookError })
           testResult = {
             success: false,
             statusCode: webhookError.response?.status || 0,
@@ -365,7 +371,7 @@ export const protectedOnboardingRoutes = new Elysia()
           success: true,
           message: testResult.success ? 'Webhook test successful' : 'Webhook test failed',
           data: {
-            webhookUrl: tenant.config.webhookUrl,
+            webhookUrl: tenant.metadata.webhookUrl,
             testResult,
             payload: testPayload,
           },

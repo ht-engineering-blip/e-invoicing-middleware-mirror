@@ -64,10 +64,11 @@ export const tenantIdParamValidator = t.Object({
  */
 export const listTenantsQueryValidator = t.Object({
   page: t.Optional(t.Number({ minimum: 1 })),
-  limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
+  limit: t.Optional(t.Number({ minimum: 1, })),
   status: t.Optional(
     t.Union([t.Literal('active'), t.Literal('suspended'), t.Literal('inactive')])
   ),
+  onboarding: t.Optional(t.Boolean({default: true})),
   search: t.Optional(t.String()),
   sortBy: t.Optional(t.String()),
   sortOrder: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
@@ -127,8 +128,8 @@ export const erpSyncConfigValidator = t.Object({
   ]),
   baseUrl: t.String({ format: 'uri' }),
   endpoint: t.String({ minLength: 1 }),
-  headers: t.Optional(t.Record(t.String(), t.String())),
-  queryParams: t.Optional(t.Record(t.String(), t.String())),
+  headers: t.Optional(t.Record(t.String(), t.String(), {default: {"key":"value"}})),
+  queryParams: t.Optional(t.Record(t.String(), t.String(), {default: {"key":"value"}})),
   bodyTemplate: t.Optional(t.String()),
   authentication: t.Optional(t.Object({
     type: t.Union([
@@ -151,7 +152,7 @@ export const erpSyncConfigValidator = t.Object({
     retryDelay: t.Number({ minimum: 100, maximum: 10000, default: 1000 }),
     retryOn: t.Optional(t.Array(t.Number())),
   })),
-  responseMapping: t.Optional(t.Record(t.String(), t.String())),
+  responseMapping: t.Optional(t.Record(t.String(), t.String(),{default: {"key":"value"}})),
   triggerEvents: t.Optional(t.Array(t.Union([
     t.Literal('invoice.validated'),
     t.Literal('invoice.signed'),

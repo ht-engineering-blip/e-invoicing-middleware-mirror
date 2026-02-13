@@ -472,23 +472,33 @@ export class InvoiceSchemaDictionaryRepository {
   }
 
   /**
-   * Get all supported source types with their schemas count
+   * Get all supported source types (excluding FIRS_UBL)
    */
-  async getSourceTypesSummary(): Promise<Array<{ source_type: string; count: number; has_default: boolean }>> {
+  async getSourceTypesSummary(): Promise<Array<{ id: string; source_type: string; last_updated: Date }>> {
     try {
       const result = await this.model.base.aggregate([
-        { $match: { status: SchemaStatus.ACTIVE } },
+        {
+          $match: { 
+            source_type: { $ne: 'FIRS_UBL' }
+          }
+        },
+        { $sort: { source_type: 1, updatedAt: -1 } },
         {
           $group: {
             _id: '$source_type',
-            count: { $sum: 1 },
-            has_default: { $max: { $cond: ['$is_default', true, false] } },
+            id: { $first: '$_id' },
+            source_type: { $first: '$source_type' },
+            status: { $first: '$status' },
+            last_updated: { $first: '$updatedAt' },
           },
         },
         {
           $project: {
             _id: 0,
-            source_type: '$_id',
+            id: { $toString: '$id' },
+            source_type: 1,
+            status: 1,
+            last_updated: 1,
           },
         },
         { $sort: { source_type: 1 } },

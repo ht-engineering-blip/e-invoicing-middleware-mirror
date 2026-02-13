@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { SchemaSourceType } from '../../workflow/models';
- 
+
 
 /**
  * Tenant Status
@@ -49,8 +49,8 @@ export interface IERPSyncConfig {
  */
 export interface ITenantConfig {
   firsCredentials?: {
-    clientId?: string; 
-    serviceId?: string; 
+    clientId?: string;
+    serviceId?: string;
     certificate?: string;
     publicKey?: string;
   };
@@ -81,6 +81,10 @@ export interface TenantDocument extends Document {
   password: string;
   erpSystem: SchemaSourceType;
   expectedVolume: Number;
+  webhookUrl: String,
+  webhookAuth: String,
+  webhookEnabled: Boolean,
+
   serviceId: string;
   businessName: string;
   tin: string;
@@ -113,7 +117,7 @@ const TenantSchema = new Schema<TenantDocument>(
       unique: true,
     },
     password: {
-      type: String  
+      type: String
     },
     contactPhone: {
       type: String,
@@ -138,8 +142,8 @@ const TenantSchema = new Schema<TenantDocument>(
     },
     config: {
       firsCredentials: {
-        clientId: { type: String }, 
-        serviceId: { type: String }, 
+        clientId: { type: String },
+        serviceId: { type: String },
         certificate: { type: String },
         publicKey: { type: String }
       },

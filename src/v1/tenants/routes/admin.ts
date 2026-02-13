@@ -46,7 +46,7 @@ const adminTenantRoutes = new Elysia({
 
         /* Notify Tenant to complete onboarding */
         let activationToken = await authService.createAuthToken(tenant as any, "12HRS")
-        let activationLink = `${appConfig?.webAppURL}/activate/tenant?_u=${activationToken}`;
+        let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
         let activationEmail: MailContent = {
           subject: 'Welcome to HT Invoicing',
           html: withTemplate(`<p>Welcome to HT Invoicing. Your account has been created successfully.</p>
@@ -93,12 +93,14 @@ const adminTenantRoutes = new Elysia({
         console.log({ query })
         const page = query.page || 1;
         const limit = query.limit || 20;
+        const includeOnboarding = query.onboarding || true;
         const skip = (page - 1) * limit;
 
         const result = await tenantService.listTenants({
           status: query.status,
           skip,
           limit,
+          includeOnboarding
         });
 
         return {
@@ -140,7 +142,7 @@ const adminTenantRoutes = new Elysia({
       try {
         // Verify the user has access to this tenant
         onlySelf(auth!, params.tenantId)
-        const tenant = await tenantService.getTenantById(params.tenantId);
+        const tenant = await tenantService.getTenantById(params.tenantId, true);
         return {
           success: true,
           data: tenant,
@@ -339,11 +341,11 @@ const adminTenantRoutes = new Elysia({
         description: 'Update the onboarding progress for a tenant',
       },
     }
-  );
+  )
 
 
 /* API Keys Endpoints */
-adminTenantRoutes
+//adminTenantRoutes
 
   /**
    * POST /api/v1/tenants/:tenantId/api-keys
@@ -447,8 +449,165 @@ adminTenantRoutes
     }
   )
 
+  /**
+   * POST /api/v1/tenants/:tenantId/api-keys/:keyId/rotate
+   * Rotate an API key (revoke old and create new)
+   */
+  .post(
+    '/:tenantId/api-keys/:keyId/rotate',
+    async ({ params, body, tenantService }) => {
+      try {
+        const result = await tenantService.rotateApiKey(params.tenantId, params.keyId, {
+          sendEmail: body?.sendEmail !== false,
+          reason: body?.reason,
+        });
+
+        return {
+          success: true,
+          message: 'API key rotated successfully. New key sent via email.',
+          data: {
+            ...result.apiKey,
+            key: result.plainKey, // Only returned once
+            emailSent: body?.sendEmail !== false,
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    {
+      params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
+      body: t.Object({
+        reason: t.Optional(t.String()),
+        sendEmail: t.Optional(t.Boolean({ default: true })),
+      }),
+      detail: {
+        tags: ['Admin - API Keys'],
+        security: [{ adminKey: [] }],
+        summary: 'Rotate API key',
+        description: 'Revoke old API key and generate a new one. Tenant receives an email with the new key.',
+      },
+    }
+  )
+
+  /**
+   * GET /api/v1/tenants/api-keys
+   * List all API keys across all tenants (Admin only)
+   */
+  .get(
+    '/api-keys',
+    async ({ auth, query, tenantService }) => {
+      try {
+        // Verify admin access
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
+
+        const page = query.page || 1;
+        const limit = query.limit || 50;
+        const skip = (page - 1) * limit;
+
+        const result = await tenantService.listAllApiKeys({
+          status: query.status,
+          tenantId: query.tenantId,
+          skip,
+          limit,
+        });
+
+        return {
+          success: true,
+          data: result.apiKeys,
+          pagination: {
+            page,
+            limit,
+            total: result.total,
+            totalPages: Math.ceil(result.total / limit),
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    {
+      query: t.Object({
+        page: t.Optional(t.Numeric()),
+        limit: t.Optional(t.Numeric()),
+        status: t.Optional(t.String()),
+        tenantId: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ['Admin - API Keys'],
+        security: [{ adminKey: [] }],
+        summary: 'List all API keys',
+        description: 'Get a list of all API keys across all tenants with filtering and pagination. Admin only.',
+      },
+    }
+  )
+
 /* ERP Sync Configuration */
-adminTenantRoutes
+//adminTenantRoutes
+  /**
+   * GET /api/v1/tenants/erp-configs
+   * List all ERP configurations across all tenants (Admin only)
+   */
+  .get(
+    '/erp-configs',
+    async ({ auth, query, tenantService }) => {
+      try {
+        // Verify admin access
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
+
+        const page = query.page || 1;
+        const limit = query.limit || 50;
+        const skip = (page - 1) * limit;
+
+        const result = await tenantService.listAllERPConfigs({
+          erpSystem: query.erpSystem,
+          enabled: query.enabled !== undefined ? query.enabled === 'true' : undefined,
+          skip,
+          limit,
+        });
+
+        return {
+          success: true,
+          data: result.configs,
+          pagination: {
+            page,
+            limit,
+            total: result.total,
+            totalPages: Math.ceil(result.total / limit),
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    {
+      query: t.Object({
+        page: t.Optional(t.Numeric()),
+        limit: t.Optional(t.Numeric()),
+        erpSystem: t.Optional(t.String()),
+        enabled: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ['Admin - ERP Integration'],
+        security: [{ adminKey: [] }],
+        summary: 'List all ERP configurations',
+        description: 'Get a list of all ERP configurations across all tenants with filtering options',
+      },
+    }
+  )
+
   /**
     * PUT /api/v1/tenants/:tenantId/erp-sync
     * Configure ERP sync settings for dynamic REST calls

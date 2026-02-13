@@ -11,6 +11,7 @@
     "axios": "^1.13.2",
     "debug": "^4.4.3",
     "elysia": "latest",
+    "elysia-remote-dts": "^1.0.3",
     "firs-einvoicing": "1.0.13",
     "handlebars": "^4.7.8",
     "json-spread": "^1.0.1",

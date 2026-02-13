@@ -73,15 +73,8 @@ const authRoutes = new Elysia()
         logger.info('Login attempt', { email: body.email });
 
         // Find tenant by contact email
-        const tenants = await tenantService.listTenants({
-          skip: 0,
-          limit: 1,
-        });
-
-        const tenant = tenants.tenants.find(
-          (t: any) => String(t.contactEmail).toLowerCase() === String(body.email).toLowerCase()
-        );
-
+        const tenant = await tenantService.getTenantByTinOrEmail(body.email);
+     
         if (!tenant) {
           throw new UnauthorizedError('Invalid credentials');
         }
@@ -256,7 +249,7 @@ const authRoutes = new Elysia()
         });
 
         // Find tenant by TIN or email
-        const tenant = await tenantService.getTenantByTin(firsResult.data.tin);
+        const tenant = await tenantService.getTenantByTinOrEmail(firsResult.data.tin);
 
         // Update FIRS credentials if tenant exists
         if (tenant) {
@@ -547,6 +540,8 @@ const protectedAuthRoutes = new Elysia()
           onboardingProgress = Math.round((completedSteps / totalSteps) * 100);
         }
 
+        let showMeta = {...(tenant.metadata || {})}
+        delete showMeta.webhookSecretHash
         return {
           success: true,
           data: {
@@ -560,6 +555,11 @@ const protectedAuthRoutes = new Elysia()
             status: tenant.status,
             createdAt: tenant.createdAt,
             config: {
+              firs: {
+                serviceId: (tenant as any).config?.firsCredentials?.serviceId,
+                clientId: (tenant as any).config?.firsCredentials?.clientId,
+                publicKey: (tenant as any).config?.firsCredentials?.publicKey,
+              },
               features: (tenant as any).config?.features,
               limits: (tenant as any).config?.limits,
               webhookUrl: (tenant as any).config?.webhookUrl,
@@ -573,6 +573,7 @@ const protectedAuthRoutes = new Elysia()
                 approvedAt: onboarding.approvedAt,
               }
               : null,
+              metadata: showMeta
           },
         };
       } catch (error: any) {

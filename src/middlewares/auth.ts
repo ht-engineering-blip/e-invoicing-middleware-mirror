@@ -226,7 +226,7 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
       const keyHash = hashApiKey(apiKey);
       const apiKeyRepo = new ApiKeyRepository();
       const apiKeyDoc = await apiKeyRepo.findByKeyHash(keyHash);
-let decoded:any = {}
+      let decoded: any = {}
       if (apiKeyDoc && apiKeyDoc.status === 'active') {
         if (apiKeyDoc.expiresAt && apiKeyDoc.expiresAt < new Date()) {
           apiKeyRepo.revoke(apiKeyDoc._id.toString(), 'Expired', 'system').catch(() => { });
@@ -245,7 +245,7 @@ let decoded:any = {}
         apiKeyRepo.updateLastUsed(apiKeyDoc._id.toString()).catch((err) => {
           console.error('Failed to update API key last used:', err);
         });
-         // Decrypt Business ID
+        // Decrypt Business ID
         if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
           let decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
           decoded.businessId = decryptedClientID
@@ -254,10 +254,10 @@ let decoded:any = {}
         return {
           auth: {
             tenantId: apiKeyDoc.tenantId,
-              businessId: decoded.businessId, 
-              businessName: tenant.businessName,
-              businessTIN: tenant.tin,
-          tenantERP: tenant.config?.erpSystem,
+            businessId: decoded.businessId,
+            businessName: tenant.businessName,
+            businessTIN: tenant.tin,
+            tenantERP: tenant.config?.erpSystem,
             serviceId: tenant?.config?.firsCredentials?.serviceId,
             isAdmin: false,
             apiKeyId: apiKeyDoc._id.toString(),
@@ -330,6 +330,11 @@ let decoded:any = {}
           };
         }
 
+        console.log({ decoded })
+        // Handle set-password token 
+        if (decoded?.purpose && decoded?.purpose == 'set-password') {
+          decoded.businessId = decoded.tenantId
+        }
         // Handle regular tenant tokens
         if (!decoded.tenantId || !decoded.businessId) {
           throw new UnauthorizedError('Invalid token payload');

@@ -84,8 +84,7 @@ export class WebhookService {
       const webhookPayload = {
         eventId: event.eventId,
         eventType: event.eventType,
-        tenantId: event.tenantId,
-        businessId: event.businessId,
+        tenantId: event.tenantId, 
         timestamp: new Date().toISOString(),
         data: event.payload,
       };
@@ -322,8 +321,7 @@ export class WebhookService {
     // Create test event
     const testEvent = await this.webhookRepo.create({
       eventId,
-      tenantId: input.tenantId,
-      businessId: tenant.tenantId,
+      tenantId: input.tenantId, 
       eventType: (input.eventType || WebhookEventType.TEST_EVENT) as WebhookEventType,
       payload: input.payload || { test: true, timestamp: new Date().toISOString() },
       resourceId: 'test',
