@@ -140,8 +140,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       default: 3,
     },
     nextRetryAt: {
-      type: Date,
-      index: true,
+      type: Date 
     },
 
     // Response Information

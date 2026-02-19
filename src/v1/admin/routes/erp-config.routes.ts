@@ -175,7 +175,10 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
     },
     {
       body: t.Object({
-        erp: t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
+        erp: t.Union([
+          t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
+          t.String()
+        ]),
         invoice: t.Any({ default: {} }),
         metadata: t.Optional(t.Any()),
       }),

@@ -25,7 +25,7 @@ import { onlyAdmin, onlySelf } from '../../auth/utils/access-checks';
  */
 /*   prefix: '/admin', */
 const adminTenantRoutes = new Elysia({
- detail: {
+  detail: {
     hide: appConfig?.env === 'production'
   }
 })
@@ -344,8 +344,8 @@ const adminTenantRoutes = new Elysia({
   )
 
 
-/* API Keys Endpoints */
-//adminTenantRoutes
+  /* API Keys Endpoints */
+  //adminTenantRoutes
 
   /**
    * POST /api/v1/tenants/:tenantId/api-keys
@@ -353,8 +353,9 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     '/:tenantId/api-keys',
-    async ({ params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
+        onlySelf(auth!, params.tenantId)
         const result = await tenantService.createApiKey(params.tenantId, body);
         return {
           success: true,
@@ -390,8 +391,9 @@ const adminTenantRoutes = new Elysia({
   */
   .get(
     '/:tenantId/api-keys',
-    async ({ params, tenantService }) => {
+    async ({ auth, params, tenantService }) => {
       try {
+        onlySelf(auth!, params.tenantId)
         const apiKeys = await tenantService.listApiKeys(params.tenantId);
         return {
           success: true,
@@ -422,8 +424,10 @@ const adminTenantRoutes = new Elysia({
    */
   .delete(
     '/:tenantId/api-keys/:keyId',
-    async ({ params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
+        console.log({params})
+        onlySelf(auth!, params.tenantId)
         await tenantService.revokeApiKey(params.tenantId, params.keyId, body?.reason);
         return {
           success: true,
@@ -455,8 +459,9 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     '/:tenantId/api-keys/:keyId/rotate',
-    async ({ params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
+        onlySelf(auth!, params.tenantId)
         const result = await tenantService.rotateApiKey(params.tenantId, params.keyId, {
           sendEmail: body?.sendEmail !== false,
           reason: body?.reason,
@@ -550,8 +555,8 @@ const adminTenantRoutes = new Elysia({
     }
   )
 
-/* ERP Sync Configuration */
-//adminTenantRoutes
+  /* ERP Sync Configuration */
+  //adminTenantRoutes
   /**
    * GET /api/v1/tenants/erp-configs
    * List all ERP configurations across all tenants (Admin only)

@@ -1,15 +1,104 @@
 // Webhook module routes
-import { Elysia, t } from 'elysia';
+import { Elysia, sse, t } from 'elysia';
 import crypto from 'crypto';
+import { EventEmitter } from 'events';
 import { TenantRepository } from '../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from './repos/webhook-event.repo';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
 import { logger } from '../../@lib';
+import { cors
+ } from '@elysiajs/cors'
 
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
 
+/**
+ * In-memory event bus for real-time SSE streaming per webhook path.
+ */
+const webhookBus = new EventEmitter();
+webhookBus.setMaxListeners(0);
+
 export const webhookRoutes = new Elysia({ prefix: '/webhook' })
+.use(cors())
+
+  /**
+   * GET /webhook/listen/:webhookPath
+   * SSE endpoint - subscribe to real-time inbound webhook events.
+   * Clients connect here to listen for data as it arrives on the webhook.
+   */
+  .get(
+    '/listen/:webhookPath',
+    async function* ({ params, set }) {
+      const { webhookPath } = params;
+
+      // Validate tenant
+      const tenant = await tenantRepo.findByWebhookPath(webhookPath);
+      if (!tenant) {
+        set.status = 404;
+        return;
+      }
+
+      const channel = `wh:${webhookPath}`;
+      const queue: any[] = [];
+      let resolve: (() => void) | null = null;
+
+      const handler = (data: any) => {
+        queue.push(data);
+        if (resolve) {
+          resolve();
+          resolve = null;
+        }
+      };
+
+      webhookBus.on(channel, handler);
+
+      // Send initial connection event
+      yield sse({
+        event: 'connected',
+        data: {
+          tenantId: tenant.tenantId,
+          webhookPath,
+          connectedAt: new Date().toISOString(),
+          message: 'Listening for inbound webhook events',
+        },
+      });
+
+      try {
+        while (true) {
+          if (queue.length === 0) {
+            await new Promise<void>((r) => {
+              resolve = r;
+            });
+          }
+          while (queue.length > 0) {
+            const event = queue.shift();
+            yield sse({
+              id: event.eventId,
+              event: event.eventType,
+              data: event,
+            });
+          }
+        }
+      } finally {
+        webhookBus.off(channel, handler);
+        logger.info('SSE client disconnected', {
+          webhookPath,
+          tenantId: tenant.tenantId,
+        });
+      }
+    },
+    {
+      params: t.Object({
+        webhookPath: t.String(),
+      }),
+      detail: {
+        tags: ['Webhook - Inbound'],
+        summary: 'Listen for inbound webhook events (SSE)',
+        description:
+          'Server-Sent Events endpoint. Connect to receive real-time inbound webhook data as it arrives for this tenant.',
+      },
+    }
+  )
 
   /**
    * POST /webhook/inbound/:webhookPath
@@ -117,6 +206,15 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
           tenantId: tenant.tenantId,
           eventId,
           eventType,
+        });
+
+        // 6. Push to SSE listeners on this webhookPath
+        webhookBus.emit(`wh:${webhookPath}`, {
+          eventId,
+          tenantId: tenant.tenantId,
+          eventType,
+          payload: body,
+          receivedAt: new Date().toISOString(),
         });
 
         return {
