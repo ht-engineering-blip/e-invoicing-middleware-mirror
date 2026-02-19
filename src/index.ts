@@ -128,6 +128,7 @@ if (import.meta.env?.DEV || process.env.NODE_ENV === 'development') {
   app.listen({
     port: appConfig.port,
     hostname: appConfig.host,
+    idleTimeout: 200
   });
 
   logger.info(
@@ -136,6 +137,7 @@ if (import.meta.env?.DEV || process.env.NODE_ENV === 'development') {
   logger.info(`API Version: ${appConfig.apiVersion}`);
   logger.info(`Environment: ${appConfig.env}`);
 }
+ 
 
 // Export for Vercel serverless deployment
 export type App = typeof app;

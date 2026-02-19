@@ -97,7 +97,7 @@ export class WebhookService {
       const response = await axios.post(webhookUrl, webhookPayload, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Webhook-Signature': signature,
+          'X-Webhook-Key': signature,
           'X-Event-Type': event.eventType,
         },
         timeout: 30000, // 30 second timeout

@@ -5,9 +5,11 @@ import { EventEmitter } from 'events';
 import { TenantRepository } from '../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from './repos/webhook-event.repo';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
-import { logger } from '../../@lib';
-import { cors
- } from '@elysiajs/cors'
+import { hashString, logger, UnauthorizedError } from '../../@lib';
+import {
+  cors
+} from '@elysiajs/cors'
+import { sleep } from 'bun';
 
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
@@ -18,8 +20,10 @@ const webhookEventRepo = new WebhookEventRepository();
 const webhookBus = new EventEmitter();
 webhookBus.setMaxListeners(0);
 
-export const webhookRoutes = new Elysia({ prefix: '/webhook' })
-.use(cors())
+export const webhookRoutes = new Elysia({ 
+  prefix: '/webhook', 
+})
+  .use(cors())
 
   /**
    * GET /webhook/listen/:webhookPath
@@ -43,6 +47,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
       let resolve: (() => void) | null = null;
 
       const handler = (data: any) => {
+        console.log({ data })
         queue.push(data);
         if (resolve) {
           resolve();
@@ -67,7 +72,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
         while (true) {
           if (queue.length === 0) {
             await new Promise<void>((r) => {
-              resolve = r;
+              resolve = r; 
             });
           }
           while (queue.length > 0) {
@@ -79,6 +84,8 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
             });
           }
         }
+      } catch(e){
+        console.log({e})
       } finally {
         webhookBus.off(channel, handler);
         logger.info('SSE client disconnected', {
@@ -130,35 +137,27 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
       }
 
       // 3. Verify signature if provided
-      const signature = headers['x-webhook-signature'];
-      const webhookSecretHash = tenant.metadata?.webhookSecretHash;
+      const webhookKey = hashString(headers['x-webhook-key']!);
+      const webhookKeyHash = tenant.metadata?.webhookSecretHash;
+      /*    const signature = headers['x-webhook-key'];
+         const webhookSecretHash = tenant.metadata?.webhookSecretHash; */
+      const passwordHash = hashString(webhookKey!);
+      const storedPasswordHash = (tenant as any)?.password;
 
-      if (webhookSecretHash && signature) {
-        const payloadString = JSON.stringify(body);
-        const expectedSignature = crypto
-          .createHmac('sha256', webhookSecretHash)
-          .update(payloadString)
-          .digest('hex');
-
-        const isValid = crypto.timingSafeEqual(
-          Buffer.from(signature),
-          Buffer.from(expectedSignature)
-        );
-
-        if (!isValid) {
-          set.status = 401;
-          return {
-            success: false,
-            error: 'Invalid webhook signature',
-          };
-        }
-      } else if (webhookSecretHash && !signature) {
+      if (webhookKeyHash && !webhookKey) {
         set.status = 401;
         return {
           success: false,
-          error: 'Missing X-Webhook-Signature header',
+          error: 'Missing X-Webhook-Key header',
         };
       }
+
+      if (!webhookKeyHash || webhookKey !== webhookKeyHash) {
+        throw new UnauthorizedError('Invalid webhook key');
+      }
+
+
+
 
       // 4. Determine event type from payload or headers
       const eventType =
@@ -167,7 +166,48 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
         (body as any)?.eventType ||
         WebhookEventType.INVOICE_RECEIVED;
 
-      // 5. Store the webhook event
+      // 5. Resolve idempotency key
+      //    Prefer X-Idempotency-Key header; fall back to a content hash so
+      //    identical payloads sent without a key are also de-duplicated.
+      const idempotencyKey =
+        headers['x-idempotency-key'] ||
+        crypto
+          .createHash('sha256')
+          .update(`${tenant.tenantId}:${eventType}:${JSON.stringify(body)}`)
+          .digest('hex');
+
+      // 6. Check for an existing event with this idempotency key
+      const existing = await webhookEventRepo.findByIdempotencyKey(
+        tenant.tenantId,
+        idempotencyKey
+      );
+
+      if (existing) {
+        if (existing.status !== WebhookDeliveryStatus.FAILED) {
+          // Already processed successfully (DELIVERED / PENDING / RETRY) — return cached response
+          set.status = 200;
+          return {
+            success: true,
+            message: 'Webhook already received (idempotent)',
+            data: {
+              eventId: existing.eventId,
+              tenantId: existing.tenantId,
+              eventType: existing.eventType,
+              status: existing.status,
+              receivedAt: existing.createdAt.toISOString(),
+              idempotent: true,
+            },
+          };
+        }
+        // Status is FAILED — fall through to reprocess
+        logger.info('Reprocessing failed webhook event', {
+          tenantId: tenant.tenantId,
+          existingEventId: existing.eventId,
+          idempotencyKey,
+        });
+      }
+
+      // 7. Store the webhook event
       const eventId = `wh_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
 
       try {
@@ -193,6 +233,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhook' })
           metadata: {
             source: 'inbound',
             webhookPath,
+            idempotencyKey,
             receivedAt: new Date().toISOString(),
             headers: {
               'content-type': headers['content-type'],

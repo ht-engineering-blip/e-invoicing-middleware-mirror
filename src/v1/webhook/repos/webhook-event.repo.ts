@@ -237,6 +237,24 @@ export class WebhookEventRepository {
   }
 
   /**
+   * Find webhook event by idempotency key for a tenant
+   */
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string
+  ): Promise<WebhookEventDocument | null> {
+    try {
+      const doc = await this.webhookEventModel.base
+        .findOne({ tenantId, 'metadata.idempotencyKey': idempotencyKey })
+        .exec();
+      return doc;
+    } catch (error) {
+      console.error('Error finding webhook event by idempotency key:', error);
+      throw new AppError(500, 'Failed to fetch webhook event');
+    }
+  }
+
+  /**
    * Find webhook event by event ID
    */
   async findByEventId(eventId: string): Promise<WebhookEventDocument | null> {
