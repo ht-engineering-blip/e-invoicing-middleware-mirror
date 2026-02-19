@@ -333,7 +333,7 @@ export const protectedOnboardingRoutes = new Elysia()
           const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'X-Webhook-Signature': signature,
+              'X-Webhook-Key': signature,
               'X-Webhook-Event': 'webhook.test',
             },
             timeout: 10000, // 10 second timeout

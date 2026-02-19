@@ -79,7 +79,7 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError('Invalid credentials');
         }
 
-        // Verify password (assuming password is stored hashed in tenant config)
+        // Verify password
         const passwordHash = hashString(body.password);
         const storedPasswordHash = (tenant as any)?.password;
 
