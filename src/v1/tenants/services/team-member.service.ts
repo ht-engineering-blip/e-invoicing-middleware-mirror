@@ -419,7 +419,7 @@ export class TeamMemberService {
     try {
       const mailClient = new NodeMailerClient();
       const webAppUrl = appConfig?.webAppURL || 'http://localhost:3000';
-      const invitationUrl = `${webAppUrl}/team/accept-invite?token=${token}`;
+      const invitationUrl = `${webAppUrl}/auth/accept-invite?token=${token}`;
 
       const mailContent: MailContent = {
         to: member.email,

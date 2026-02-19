@@ -32,9 +32,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         const offset = (page - 1) * limit;
 
         // Build filters
-        const filters: any = {
-          tenantId: { _eq: auth!.tenantId },
-        };
+          const filters: any = {}
+        if (!auth?.isAdmin) {
+           filters.tenantId= { _eq: auth!.tenantId }
+        }
 
         if (query.status) {
           filters.status = { _eq: query.status };
@@ -57,6 +58,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
             irn: inv.irn,
             invoiceNumber: inv.metadata?.invoiceNumber || inv.metadata?.InvoiceNumber,
             status: inv.status,
+            qrCode: inv.qrCode,
+            erp: inv.erpSystem,
             workflowState: inv.workflowState,
             customerName: inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name,
             totalAmount: inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value,

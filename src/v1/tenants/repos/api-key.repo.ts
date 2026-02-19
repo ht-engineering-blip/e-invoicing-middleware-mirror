@@ -100,7 +100,7 @@ export class ApiKeyRepository {
         status: ApiKeyStatus.ACTIVE,
       });
 
-      return doc;
+      return doc.toJSON();
     } catch (error: any) {
       console.error('Error creating API key:', error);
       if (error.name === 'ValidationError') {
@@ -168,6 +168,7 @@ export class ApiKeyRepository {
   async count(where?: any): Promise<number> {
     try {
       const query = this.buildApiKeyQuery(where);
+      console.log("=========", query)
       const count = await this.apiKeyModel.countDocuments(query).exec();
       return count;
     } catch (error) {

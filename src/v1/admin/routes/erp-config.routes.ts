@@ -24,7 +24,7 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
    */
   .get(
     '/',
-    async ({ configService, transformWorkflowService }) => {
+    async ({ configService, transformWorkflowService }): Promise<any> => {
       try {
 
         const supportedERPs = await transformWorkflowService.getSupportedERPTypes();
@@ -44,11 +44,30 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
       }
     },
     {
+      response: {
+        200: t.Object({
+          success: t.Literal(true),
+          data: t.Array(
+            t.Object({
+              id: t.String(),
+              source_type: t.String(),
+              status: t.String(),
+              last_updated: t.Date(),
+            })
+          ),
+          count: t.Number(),
+        }),
+        500: t.Object({
+          success: t.Literal(false),
+          error: t.String(),
+          statusCode: t.Number(),
+        }),
+      },
       detail: {
         tags: ['Admin - System Configuration'],
         security: [{ adminKey: [] }],
         summary: 'List Supported ERPs',
-        description: 'Get all configured ERP systems',
+        description: 'Get all configured ERP systems (excludes FIRS_UBL)',
       },
     }
   )
@@ -117,9 +136,10 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         let flatInvoice = jsonSpread(invoice)[0]
         let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined
 
+      
         // Generate invoice dictionary using LLM
         let generatedFields = await llmService.generateInvoiceDictionary(erp, flatInvoice, flatMetadata)
-
+       
         // Upsert the schema to database
         const savedSchema = await transformWorkflowService.upsertERPSchema(
           erp,
@@ -127,6 +147,7 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || 'system',
+            status: metadata.status,
             metadata: {
               source_invoice_sample: flatInvoice,
               generated_at: new Date().toISOString(),
@@ -154,7 +175,10 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
     },
     {
       body: t.Object({
-        erp: t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
+        erp: t.Union([
+          t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
+          t.String()
+        ]),
         invoice: t.Any({ default: {} }),
         metadata: t.Optional(t.Any()),
       }),

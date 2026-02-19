@@ -19,9 +19,9 @@ export class ModelWrapper<T = any> {
     console.log('find - query:::', JSON.stringify({  ...query , businessId: this.businessId }, null, 2));
     return this.model.find({  ...query , businessId: this.businessId }, ...args);
   }
-  countDocuments(query: any = {}, ...args: any[]): Query<number, T> { 
+  countDocuments(query: any = {}, ...args: any[]): Query<number, T> {
     console.log({query})
-    return this.model.countDocuments({ $and: [ ...query , { businessId: this.businessId }] }, ...args);
+    return this.model.countDocuments({ ...query, businessId: this.businessId }, ...args);
   }
 
   findOne(query: any = {}, ...args: any[]): Query<T | null, T> { 

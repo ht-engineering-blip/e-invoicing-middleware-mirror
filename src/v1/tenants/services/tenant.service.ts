@@ -10,10 +10,11 @@ import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
 import { encryptSensitiveData, decryptSensitiveData } from '../../../@lib/crypto';
 import { hashString, generateRandomString } from '../../../@lib/utils/encryption';
 import { AppError, NotFoundError, ValidationError, ConflictError } from '../../../@lib/errors';
+import { logger } from '../../../@lib';
 import { type TenantDocument, TenantStatus, OnboardingStatus, ApiKeyDocument, ApiKeyStatus, TenantOnboardingDocument } from '../models';
 import { appConfig } from '../../../@config';
 import { AuditEventSeverity, AuditEventType } from '../../audit/models';
-import { MailContent, NodeMailerClient } from '../../../@lib/messaging';
+import { MailContent, NodeMailerClient, withTemplate } from '../../../@lib/messaging';
 import { SchemaSourceType } from '../../workflow/models';
 
 export interface CreateTenantInput {
@@ -48,6 +49,7 @@ export interface UpdateTenantInput {
     monthlyInvoiceLimit?: number;
     apiRateLimit?: number;
   };
+  metadata?: any
 }
 
 export interface FIRSCredentialsInput {
@@ -194,8 +196,9 @@ export class TenantService {
   /**
    * Get tenant by email or tin
    */
-  async getTenantByTin(tin: string): Promise<TenantDocument> {
-    const tenant = await this.tenantRepo.findOne({ tin: { _eq: tin } });
+  async getTenantByTinOrEmail(tinOrEmail: string): Promise<TenantDocument> {
+    const tenant = await this.tenantRepo.findOne({search: tinOrEmail});
+    console.log({tenant})
     if (!tenant) {
       throw new NotFoundError('Tenant');
     }
@@ -205,11 +208,22 @@ export class TenantService {
   /**
    * Get tenant by ID
    */
-  async getTenantById(tenantId: string): Promise<TenantDocument> {
+  async getTenantById(tenantId: string, includeOnboarding: boolean = false): Promise<TenantDocument & { onboarding?: any }> {
     const tenant = await this.tenantRepo.findOne({ tenantId: { _eq: tenantId } });
     if (!tenant) {
       throw new NotFoundError('Tenant');
     }
+
+    if (includeOnboarding) {
+      try {
+        const onboarding = await this.onboardingRepo.findByTenantId(tenantId);
+        return { ...tenant.toObject(), onboarding } as any;
+      } catch (error) {
+        // If onboarding not found, return tenant without it
+        return tenant;
+      }
+    }
+
     return tenant;
   }
 
@@ -232,7 +246,8 @@ export class TenantService {
     erpSystem?: string;
     skip?: number;
     limit?: number;
-  }): Promise<{ tenants: TenantDocument[]; total: number }> {
+    includeOnboarding?: boolean;
+  }): Promise<{ tenants: Array<TenantDocument & { onboarding?: any }>; total: number }> {
     const skip = filters?.skip || 0;
     const limit = filters?.limit || 20;
 
@@ -242,6 +257,22 @@ export class TenantService {
 
     const tenants = await this.tenantRepo.findMany(query, skip, limit);
     const total = await this.tenantRepo.count(query);
+
+    // Include onboarding status if requested
+    if (filters?.includeOnboarding) {
+      const tenantsWithOnboarding = await Promise.all(
+        tenants.map(async (tenant) => {
+          try {
+            const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+            return { ...tenant.toObject(), onboarding } as any;
+          } catch (error) {
+            // If onboarding not found, return tenant without it
+            return tenant;
+          }
+        })
+      );
+      return { tenants: tenantsWithOnboarding, total };
+    }
 
     return { tenants, total };
   }
@@ -286,6 +317,13 @@ export class TenantService {
     // Update Tenant ERP 
     if (input.erpSystem) {
       updateData['config.erpSystem'] = input.erpSystem
+    }
+    // Update metadata 
+    if (input.metadata) {
+      updateData['metadata'] = {
+        ...tenant.metadata,
+        ...input.metadata
+      }
     }
 
     console.log({ updateData })
@@ -560,6 +598,113 @@ export class TenantService {
   }
 
   /**
+   * Rotate API key (revoke old and create new)
+   */
+  async rotateApiKey(
+    tenantId: string,
+    keyId: string,
+    options?: { sendEmail?: boolean; reason?: string }
+  ): Promise<{ apiKey: ApiKeyDocument; plainKey: string }> {
+    const tenant = await this.getTenantById(tenantId);
+    const oldApiKey = await this.apiKeyRepo.findOne({ id: { _eq: keyId } });
+
+    if (!oldApiKey || oldApiKey.tenantId !== tenant.tenantId) {
+      throw new NotFoundError('API key');
+    }
+
+    // Revoke old key
+    await this.apiKeyRepo.revoke(
+      keyId,
+      'system',
+      options?.reason || 'API key rotated'
+    );
+
+    // Create new key with same name and scopes
+    const { apiKey: newApiKey, plainKey } = await this.createApiKey(tenantId, {
+      name: oldApiKey.name,
+      scopes: oldApiKey.scopes,
+      expiresInDays: oldApiKey.expiresAt
+        ? Math.ceil((oldApiKey.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+        : undefined,
+    });
+
+    // Send email notification if requested
+    if (options?.sendEmail !== false) {
+      try {
+        const emailContent: MailContent = {
+          to: tenant.contactEmail,
+          subject: 'API Key Rotated - Action Required',
+          html: withTemplate(`
+            <h2>API Key Rotation Notice</h2>
+            <p>Hello <b>${tenant.businessName}</b>,</p>
+            <p>Your API key "<strong>${oldApiKey.name}</strong>" has been rotated.</p>
+
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">New API Key:</h3>
+              <code style="background-color: #fff; padding: 10px; display: block; font-family: monospace; word-break: break-all;">
+                ${plainKey}
+              </code>
+            </div>
+
+            <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+              <strong>⚠️ Important:</strong>
+              <ul style="margin: 10px 0;">
+                <li>This is the only time you'll see this key</li>
+                <li>Store it securely immediately</li>
+                <li>Update your applications with the new key</li>
+                <li>The old key has been revoked and will no longer work</li>
+              </ul>
+            </div>
+
+            <p><strong>Key Details:</strong></p>
+            <ul>
+              <li><strong>Key Name:</strong> ${newApiKey.name}</li>
+              <li><strong>Key Prefix:</strong> ${newApiKey.keyPrefix}</li>
+              <li><strong>Created:</strong> ${new Date().toLocaleString()}</li>
+              ${newApiKey.expiresAt ? `<li><strong>Expires:</strong> ${newApiKey.expiresAt.toLocaleString()}</li>` : ''}
+            </ul>
+
+            ${options?.reason ? `<p><strong>Rotation Reason:</strong> ${options.reason}</p>` : ''}
+
+            <p>If you did not request this rotation, please contact support immediately.</p>
+
+            <br/>
+          `),
+        };
+
+        await this.notifyTenant(emailContent, tenant);
+        logger.info('API key rotation email sent', { tenantId, keyId });
+      } catch (emailError: any) {
+        logger.error('Failed to send API key rotation email', {
+          tenantId,
+          error: emailError.message,
+        });
+        // Don't fail the rotation if email fails
+      }
+    }
+
+    // Audit log
+    await this.auditRepo.create({
+      tenantId: tenant.tenantId,
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      eventType: AuditEventType.API_KEY_CREATED,
+      severity: AuditEventSeverity.INFO,
+      actor: { actorType: 'system', actorId: 'system' },
+      resource: { resourceType: 'api_key', resourceId: newApiKey._id.toString() },
+      description: `API key rotated: ${newApiKey.name} (old key: ${keyId})`,
+      metadata: {
+        oldKeyId: keyId,
+        newKeyId: newApiKey._id.toString(),
+        reason: options?.reason,
+        emailSent: options?.sendEmail !== false,
+      },
+      timestamp: new Date(),
+    });
+
+    return { apiKey: newApiKey, plainKey };
+  }
+
+  /**
    * Get onboarding status
    */
   async getOnboardingStatus(tenantId: string): Promise<TenantOnboardingDocument> {
@@ -793,6 +938,164 @@ export class TenantService {
     }
 
     return decryptedConfig;
+  }
+
+  /**
+   * List all ERP configurations across all tenants (Admin only)
+   */
+  async listAllERPConfigs(filters?: {
+    erpSystem?: string;
+    enabled?: boolean;
+    skip?: number;
+    limit?: number;
+  }): Promise<{
+    configs: Array<{
+      tenantId: string;
+      businessName: string;
+      contactEmail: string;
+      status: string;
+      erpSystem?: string;
+      erpSyncConfig?: any;
+      configuredAt?: Date;
+    }>;
+    total: number;
+  }> {
+    const skip = filters?.skip || 0;
+    const limit = filters?.limit || 50;
+
+    // Build query
+    const query: any = {};
+    if (filters?.erpSystem) {
+      query['config.erpSystem'] = { _eq: filters.erpSystem };
+    }
+
+    // Get all tenants
+    const tenants = await this.tenantRepo.findMany(query, skip, limit);
+    const total = await this.tenantRepo.count(query);
+
+    // Map tenants to ERP config format
+    const configs = tenants
+      .map((tenant: any) => {
+        const config = tenant.config;
+        const erpSyncConfig = config?.erpSyncConfig;
+
+        // Filter by enabled status if specified
+        if (filters?.enabled !== undefined && erpSyncConfig?.enabled !== filters.enabled) {
+          return null;
+        }
+
+        return {
+          tenantId: tenant.tenantId,
+          businessName: tenant.businessName,
+          contactEmail: tenant.contactEmail,
+          status: tenant.status,
+          erpSystem: config?.erpSystem,
+          erpSyncConfig: erpSyncConfig ? {
+            name: erpSyncConfig.name,
+            description: erpSyncConfig.description,
+            enabled: erpSyncConfig.enabled,
+            method: erpSyncConfig.method,
+            baseUrl: erpSyncConfig.baseUrl,
+            endpoint: erpSyncConfig.endpoint,
+            authenticationType: erpSyncConfig.authentication?.type,
+            hasAuthentication: !!erpSyncConfig.authentication,
+            timeout: erpSyncConfig.timeout,
+            retryEnabled: erpSyncConfig.retryConfig?.enabled,
+          } : null,
+          configuredAt: tenant.updatedAt,
+        };
+      })
+      .filter((config) => config !== null);
+
+    return {
+      configs,
+      total: filters?.enabled !== undefined ? configs.length : total,
+    };
+  }
+
+  /**
+   * List all API keys across all tenants (Admin only)
+   */
+  async listAllApiKeys(filters?: {
+    status?: string;
+    tenantId?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<{
+    apiKeys: Array<{
+      keyId: string;
+      tenantId: string;
+      businessName: string;
+      contactEmail: string;
+      tenantStatus: string;
+      keyName: string;
+      keyPrefix: string;
+      status: string;
+      scopes: string[];
+      createdAt: Date;
+      expiresAt?: Date;
+      lastUsedAt?: Date;
+      usageCount: number;
+    }>;
+    total: number;
+  }> {
+    const skip = filters?.skip || 0;
+    const limit = filters?.limit || 50;
+
+    // Build API key query
+    const apiKeyQuery: any = {};
+    if (filters?.status) {
+      apiKeyQuery.status = { _eq: filters.status };
+    }
+    if (filters?.tenantId) {
+      apiKeyQuery.tenantId = { _eq: filters.tenantId };
+    }
+
+    // Get all API keys with filters
+    const apiKeys = await this.apiKeyRepo.findMany(apiKeyQuery, undefined, limit, skip);
+    const total = await this.apiKeyRepo.count(apiKeyQuery);
+
+    // Get unique tenant IDs
+    const tenantIds = [...new Set(apiKeys.map((key: any) => key.tenantId))];
+
+    // Fetch all tenants in one query
+    const tenants = await this.tenantRepo.findMany(
+      { tenantId: { _in: tenantIds } },
+      undefined,
+      tenantIds.length,
+      0
+    );
+
+    // Create tenant lookup map
+    const tenantMap = new Map(
+      tenants.map((tenant: any) => [tenant.tenantId, tenant])
+    );
+
+    // Combine API key data with tenant info
+    const enrichedApiKeys = apiKeys.map((apiKey: any) => {
+      const tenant = tenantMap.get(apiKey.tenantId);
+
+      return {
+        keyId: apiKey._id.toString(),
+        tenantId: apiKey.tenantId,
+        businessName: tenant?.businessName || 'Unknown',
+        contactEmail: tenant?.contactEmail || 'N/A',
+        tenantStatus: tenant?.status || 'unknown',
+        keyName: apiKey.name,
+        keyPrefix: apiKey.keyPrefix,
+        status: apiKey.status,
+        scopes: apiKey.scopes || [],
+        createdAt: apiKey.createdAt,
+        expiresAt: apiKey.expiresAt,
+        lastUsedAt: apiKey.lastUsedAt,
+        usageCount: apiKey.usageCount || 0,
+      };
+    });
+
+    return {
+      apiKeys: enrichedApiKeys,
+      total,
+    };
   }
 
   /**

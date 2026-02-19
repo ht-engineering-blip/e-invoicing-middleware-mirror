@@ -83,6 +83,7 @@ export class TransformWorkflowService {
             if (schemaPayload.status) updatePayload.status = schemaPayload.status;
             if (schemaPayload.metadata) updatePayload.metadata = schemaPayload.metadata;
 
+            console.log({updatePayload})
             const updated = await this.invoiceSchemaRepo.update(schemaId, updatePayload);
             console.log(`Updated schema dictionary: ${schemaId}`);
             return updated;
@@ -114,6 +115,7 @@ export class TransformWorkflowService {
         fields: ISchemaField[],
         options?: {
             tenantId?: string;
+            status?: SchemaStatus,
             createdBy?: string;
             metadata?: Record<string, any>;
         }
@@ -128,7 +130,7 @@ export class TransformWorkflowService {
             description: `Invoice field mapping schema for ${erpType} ERP system`,
             source_type: sourceType,
             fields,
-            status: SchemaStatus.DRAFT,
+            status: options?.status || SchemaStatus.DRAFT,
             tenant_id: options?.tenantId,
             created_by: options?.createdBy || 'system',
             metadata: {
@@ -175,7 +177,7 @@ export class TransformWorkflowService {
         if (defaultSchema) return defaultSchema;
 
         // If no default, try to find any active schema
-        const schemas = await this.invoiceSchemaRepo.findBySourceType(sourceType, false);
+        const schemas = await this.invoiceSchemaRepo.findBySourceType(sourceType, true);
         return schemas.length > 0 ? schemas[0] : null;
     }
 

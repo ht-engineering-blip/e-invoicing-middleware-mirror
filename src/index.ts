@@ -4,6 +4,7 @@ import { v1Routes } from './v1';
 import { errorHandlerMiddleware } from './middlewares';
 import { logger } from './@lib/logger';
 import { connectMongo } from './@lib/adapters/mongo';
+import { dts } from 'elysia-remote-dts';
 
 if (!appConfig) {
   throw new Error('App configuration is not defined');
@@ -25,6 +26,7 @@ const ensureMongoConnection = async () => {
 };
 
 const app = new Elysia()
+  .use(dts('./src/index.ts'))
   // Ensure MongoDB connection on every request
   .onBeforeHandle(async () => {
     await ensureMongoConnection();
@@ -48,9 +50,9 @@ const app = new Elysia()
 
       const validationError = error as any;
 
-  /*     const name = validationError.all.find(
-        (x: any) => x.summary && x.path === '/name'
-      ) */
+      /*     const name = validationError.all.find(
+            (x: any) => x.summary && x.path === '/name'
+          ) */
 
       // If there is a validation error, then log it
 
@@ -58,7 +60,7 @@ const app = new Elysia()
       const fieldErrors: Record<string, string> = {};
       if (validationError.all && Array.isArray(validationError.all)) {
         validationError.all.forEach((err: any) => {
-          console.log({err: err})
+          console.log({ err: err })
           const field = err.path?.replace('/', '') || 'unknown';
           fieldErrors[field] = err.summary || err.message;
         });
@@ -127,7 +129,7 @@ if (import.meta.env?.DEV || process.env.NODE_ENV === 'development') {
     port: appConfig.port,
     hostname: appConfig.host,
   });
-  
+
   logger.info(
     `🦊 Elysia is running at http://${appConfig.host}:${appConfig.port}`
   );
@@ -136,4 +138,5 @@ if (import.meta.env?.DEV || process.env.NODE_ENV === 'development') {
 }
 
 // Export for Vercel serverless deployment
+export type App = typeof app;
 export default app;

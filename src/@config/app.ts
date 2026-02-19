@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handleConfigError } from './errors';
 
 const appConfigSchema = z.object({
-  port: z.coerce.number().int().positive().default(3000),
+  port: z.coerce.number().int().positive(),
   adminKey: z.string(),
   env: z.enum(['development', 'staging', 'production', 'test']).default('development'),
   apiVersion: z.string().default('v1'),
@@ -14,7 +14,7 @@ const appConfigSchema = z.object({
 const parseAppConfig = () => {
   try {
     return appConfigSchema.parse({
-      port: process.env.APP_PORT || 3000,
+      port: process.env.APP_PORT || 3001,
       adminKey: process.env.DEFAULT_ADMIN_KEY || "dummy_key",
       env: process.env.NODE_ENV || 'development',
       apiVersion: process.env.API_VERSION || 'v1',

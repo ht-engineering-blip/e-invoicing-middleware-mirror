@@ -117,7 +117,7 @@ export default class FIRSClient extends RestClient {
         // }
         let foundError = error?.response?.data?.error
         console.log('Resp error:', { foundError });
-        const errorResp = new AppError(error?.response?.data?.code || error?.response?.status, foundError?.public_message || HandleErrorResponse(error), error)
+        const errorResp = new AppError(error?.response?.data?.code || error?.response?.status, foundError?.public_message + " - " + foundError?.details || HandleErrorResponse(error), error)
 
         return Promise.reject(errorResp);
     }

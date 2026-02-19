@@ -1,4 +1,4 @@
-import { jwtConfig, messagingConfig } from "../../../@config";
+import { appConfig, jwtConfig, messagingConfig } from "../../../@config";
 import { TeamMemberRole, TenantDocument } from "../../tenants/models";
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
@@ -183,7 +183,7 @@ export class AuthService {
     private async sendPasswordResetEmail(tenant: TenantDocument, token: string, businessName: string): Promise<void> {
         try {
 
-            const resetUrl = `${process.env.WEB_APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+            const resetUrl = `${appConfig?.webAppURL|| 'http://localhost:3000'}/auth/reset-password?token=${token}`;
             let emailBody: MailContent = {
                 subject: 'Password Reset Request - E-Invoicing Platform',
                 html: `

@@ -27,10 +27,12 @@ export class TenantRepository {
 
     // IN conditions
     if (where.status?._in) query.status = { $in: where.status._in };
-
+    if (where.tenantId?._in) query.tenantId = { $in: where.tenantId._in };
+ 
     // Search conditions
     if (where.search) {
       query.$or = [
+        { contactEmail: new RegExp(where.search, 'i') },
         { businessName: new RegExp(where.search, 'i') },
         { tin: new RegExp(where.search, 'i') },
         { tenantId: new RegExp(where.search, 'i') },
@@ -43,6 +45,7 @@ export class TenantRepository {
         return this.buildTenantQuery(andCondition);
       });
     }
+ 
 
     return query;
   }
@@ -88,7 +91,7 @@ export class TenantRepository {
     try {
       const query = this.buildTenantQuery(where);
       const projection = this.buildTenantProjection(select);
-
+console.log({where, query})
       const doc = await this.tenantModel.base.findOne(query, projection).exec();
 
       return doc;
@@ -238,6 +241,21 @@ export class TenantRepository {
     } catch (error) {
       console.error('Error fetching tenant:', error);
       throw new AppError(500, 'Failed to fetch tenant');
+    }
+  }
+
+  /**
+   * Find tenant by webhook path stored in metadata
+   */
+  async findByWebhookPath(webhookPath: string): Promise<TenantDocument | null> {
+    try {
+      const doc = await this.tenantModel.base
+        .findOne({ 'metadata.webhookPath': webhookPath })
+        .exec();
+      return doc;
+    } catch (error) {
+      console.error('Error finding tenant by webhook path:', error);
+      throw new AppError(500, 'Failed to find tenant by webhook path');
     }
   }
 

@@ -32,8 +32,7 @@ export interface ApiKeyDocument extends Document {
 
   // Metadata
   createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
+  updatedAt: Date; 
   revokedAt?: Date;
   revokedBy?: string;
   revokedReason?: string;
@@ -93,10 +92,6 @@ const ApiKeySchema = new Schema<ApiKeyDocument>(
     },
 
     // Metadata
-    createdBy: {
-      type: String,
-      required: true,
-    },
     revokedAt: {
       type: Date,
     },

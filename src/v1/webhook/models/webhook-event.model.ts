@@ -46,8 +46,7 @@ export interface IWebhookDeliveryAttempt {
  * MongoDB Document interface for Webhook Event
  */
 export interface WebhookEventDocument extends Document {
-  tenantId: string;
-  businessId: string;
+  tenantId: string; 
   eventId: string;
   eventType: WebhookEventType;
 
@@ -86,11 +85,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       required: true,
       index: true,
     },
-    businessId: {
-      type: String,
-      required: true,
-      index: true,
-    },
+    
     eventId: {
       type: String,
       required: true,
@@ -145,8 +140,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       default: 3,
     },
     nextRetryAt: {
-      type: Date,
-      index: true,
+      type: Date 
     },
 
     // Response Information
