@@ -100,9 +100,9 @@ export const webhookRoutes = new Elysia({
       }),
       detail: {
         tags: ['Webhook - Inbound'],
-        summary: 'Listen for inbound webhook events (SSE)',
+        summary: 'Listen for inbound webhook events',
         description:
-          'Server-Sent Events endpoint. Connect to receive real-time inbound webhook data as it arrives for this tenant.',
+          'Connect to receive real-time (SSE) inbound webhook data as it arrives for this tenant.',
       },
     }
   )
@@ -288,7 +288,7 @@ export const webhookRoutes = new Elysia({
         tags: ['Webhook - Inbound'],
         summary: 'Receive inbound webhook',
         description:
-          'Endpoint for tenants to send data to the platform. Verified via unique webhook path and HMAC-SHA256 signature.',
+          'Endpoint for tenants to send data to the platform.',
       },
     }
   );
