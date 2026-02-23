@@ -18,6 +18,7 @@ export interface UpsertSchemaInput {
     status?: SchemaStatus;
     tenant_id?: string;
     metadata?: Record<string, any>;
+    mapping_rules?: Array<Record<string, any>>;
     created_by?: string;
 }
 
@@ -82,6 +83,7 @@ export class TransformWorkflowService {
             if (schemaPayload.fields) updatePayload.fields = schemaPayload.fields;
             if (schemaPayload.status) updatePayload.status = schemaPayload.status;
             if (schemaPayload.metadata) updatePayload.metadata = schemaPayload.metadata;
+            if (schemaPayload.mapping_rules) updatePayload.mapping_rules = schemaPayload.mapping_rules;
 
             console.log({updatePayload})
             const updated = await this.invoiceSchemaRepo.update(schemaId, updatePayload);
@@ -118,6 +120,7 @@ export class TransformWorkflowService {
             status?: SchemaStatus,
             createdBy?: string;
             metadata?: Record<string, any>;
+            mapping_rules?: Array<Record<string, any>>;
         }
     ): Promise<InvoiceSchemaDictionaryDocument> => {
         // Normalize ERP type to uppercase
@@ -137,6 +140,7 @@ export class TransformWorkflowService {
                 erp_type: erpType,
                 ...options?.metadata,
             },
+            mapping_rules: options?.mapping_rules || []
         });
     }
 

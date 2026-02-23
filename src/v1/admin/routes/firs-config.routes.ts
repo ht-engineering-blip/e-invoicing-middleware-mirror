@@ -90,7 +90,7 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
            {
              createdBy: auth?.userId || 'system',
              metadata: {
-               source_invoice_sample: flatInvoice,
+               source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample: flatInvoice,
                source_metadata_sample: flatMetadata,
                generated_at: new Date().toISOString(),
              },

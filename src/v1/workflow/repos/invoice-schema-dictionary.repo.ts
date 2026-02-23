@@ -6,7 +6,6 @@ import {
   SchemaSourceType,
   SchemaStatus,
   ISchemaField,
-  ISchemaMappingRule,
 } from '../models/invoice-schema-dictionary.model';
 
 /**
@@ -23,7 +22,7 @@ export interface CreateSchemaDictionaryInput {
   is_default?: boolean;
   tenant_id?: string;
   fields: ISchemaField[];
-  mapping_rules?: ISchemaMappingRule[];
+  mapping_rules?: Array<Record<string, any>>
   metadata?: Record<string, any>;
   tags?: string[];
   created_by: string;
@@ -40,7 +39,7 @@ export interface UpdateSchemaDictionaryInput {
   status?: SchemaStatus;
   is_default?: boolean;
   fields?: ISchemaField[];
-  mapping_rules?: ISchemaMappingRule[];
+  mapping_rules?: Array<Record<string, any>>
   metadata?: Record<string, any>;
   tags?: string[];
   updated_by: string;
@@ -357,7 +356,7 @@ export class InvoiceSchemaDictionaryRepository {
    */
   async addMappingRules(
     schemaId: string,
-    rules: ISchemaMappingRule[],
+    rules: Array<Record<string, any>>,
     updatedBy: string
   ): Promise<InvoiceSchemaDictionaryDocument> {
     try {
@@ -478,7 +477,7 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const result = await this.model.base.aggregate([
         {
-          $match: { 
+          $match: {
             source_type: { $ne: 'FIRS_UBL' }
           }
         },
@@ -531,13 +530,13 @@ export class InvoiceSchemaDictionaryRepository {
         name,
         description: `Cloned from ${source.name}`,
         version: '1.0.0',
-        source_type: source.source_type, 
+        source_type: source.source_type,
         status: SchemaStatus.DRAFT,
         is_default: false,
         tenant_id: source.tenant_id,
         fields: source.fields,
         mapping_rules: source.mapping_rules,
-        metadata: source.metadata, 
+        metadata: source.metadata,
         created_by: createdBy,
       });
 
