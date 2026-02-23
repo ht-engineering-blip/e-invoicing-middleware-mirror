@@ -75,13 +75,6 @@ export interface ISchemaField {
  * Schema Mapping Rule Interface
  * Used to define how fields map between different schemas
  */
-export interface ISchemaMappingRule {
-  source_field_id: string;
-  target_field_id: string;
-  transformation?: string;
-  default_value?: any;
-  condition?: string;
-}
 
 /**
  * MongoDB Document interface for Invoice Schema Dictionary
@@ -103,7 +96,7 @@ export interface InvoiceSchemaDictionaryDocument extends Document {
   fields: ISchemaField[];
 
   // Mapping Rules (for mapping to/from this schema)
-  mapping_rules?: ISchemaMappingRule[];
+  mapping_rules?: Array<Record<string, any>>
 
   // Additional Metadata
   metadata?: Record<string, any>; 
@@ -181,32 +174,6 @@ const SchemaFieldSchema = new Schema<ISchemaField>(
 );
 
 /**
- * Schema Mapping Rule Subdocument Schema
- */
-const SchemaMappingRuleSchema = new Schema<ISchemaMappingRule>(
-  {
-    source_field_id: {
-      type: String,
-      required: true,
-    },
-    target_field_id: {
-      type: String,
-      required: true,
-    },
-    transformation: {
-      type: String,
-    },
-    default_value: {
-      type: Schema.Types.Mixed,
-    },
-    condition: {
-      type: String,
-    },
-  },
-  { _id: false }
-);
-
-/**
  * Mongoose Schema for Invoice Schema Dictionary
  */
 const InvoiceSchemaDictionarySchema = new Schema<InvoiceSchemaDictionaryDocument>(
@@ -254,7 +221,7 @@ const InvoiceSchemaDictionarySchema = new Schema<InvoiceSchemaDictionaryDocument
 
     // Mapping Rules
     mapping_rules: {
-      type: [SchemaMappingRuleSchema],
+      type: Array<any>,
     },
 
     // Additional Metadata

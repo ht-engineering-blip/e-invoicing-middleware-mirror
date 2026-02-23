@@ -135,7 +135,7 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         // Flatten the invoice for field extraction
         let flatInvoice = jsonSpread(invoice)[0]
         let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined
-
+        let mapping_rules = metadata && metadata.mapping_rules ? metadata.mapping_rules: [] 
       
         // Generate invoice dictionary using LLM
         let generatedFields = await llmService.generateInvoiceDictionary(erp, flatInvoice, flatMetadata)
@@ -149,9 +149,11 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
             createdBy: auth?.userId || 'system',
             status: metadata.status,
             metadata: {
-              source_invoice_sample: flatInvoice,
+              ...(metadata || {}),
+              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample: flatInvoice,
               generated_at: new Date().toISOString(),
             },
+            mapping_rules
           }
         )
 
