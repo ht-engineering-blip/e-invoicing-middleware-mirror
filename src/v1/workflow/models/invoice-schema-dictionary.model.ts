@@ -195,8 +195,7 @@ const InvoiceSchemaDictionarySchema = new Schema<InvoiceSchemaDictionaryDocument
     // Source Information
     source_type: {
       type: String,
-      required: true,
-      enum: [...Object.values(SchemaSourceType), 'CUSTOM'],
+      required: true, 
       index: true,
     },
     

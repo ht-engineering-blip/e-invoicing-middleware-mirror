@@ -1,5 +1,5 @@
-import { t } from 'elysia'; 
-import {faker} from "@faker-js/faker"
+import { t } from 'elysia';
+import { faker } from "@faker-js/faker"
 import { SchemaSourceType } from '../../workflow/models';
 /**
  * Tenant Validators
@@ -10,12 +10,12 @@ import { SchemaSourceType } from '../../workflow/models';
  * Create Tenant Request Validator
  */
 export const createTenantValidator = t.Object({
-  businessName: t.String({ minLength: 2, maxLength: 200, examples:[faker.company.name()] }),
-  tin: t.String({ minLength: 10, maxLength: 20 , examples: [`${faker.string.numeric({length: 8})}-${faker.string.numeric({length: 4})}`]}),
+  businessName: t.String({ minLength: 2, maxLength: 200, examples: [faker.company.name()] }),
+  tin: t.String({ minLength: 10, maxLength: 20, examples: [`${faker.string.numeric({ length: 8 })}-${faker.string.numeric({ length: 4 })}`] }),
   businessRegistrationNumber: t.String({ minLength: 5, maxLength: 50 }),
   contactEmail: t.String({ format: 'email', examples: [faker.internet.email()] }),
   contactPhone: t.String({ minLength: 10, maxLength: 20 }),
-  erpSystem: t.Enum(SchemaSourceType), 
+  erpSystem: t.Enum(SchemaSourceType),
   expectedVolume: t.Optional(t.Number({ minimum: 1 })),
 });
 
@@ -25,7 +25,7 @@ export const createTenantValidator = t.Object({
 export const updateTenantValidator = t.Object({
   businessName: t.Optional(t.String({ minLength: 2, maxLength: 200 })),
   contactEmail: t.Optional(t.String({ format: 'email' })),
-  contactPhone: t.Optional(t.String({ minLength: 10, maxLength: 20 })), 
+  contactPhone: t.Optional(t.String({ minLength: 10, maxLength: 20 })),
   webhookUrl: t.Optional(t.String({ format: 'uri' })),
   webhookEnabled: t.Optional(t.Boolean()),
   features: t.Optional(
@@ -35,28 +35,31 @@ export const updateTenantValidator = t.Object({
       qrCodeGeneration: t.Optional(t.Boolean()),
     })
   ),
-  erpSystem: t.Optional(t.Enum(SchemaSourceType)), 
+  erpSystem: t.Optional(t.Enum(SchemaSourceType)),
   limits: t.Optional(
     t.Object({
       monthlyInvoiceLimit: t.Optional(t.Number({ minimum: 0 })),
       apiRateLimit: t.Optional(t.Number({ minimum: 10, maximum: 10000 })),
     })
   ),
+  metadata: t.Optional(
+    t.Any({ default: {} })
+  )
 });
 
 /**
  * Update FIRS Credentials Validator
  */
-export const updateFirsCredentialsValidator = t.Object({ 
-  certificate: t.String({ minLength: 30, examples:[faker.string.alphanumeric({length: 30})] }),
-  publicKey: t.String({ minLength: 50, examples:[faker.string.alphanumeric({length: 50})]  })
+export const updateFirsCredentialsValidator = t.Object({
+  certificate: t.String({ minLength: 30, examples: [faker.string.alphanumeric({ length: 30 })] }),
+  publicKey: t.String({ minLength: 50, examples: [faker.string.alphanumeric({ length: 50 })] })
 });
 
 /**
  * Tenant ID Path Parameter Validator
  */
 export const tenantIdParamValidator = t.Object({
-  tenantId: t.String( ),
+  tenantId: t.String(),
 });
 
 /**
@@ -68,7 +71,7 @@ export const listTenantsQueryValidator = t.Object({
   status: t.Optional(
     t.Union([t.Literal('active'), t.Literal('suspended'), t.Literal('inactive')])
   ),
-  onboarding: t.Optional(t.Boolean({default: true})),
+  onboarding: t.Optional(t.Boolean({ default: true })),
   search: t.Optional(t.String()),
   sortBy: t.Optional(t.String()),
   sortOrder: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
@@ -128,8 +131,8 @@ export const erpSyncConfigValidator = t.Object({
   ]),
   baseUrl: t.String({ format: 'uri' }),
   endpoint: t.String({ minLength: 1 }),
-  headers: t.Optional(t.Record(t.String(), t.String(), {default: {"key":"value"}})),
-  queryParams: t.Optional(t.Record(t.String(), t.String(), {default: {"key":"value"}})),
+  headers: t.Optional(t.Record(t.String(), t.String(), { default: { "key": "value" } })),
+  queryParams: t.Optional(t.Record(t.String(), t.String(), { default: { "key": "value" } })),
   bodyTemplate: t.Optional(t.String()),
   authentication: t.Optional(t.Object({
     type: t.Union([
@@ -152,7 +155,7 @@ export const erpSyncConfigValidator = t.Object({
     retryDelay: t.Number({ minimum: 100, maximum: 10000, default: 1000 }),
     retryOn: t.Optional(t.Array(t.Number())),
   })),
-  responseMapping: t.Optional(t.Record(t.String(), t.String(),{default: {"key":"value"}})),
+  responseMapping: t.Optional(t.Record(t.String(), t.String(), { default: { "key": "value" } })),
   triggerEvents: t.Optional(t.Array(t.Union([
     t.Literal('invoice.validated'),
     t.Literal('invoice.signed'),
