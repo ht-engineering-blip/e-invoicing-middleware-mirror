@@ -71,7 +71,7 @@ export interface OutboundInvoiceDocument extends Document {
   webhookEvents: WebhookEventDocument[];
 
   // Metadata
-  erpSystem: SchemaSourceType;
+  erpSystem: SchemaSourceType| string;
   metadata: Record<string, any>;
 }
 
@@ -138,8 +138,7 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
     qrCode: { type: String },
     // Metadata
     erpSystem: {
-      type: String,
-      enum: Object.values(SchemaSourceType),
+      type: String, 
       required: true,
     },
     metadata: {

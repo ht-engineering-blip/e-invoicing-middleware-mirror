@@ -55,7 +55,7 @@ export interface ITenantConfig {
     publicKey?: string;
   };
   erpSyncConfig?: IERPSyncConfig;
-  erpSystem: SchemaSourceType;
+  erpSystem: SchemaSourceType | string;
   webhookUrl?: string;
   webhookAuth?: string;
   webhookEnabled?: boolean;
@@ -79,7 +79,7 @@ export interface TenantDocument extends Document {
   contactEmail: string;
   contactPhone: string;
   password: string;
-  erpSystem: SchemaSourceType;
+  erpSystem: SchemaSourceType | string;
   expectedVolume: Number;
   webhookUrl: String,
   webhookAuth: String,
@@ -176,8 +176,7 @@ const TenantSchema = new Schema<TenantDocument>(
         triggerEvents: [{ type: String }],
       },
       erpSystem: {
-        type: String,
-        enum: Object.values(SchemaSourceType),
+        type: String, 
         required: true,
       },
       webhookUrl: { type: String },
