@@ -15,7 +15,7 @@ export const createTenantValidator = t.Object({
   businessRegistrationNumber: t.String({ minLength: 5, maxLength: 50 }),
   contactEmail: t.String({ format: 'email', examples: [faker.internet.email()] }),
   contactPhone: t.String({ minLength: 10, maxLength: 20 }),
-  erpSystem: t.Enum(SchemaSourceType),
+  erpSystem: t.String(),
   expectedVolume: t.Optional(t.Number({ minimum: 1 })),
 });
 
@@ -35,7 +35,7 @@ export const updateTenantValidator = t.Object({
       qrCodeGeneration: t.Optional(t.Boolean()),
     })
   ),
-  erpSystem: t.Optional(t.Enum(SchemaSourceType)),
+  erpSystem: t.Optional(t.String()),
   limits: t.Optional(
     t.Object({
       monthlyInvoiceLimit: t.Optional(t.Number({ minimum: 0 })),

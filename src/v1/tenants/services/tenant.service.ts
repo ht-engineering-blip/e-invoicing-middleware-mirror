@@ -23,7 +23,7 @@ export interface CreateTenantInput {
   businessRegistrationNumber: string;
   contactEmail: string;
   contactPhone: string;
-  erpSystem: SchemaSourceType;
+  erpSystem: SchemaSourceType | string;
   expectedVolume?: number;
   erpWebhookUrl?: string;
   erpApiKey?: string;
@@ -34,7 +34,7 @@ export interface UpdateTenantInput {
   businessName?: string;
   contactEmail?: string;
   password?: string;
-  erpSystem?: SchemaSourceType;
+  erpSystem?: SchemaSourceType |string;
   contactPhone?: string;
   erpWebhookUrl?: string;
   erpApiKey?: string;
