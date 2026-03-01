@@ -123,7 +123,7 @@ export class TenantService {
       subject: mail.subject,
       html: (mail.html || mail.text) as string,
     };
-    mailClient.send(mailContent);
+    await mailClient.send(mailContent);
   }
 
   /**
