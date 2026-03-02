@@ -121,7 +121,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
     },
     {
       body: t.Object({
-        erp: t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
+        erp: t.String(),
         invoice: t.Any({ default: {} }),
         metadata: t.Optional(t.Any()),
       }),
