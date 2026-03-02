@@ -54,7 +54,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
     {
       body: t.Object({
         invoice: t.Any({ default: {} }),
-        source_type: t.Optional(t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM })),
+        source_type: t.String(),
       }),
       detail: {
         summary: 'Transform Invoice',
