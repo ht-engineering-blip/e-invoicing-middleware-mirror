@@ -9,6 +9,7 @@ import axios from 'axios';
 import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
+import app from '../../..';
 
 /**
  * Public Onboarding Routes (no auth required)
@@ -218,7 +219,7 @@ export const protectedOnboardingRoutes = new Elysia()
         const webhookSecret = crypto.randomBytes(32).toString('hex');
 
         // Build webhook URL
-        const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+        const baseUrl = appConfig?.apiBaseURL || 'http://localhost:3000';
         const webhookUrl = `${baseUrl}/v1/webhook/inbound/${webhookPath}`;
 
         // Update tenant with webhook config
