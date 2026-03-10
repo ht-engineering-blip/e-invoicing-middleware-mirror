@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 import { TenantRepository } from '../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from './repos/webhook-event.repo';
 import { EventRoutingRepository } from '../admin/repos/event-routing.repo';
+import { scheduleJobChain } from '../workflow/jobs/orchestrator';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
 import { hashString, logger, UnauthorizedError } from '../../@lib';
 import {
@@ -190,7 +191,7 @@ export const webhookRoutes = new Elysia({
           set.status = 200;
           return {
             success: true,
-            message: 'Webhook already received (idempotent)',
+            message: 'Webhook already received',
             data: {
               eventId: existing.eventId,
               tenantId: existing.tenantId,
@@ -209,6 +210,12 @@ export const webhookRoutes = new Elysia({
         });
       }
 
+       // 6. Resolve event routing — find actions mapped for this event type
+        const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
+          tenant.tenantId,
+          eventType
+        );
+        const routedActions = matchedRoutes.flatMap((r) => r.actions);
       // 7. Store the webhook event
       const eventId = `wh_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
 
@@ -234,6 +241,7 @@ export const webhookRoutes = new Elysia({
           deliveredAt: new Date(),
           metadata: {
             source: 'inbound',
+            matchedRoutes,
             webhookPath,
             idempotencyKey,
             receivedAt: new Date().toISOString(),
@@ -245,20 +253,35 @@ export const webhookRoutes = new Elysia({
           },
         } as any);
 
+
         logger.info('Inbound webhook received', {
           tenantId: tenant.tenantId,
           eventId,
           eventType,
         });
 
-        // 6. Resolve event routing — find actions mapped for this event type
-        const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
-          tenant.tenantId,
-          eventType
-        );
-        const routedActions = matchedRoutes.flatMap((r) => r.actions);
+        // 7. Schedule background job chain (fire-and-forget — don't await)
+        let jobChainId: string | undefined;
+        if (routedActions.length > 0) {
+          scheduleJobChain({
+            webhookEventId: eventId,
+            tenantId: tenant.tenantId,
+            eventType,
+            payload: body,
+            actions: matchedRoutes.flatMap((r) => r.actions),
+            routeId: matchedRoutes[0]?.routeId,
+          })
+            .then((id) => { jobChainId = id; })
+            .catch((err) =>
+              logger.error('Failed to schedule job chain', {
+                eventId,
+                tenantId: tenant.tenantId,
+                error: err.message,
+              })
+            );
+        }
 
-        // 7. Push to SSE listeners on this webhookPath
+        // 8. Push to SSE listeners on this webhookPath
         webhookBus.emit(`wh:${webhookPath}`, {
           eventId,
           tenantId: tenant.tenantId,
@@ -282,6 +305,7 @@ export const webhookRoutes = new Elysia({
             routing: {
               matchedRoutes: matchedRoutes.length,
               actions: routedActions,
+              jobChainId: jobChainId ?? null,
             },
           },
         };

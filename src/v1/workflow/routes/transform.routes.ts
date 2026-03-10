@@ -32,7 +32,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
         if (auth && auth.tenantId) {
           invoice.business_id = auth.businessId
         }
-        let transformedPayload = await transformWorkflowService.transformInvoice(
+        let transformedPayload = await transformWorkflowService.transformInvoiceV2(
           invoice,
           auth,
           source_type
@@ -62,8 +62,8 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
     }
   );
 
-  /* Dictionary Configuration */
-  transformInvoiceRoutes 
+/* Dictionary Configuration */
+transformInvoiceRoutes
   /**
    * POST /api/v1/workflow/transform/dictionary/erp
    * Update erp invoice dictionary for use in transformation operations
@@ -94,7 +94,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
             createdBy: auth?.userId || 'system',
             metadata: {
               ...metadata,
-              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample:  flatInvoice,
+              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample : flatInvoice,
               generated_at: new Date().toISOString(),
             },
           }
@@ -147,10 +147,10 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
         // Flatten the invoice and metadata for field extraction
         let flatInvoice = jsonSpread(invoice)[0]
         let invoiceKeyTypes: any = {}
-       /*  Object.keys(invoice).forEach(key => {
-          const value = invoice[key];
-          invoiceKeyTypes[key] = typeof value
-        }); */
+        /*  Object.keys(invoice).forEach(key => {
+           const value = invoice[key];
+           invoiceKeyTypes[key] = typeof value
+         }); */
         let flatMetadata = metadata ? jsonSpread(metadata)[0] : {}
         flatMetadata.dataTypes = invoiceKeyTypes
 
@@ -163,7 +163,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
           {
             createdBy: auth?.userId || 'system',
             metadata: {
-              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample: flatInvoice,
+              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample : flatInvoice,
               source_metadata_sample: flatMetadata,
               generated_at: new Date().toISOString(),
             },
@@ -202,6 +202,6 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
       },
     }
   )
- 
+
 
 export default transformInvoiceRoutes;

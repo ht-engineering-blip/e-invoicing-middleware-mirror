@@ -3,16 +3,22 @@
   "version": "1.0.50",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch src/index.ts",
+    "worker": "bun run src/worker.ts",
+    "worker:dev": "bun run --watch src/worker.ts"
   },
   "dependencies": {
+    "@agendajs/mongo-backend": "^4.0.0",
     "@elysiajs/cors": "^1.4.1",
     "@elysiajs/openapi": "^1.4.13",
     "@faker-js/faker": "^10.2.0",
+    "agenda": "^6.2.3",
+    "agendash": "^8.2.1",
     "axios": "^1.13.2",
     "debug": "^4.4.3",
     "elysia": "latest",
     "elysia-remote-dts": "^1.0.3",
+    "express": "^5.2.1",
     "firs-einvoicing": "1.0.13",
     "handlebars": "^4.7.8",
     "json-spread": "^1.0.1",
@@ -25,7 +31,9 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@types/agenda": "^4.1.4",
     "@types/debug": "^4.1.12",
+    "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/nodemailer": "^7.0.5",
     "@types/qrcode": "^1.5.6",
