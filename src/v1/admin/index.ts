@@ -3,6 +3,7 @@ import { firsConfigRoutes } from './routes/firs-config.routes';
 import { erpConfigRoutes } from './routes/erp-config.routes';
 import { sandboxRoutes } from './routes/sandbox.routes';
 import { referenceRoutes } from './routes/reference.routes';
+import { eventRoutingRoutes } from './routes/event-routing.routes';
 
 /**
  * Admin Module Routes
@@ -12,7 +13,8 @@ export const adminModuleRoutes = new Elysia({ prefix: '/admin' })
   .use(firsConfigRoutes)
   .use(erpConfigRoutes)
   .use(sandboxRoutes)
-  .use(referenceRoutes);
+  .use(referenceRoutes)
+  .use(eventRoutingRoutes);
 
 // Export models and services for use elsewhere
 export * from './models';

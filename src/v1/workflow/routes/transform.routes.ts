@@ -32,7 +32,6 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
         if (auth && auth.tenantId) {
           invoice.business_id = auth.businessId
         }
-
         let transformedPayload = await transformWorkflowService.transformInvoice(
           invoice,
           auth,

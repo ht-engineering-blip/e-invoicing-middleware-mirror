@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { TenantRepository } from '../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from './repos/webhook-event.repo';
+import { EventRoutingRepository } from '../admin/repos/event-routing.repo';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
 import { hashString, logger, UnauthorizedError } from '../../@lib';
 import {
@@ -13,6 +14,7 @@ import { sleep } from 'bun';
 
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
+const eventRoutingRepo = new EventRoutingRepository();
 
 /**
  * In-memory event bus for real-time SSE streaming per webhook path.
@@ -249,13 +251,24 @@ export const webhookRoutes = new Elysia({
           eventType,
         });
 
-        // 6. Push to SSE listeners on this webhookPath
+        // 6. Resolve event routing — find actions mapped for this event type
+        const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
+          tenant.tenantId,
+          eventType
+        );
+        const routedActions = matchedRoutes.flatMap((r) => r.actions);
+
+        // 7. Push to SSE listeners on this webhookPath
         webhookBus.emit(`wh:${webhookPath}`, {
           eventId,
           tenantId: tenant.tenantId,
           eventType,
           payload: body,
           receivedAt: new Date().toISOString(),
+          routing: {
+            matchedRoutes: matchedRoutes.length,
+            actions: routedActions,
+          },
         });
 
         return {
@@ -266,6 +279,10 @@ export const webhookRoutes = new Elysia({
             tenantId: tenant.tenantId,
             eventType,
             receivedAt: new Date().toISOString(),
+            routing: {
+              matchedRoutes: matchedRoutes.length,
+              actions: routedActions,
+            },
           },
         };
       } catch (error: any) {
