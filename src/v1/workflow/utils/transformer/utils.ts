@@ -1,6 +1,7 @@
 import { generateRandomString } from "../../../../@lib";
 
 export function generateDatestamp(date: Date = new Date()): string {
+    date = new Date(date);
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
@@ -13,7 +14,7 @@ export function generateIRN(invoiceNumber: string, serviceId: string | undefined
     let padding = generateRandomString(4).substring(0, 4).toUpperCase();
     const inv = (invoiceNumber + padding).replace(/[^A-Za-z0-9]/g, '');
     if (!/^[A-Za-z0-9]+$/.test(inv)) return undefined;
-    if (!/^[A-Za-z0-9]{8}$/.test(serviceId)) return undefined;
+   // if (!/^[A-Za-z0-9]{8}$/.test(serviceId)) return undefined;
     return `${inv}-${serviceId}-${generateDatestamp(date)}`.toUpperCase();
 }
 

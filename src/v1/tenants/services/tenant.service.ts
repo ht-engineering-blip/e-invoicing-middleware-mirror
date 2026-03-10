@@ -228,6 +228,28 @@ export class TenantService {
   }
 
   /**
+   * Get tenant by Email
+   */
+  async getTenantByEmail(contactEmail: string, includeOnboarding: boolean = false): Promise<TenantDocument & { onboarding?: any }> {
+    const tenant = await this.tenantRepo.findOne({ contactEmail: { _iexact: contactEmail } });
+    if (!tenant) {
+      throw new NotFoundError('Tenant');
+    }
+
+    if (includeOnboarding) {
+      try {
+        const onboarding = await this.onboardingRepo.findByTenantId(contactEmail);
+        return { ...tenant.toObject(), onboarding } as any;
+      } catch (error) {
+        // If onboarding not found, return tenant without it
+        return tenant;
+      }
+    }
+
+    return tenant;
+  }
+
+  /**
    * Get tenant by business ID
    */
   async getTenantByBusinessId(businessId: string): Promise<TenantDocument> {

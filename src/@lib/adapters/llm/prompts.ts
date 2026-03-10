@@ -2,6 +2,7 @@ import { AuthContext } from "../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../../v1/workflow/models";
 import { TransformWorkflowService } from "../../../v1/workflow/services/workflows/transform.service";
 import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from "../../../v1/workflow/utils/defaults";
+import { generateDatestamp, generateIRN } from "../../../v1/workflow/utils/transformer/utils";
 
 export const DICTIONARY_PROMPT = (erp: string, payload: any, format: string = "CSV") => `
 You are an Expert ${erp} ERP Data Analyst & Schema Extractor. Extract a complete field dictionary from an invoice payload.
@@ -48,7 +49,7 @@ const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string 
     }
 
     const fieldLines = fields.map(field => {
-        const required = field.is_required || field.validation_rules!.indexOf('required')>-1 ? 'REQUIRED' : 'optional';
+        const required = field.is_required || field.validation_rules!.indexOf('required') > -1 ? 'REQUIRED' : 'optional';
         const format = field.format ? ` (format: ${field.format})` : '';
         const validation = field.validation_rules ? ` [${field.validation_rules}]` : '';
         const example = field.example_value !== undefined ? ` e.g., ${JSON.stringify(field.example_value)}` : '';
@@ -64,7 +65,7 @@ const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string 
  */
 const getRequiredFields = (fields: ISchemaField[]): string[] => {
     return fields
-        .filter(f => f.is_required || f.validation_rules!.indexOf('required')>-1)
+        .filter(f => f.is_required || f.validation_rules!.indexOf('required') > -1)
         .map(f => f.field_id);
 };
 
@@ -189,11 +190,16 @@ export const SYSTEM_PROMPT_V2 = (
     invoice: any,
     authContext?: AuthContext,
     sourceSchema?: ISchemaField[],
-    firsSchema?: ISchemaField[]
+    firsSchema?: ISchemaField[],
+    mappingRules?: Array<Record<string, any>>
 ): string => {
     const today = new Date().toISOString().slice(0, 10);
     const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-
+    let irn = generateIRN(
+        invoiceRef,
+        authContext?.serviceId,
+        invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+    );
     // Build source schema section
     let sourceSchemaSection = '';
     if (sourceSchema && sourceSchema.length > 0) {
@@ -221,16 +227,22 @@ FIRS Required Fields: ${firsRequired.join(', ') || 'None specified'}
 FIRS Optional Fields: ${firsOptional.join(', ') || 'None specified'}
 `;
     }
-
     // Build business context section
     let businessContext = '';
     if (authContext) {
+        irn = generateIRN(
+        invoiceRef,
+        authContext?.serviceId,
+        invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+    )
         businessContext = `
             ## BUSINESS CONTEXT:
             - Business ID: ${authContext.businessId || '{{TEST_BUSINESS_ID}}'}
             - Tenant ID: ${authContext.tenantId || 'N/A'}
             - Tenant Business Name: ${authContext.businessName}
             - Tenant Business TIN: ${authContext.businessTIN}
+            - Service ID: ${authContext?.serviceId}
+            - Default IRN: ${irn}
             `;
     }
 
@@ -242,9 +254,10 @@ ${firsSchemaSection}
 
 # FIRS INVOICE TRANSFORMATION RULES
 
-## MANDATORY FIELDS (MUST BE PRESENT):
+## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
 - business_id: Use "${authContext?.businessId || '{{TEST_BUSINESS_ID}}'}"
-- irn: Generate unique reference if not provided (format: INVYYYYMMDDXXX), use "${invoiceRef}" as default
+- irn: Generate unique reference if not provided, use "${irn}" as default
+- irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
 - invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES default to "396" if not specified
 - document_currency_code: REQUIRED, default to "NGN"
@@ -314,6 +327,8 @@ Each invoice_line must contain:
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 
+## MAPPING RULES TO USE INCASE THE FIELDS EXIST:
+${JSON.stringify(mappingRules)}
 
 
 ## INPUT INVOICE DATA TO TRANSFORM:
@@ -336,6 +351,7 @@ export const generateTransformPrompt = async (
     const transformService = new TransformWorkflowService();
 
     let sourceSchema: ISchemaField[] = [];
+    let mappingRules: Array<Record<string, any>> = [];
     let firsSchema: ISchemaField[] = [];
 
     try {
@@ -344,6 +360,7 @@ export const generateTransformPrompt = async (
             const sourceSchemaDoc = await transformService.getInvoiceSchema(sourceType);
             if (sourceSchemaDoc) {
                 sourceSchema = sourceSchemaDoc.fields;
+                mappingRules = sourceSchemaDoc.mapping_rules || []
             }
         }
 
@@ -357,5 +374,5 @@ export const generateTransformPrompt = async (
         // Continue with empty schemas - prompt will use defaults
     }
 
-    return SYSTEM_PROMPT_V2(invoice, authContext, sourceSchema, firsSchema);
+    return SYSTEM_PROMPT_V2(invoice, authContext, sourceSchema, firsSchema, mappingRules);
 };

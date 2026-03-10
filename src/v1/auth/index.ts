@@ -73,7 +73,7 @@ const authRoutes = new Elysia()
         logger.info('Login attempt', { email: body.email });
 
         // Find tenant by contact email
-        const tenant = await tenantService.getTenantByTinOrEmail(body.email);
+        const tenant = await tenantService.getTenantByEmail(body.email);
      
         if (!tenant) {
           throw new UnauthorizedError('Invalid credentials');
@@ -87,6 +87,7 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError('Invalid credentials');
         }
 
+        console.log({tenant})
         // Check if tenant is active
       /*   if (tenant.status !== 'active') {
           throw new UnauthorizedError('Tenant account is not active');

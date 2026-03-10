@@ -124,7 +124,7 @@ export class TransformWorkflowService {
         }
     ): Promise<InvoiceSchemaDictionaryDocument> => {
         // Normalize ERP type to uppercase
-        const normalizedErp = erpType.toUpperCase().replace(/-/g, '_');
+        let normalizedErp = erpType.toUpperCase().replace(/[-\s]/g, '_');
         const sourceType = (SchemaSourceType as any)[normalizedErp] || normalizedErp;
 
         return this.upsertInvoiceSchema(sourceType, {
