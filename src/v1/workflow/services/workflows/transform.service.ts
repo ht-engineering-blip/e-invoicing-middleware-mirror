@@ -5,6 +5,7 @@ import { TenantService } from "../../../tenants/services/tenant.service";
 import { ISchemaField, InvoiceSchemaDictionaryDocument, SchemaSourceType, SchemaStatus } from "../../models";
 import { InvoiceSchemaDictionaryRepository, CreateSchemaDictionaryInput, UpdateSchemaDictionaryInput } from "../../repos/invoice-schema-dictionary.repo";
 import { FIRSInvoiceTransformer } from "../../utils/transformer";
+import { FIRSInvoiceTransformerV2 } from "../../utils/transformer/v2";
 
 /**
  * Input for upserting invoice schema
@@ -51,6 +52,31 @@ export class TransformWorkflowService {
             return parsedData;
             // Send to FIRS
             //await transformer.sendToFIRS(result.data, 'https://firs-api.com');
+        } else {
+            // Handle validation errors
+            console.error('Errors:', result?.errors);
+            throw result?.errors
+        }
+    }
+
+    /**
+     * Transform invoice from source ERP format to FIRS UBL format
+     * @param invoice - The raw invoice data to transform
+     * @param authContext - Authentication context with tenant/business info
+     * @param sourceType - The source ERP type for schema-based transformation (optional)
+     */
+    transformInvoiceV2 = async (invoice: any, authContext?: AuthContext, sourceType?: SchemaSourceType | string): Promise<any> => {
+        const transformer = new FIRSInvoiceTransformerV2(aiConfig?.openAIApiKey!, aiConfig?.openApiEndpoint!);
+
+        const result = await transformer.transformAndValidate(invoice, authContext, sourceType);
+        console.log({ result })
+        if (result?.success) {
+
+            // Data is valid and ready to send to FIRS
+            const parsedData = JSON.parse(JSON.stringify(result.data)); // Valid JSON
+
+            console.log({ parsedData })
+            return parsedData; 
         } else {
             // Handle validation errors
             console.error('Errors:', result?.errors);

@@ -81,7 +81,7 @@ const getOptionalFields = (fields: ISchemaField[]): string[] => {
 /**
  * FIRS Tax Categories reference
  */
-const FIRS_TAX_CATEGORIES = [
+export const FIRS_TAX_CATEGORIES = [
     { code: "STANDARD_VAT", value: "Standard Value-Added Tax", percent: "7.5" },
     { code: "REDUCED_VAT", value: "Reduced Value-Added Tax", percent: "7.5" },
     { code: "ZERO_VAT", value: "Zero Value-Added Tax", percent: "0.0" },
@@ -96,7 +96,7 @@ const FIRS_TAX_CATEGORIES = [
 ];
 
 /* FIRS Invoice Types reference */
-const FIRS_INVOICE_TYPES = [
+export const FIRS_INVOICE_TYPES = [
     {
         "code": "380",
         "value": "Credit Note"
@@ -185,6 +185,7 @@ const FIRS_INVOICE_TYPES = [
  * @param authContext - Authentication context with tenant/business info
  * @param sourceSchema - Pre-fetched source ERP schema fields (optional)
  * @param firsSchema - Pre-fetched FIRS UBL schema fields (optional)
+ * @param mappingRules - Mapping Rules customized for current client
  */
 export const SYSTEM_PROMPT_V2 = (
     invoice: any,
