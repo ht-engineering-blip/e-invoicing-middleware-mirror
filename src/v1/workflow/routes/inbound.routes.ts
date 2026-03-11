@@ -35,11 +35,13 @@ const inboundInvoiceRoutes = new Elysia({ prefix: '/inbound'})
       }
     },
     {
-      body: t.Object({}),
+      body: t.Any({default: {}}),
       detail: {
         summary: 'Inbound Invoice',
         description: 'Process inbound workflow and transmit invoice',
+        hide: true
       },
+      
     }
   )
  
