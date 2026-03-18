@@ -12,7 +12,6 @@ const inboundInvoiceRoutes = new Elysia({ prefix: '/inbound'})
   .use(requireAuth)
   .decorate('tenantService', new TenantService())
   .decorate('inboundWorkflowService', new InboundWorkflowService())
-
   /**
    * POST /api/v1/workflow/inbound
    * Run inbound invoice workflow

@@ -21,6 +21,7 @@ export const agenda = new Agenda({
   defaultConcurrency: 5,
   maxConcurrency: 20,
   defaultLockLifetime: 5 * 60 * 1000, // 5 min max per job
+  logging: true
 });
 
 agenda.on('ready', () => logger.info('[Queue] Agenda connected to MongoDB'));

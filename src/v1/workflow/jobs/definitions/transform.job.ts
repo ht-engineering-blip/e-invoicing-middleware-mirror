@@ -14,9 +14,12 @@ export function registerTransformJob(): void {
       const { tenantId, authContext, context, jobChainId } = job.attrs.data;
 
       logger.info('[Job:transform] Starting', { jobChainId, tenantId });
-
+      console.log({context: context.irn})
+      if (context.irn) {
+        context.originalPayload.irn = context.irn
+      }
       try {
-        const result = await transformService.transformInvoice(
+        const result = await transformService.transformInvoiceV2(
           context.originalPayload,
           authContext as any,
           context.sourceType

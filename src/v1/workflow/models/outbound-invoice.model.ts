@@ -41,7 +41,7 @@ export interface IWorkflowState {
  */
 export interface IValidationError {
   attempt: number;
-  errors: string[];
+  errorLog: string[];
   fixed: boolean;
 }
 
@@ -115,7 +115,7 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
     validationErrors: [
       {
         attempt: { type: Number, required: true },
-        errors: [{ type: String }],
+        errorLog: [{ type: String }],
         fixed: { type: Boolean, default: false },
       },
     ],

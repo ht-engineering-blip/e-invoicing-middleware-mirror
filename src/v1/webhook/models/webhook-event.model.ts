@@ -48,7 +48,7 @@ export interface IWebhookDeliveryAttempt {
 export interface WebhookEventDocument extends Document {
   tenantId: string; 
   eventId: string;
-  eventType: WebhookEventType;
+  eventType: string;
 
   // Event Data
   payload: any;
@@ -93,8 +93,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       index: true,
     },
     eventType: {
-      type: String,
-      enum: Object.values(WebhookEventType),
+      type: String, 
       required: true,
       index: true,
     },

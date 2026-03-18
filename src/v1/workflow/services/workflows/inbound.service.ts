@@ -18,11 +18,9 @@ export class InboundWorkflowService {
 
     async handleInboundWorkflow(invoice: any, transmit: boolean = false) {
         let firsService = new FIRSService();
-        let { irn } = invoice;
-         console.log({invoice})
+        let { irn } = invoice; 
         try {
             // Step 0: Download the invoice from FIRS
-           
             const { data: invoiceResponse } = await firsService.downloadInvoice(irn) as any;
             const invoice = invoiceResponse.data;
 
