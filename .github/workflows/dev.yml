@@ -61,7 +61,6 @@ jobs:
           
             cd /home/ubuntu/middleware
           
-            docker compose pull
-            docker compose up -d --force-recreate --remove-orphans
+            docker compose up -d --pull always --force-recreate
           
             docker system prune -f
