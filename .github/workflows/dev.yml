@@ -55,14 +55,13 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            aws ecr get-login-password --region eu-west-1 \
             | docker login --username AWS --password-stdin \
-            ${{ steps.login-ecr.outputs.registry }}
-
-            cd ~/middleware
-
-            docker-compose pull
-            docker-compose down
-            docker-compose up -d
-
+            231399651855.dkr.ecr.eu-west-1.amazonaws.com
+          
+            cd /home/ubuntu/middleware
+          
+            docker compose pull
+            docker compose up -d --force-recreate --remove-orphans
+          
             docker system prune -f
