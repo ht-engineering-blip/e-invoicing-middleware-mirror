@@ -59,7 +59,7 @@ jobs:
             | docker login --username AWS --password-stdin \
             ${{ steps.login-ecr.outputs.registry }}
 
-            cd ~/your-project-folder
+            cd ~/middleware
 
             docker-compose pull
             docker-compose down
