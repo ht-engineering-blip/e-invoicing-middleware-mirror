@@ -5,9 +5,12 @@ import { EventEmitter } from 'events';
 import { TenantRepository } from '../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from './repos/webhook-event.repo';
 import { EventRoutingRepository } from '../admin/repos/event-routing.repo';
+import { OutboundInvoiceRepository } from '../workflow/repos/outbound-invoice.repo';
 import { scheduleJobChain } from '../workflow/jobs/orchestrator';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
-import { hashString, logger, UnauthorizedError } from '../../@lib';
+import { OutboundInvoiceSource } from '../workflow/models/outbound-invoice.model';
+import { hashString, logger, UnauthorizedError, getNestedValue } from '../../@lib';
+import { generateIRN } from '../workflow/utils/transformer/utils';
 import {
   cors
 } from '@elysiajs/cors'
@@ -16,6 +19,7 @@ import { sleep } from 'bun';
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
 const eventRoutingRepo = new EventRoutingRepository();
+const outboundRepo = new OutboundInvoiceRepository();
 
 /**
  * In-memory event bus for real-time SSE streaming per webhook path.
@@ -210,13 +214,50 @@ export const webhookRoutes = new Elysia({
         });
       }
 
-       // 6. Resolve event routing — find actions mapped for this event type
-        const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
-          tenant.tenantId,
-          eventType
+      // 6. Resolve event routing — find actions mapped for this event type
+      const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
+        tenant.tenantId,
+        eventType
+      );
+      const routedActions = matchedRoutes.flatMap((r) => r.actions);
+
+      // 7. Extract ERP invoice ID using the configured key path (dot-notation)
+      const invoiceIdKey = tenant.config?.invoiceIdKey ?? 'invoiceId';
+      const erpInvoiceId: string | undefined =
+        String(getNestedValue(body, invoiceIdKey) ?? '').trim() || undefined;
+
+      // 8. Upsert OutboundInvoice — create on first event, reuse on updates
+      let irn: string | undefined;
+      if (erpInvoiceId) {
+        const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        const generatedIrn = generateIRN(
+          invoiceRef,
+          tenant.config?.firsCredentials?.serviceId,
+          new Date()
         );
-        const routedActions = matchedRoutes.flatMap((r) => r.actions);
-      // 7. Store the webhook event
+
+        const { doc: invoice, created } = await outboundRepo.findOrCreateByErpInvoiceId(
+          tenant.tenantId,
+          erpInvoiceId,
+          {
+            irn: generatedIrn ?? `IRN-${tenant.tenantId.slice(0, 6).toUpperCase()}-${Date.now()}`,
+            erpSystem: tenant.config?.erpSystem ?? 'UNKNOWN',
+            source: OutboundInvoiceSource.WEBHOOK,
+            createdBy: tenant.tenantId,
+            metadata: {},
+          }
+        );
+
+        irn = invoice.irn;
+        logger.info(`[Webhook] Invoice ${created ? 'created' : 'found'} for erpInvoiceId`, {
+          tenantId: tenant.tenantId,
+          erpInvoiceId,
+          irn,
+          created,
+        });
+      }
+
+      // 9. Store the webhook event
       const eventId = `wh_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
 
       try {
@@ -225,7 +266,7 @@ export const webhookRoutes = new Elysia({
           eventId,
           eventType,
           payload: body,
-          resourceId: (body as any)?.irn || (body as any)?.invoiceId || (body as any)?.resourceId || eventId,
+          resourceId: irn ?? (body as any)?.irn ?? (body as any)?.resourceId ?? eventId,
           resourceType: (body as any)?.resourceType || 'invoice',
           webhookUrl: tenant.metadata?.webhookUrl || '',
           status: WebhookDeliveryStatus.DELIVERED,
@@ -239,11 +280,14 @@ export const webhookRoutes = new Elysia({
           ],
           maxRetries: 0,
           deliveredAt: new Date(),
+          jobErrors: [],
           metadata: {
             source: 'inbound',
             matchedRoutes,
             webhookPath,
             idempotencyKey,
+            irn,
+            erpInvoiceId,
             receivedAt: new Date().toISOString(),
             headers: {
               'content-type': headers['content-type'],
@@ -253,14 +297,20 @@ export const webhookRoutes = new Elysia({
           },
         } as any);
 
+        // 10. Link webhook event to the invoice record
+        if (irn) {
+          await outboundRepo.addWebhookEvent(irn, eventId);
+        }
 
         logger.info('Inbound webhook received', {
           tenantId: tenant.tenantId,
           eventId,
           eventType,
+          erpInvoiceId,
+          irn,
         });
 
-        // 7. Schedule background job chain (fire-and-forget — don't await)
+        // 11. Schedule background job chain (fire-and-forget)
         let jobChainId: string | undefined;
         if (routedActions.length > 0) {
           scheduleJobChain({
@@ -270,6 +320,8 @@ export const webhookRoutes = new Elysia({
             payload: body,
             actions: matchedRoutes.flatMap((r) => r.actions),
             routeId: matchedRoutes[0]?.routeId,
+            erpInvoiceId,
+            irn,
           })
             .then((id) => { jobChainId = id; })
             .catch((err) =>
@@ -281,13 +333,15 @@ export const webhookRoutes = new Elysia({
             );
         }
 
-        // 8. Push to SSE listeners on this webhookPath
+        // 12. Push to SSE listeners on this webhookPath
         webhookBus.emit(`wh:${webhookPath}`, {
           eventId,
           tenantId: tenant.tenantId,
           eventType,
           payload: body,
           receivedAt: new Date().toISOString(),
+          irn,
+          erpInvoiceId,
           routing: {
             matchedRoutes: matchedRoutes.length,
             actions: routedActions,
@@ -301,6 +355,8 @@ export const webhookRoutes = new Elysia({
             eventId,
             tenantId: tenant.tenantId,
             eventType,
+            irn,
+            erpInvoiceId,
             receivedAt: new Date().toISOString(),
             routing: {
               matchedRoutes: matchedRoutes.length,

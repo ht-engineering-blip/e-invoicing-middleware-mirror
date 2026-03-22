@@ -207,7 +207,7 @@ export const protectedOnboardingRoutes = new Elysia()
    */
   .post(
     '/:tenantId/webhook/generate',
-    async ({ params, auth, tenantService, webhookService }) => {
+    async ({ params, body, auth, tenantService, webhookService }) => {
       try {
         // Check authorization
         onlySelf(auth!, params.tenantId)
@@ -222,8 +222,11 @@ export const protectedOnboardingRoutes = new Elysia()
         const baseUrl = appConfig?.apiBaseURL || 'http://localhost:3000';
         const webhookUrl = `${baseUrl}/v1/webhook/inbound/${webhookPath}`;
 
-        // Update tenant with webhook config
+        // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
+
+        // Persist invoiceIdKey if provided; otherwise keep existing value
+        const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
 
         // Encrypt webhook secret
         const encryptedSecret = encryptSensitiveData(webhookSecret);
@@ -231,10 +234,12 @@ export const protectedOnboardingRoutes = new Elysia()
         await tenantService.updateTenant(params.tenantId, {
           webhookUrl,
           webhookEnabled: true,
+          config: {
+            ...tenant.config,
+            invoiceIdKey,
+          },
         } as any);
 
-        // Store the webhook path mapping (you might want a separate collection for this)
-        // For now, we store in tenant metadata
         await tenantService.updateTenant(params.tenantId, {
           metadata: {
             ...tenant.metadata,
@@ -253,6 +258,7 @@ export const protectedOnboardingRoutes = new Elysia()
             webhookUrl,
             webhookSecret, // Only shown once
             webhookPath,
+            invoiceIdKey: invoiceIdKey ?? null,
             instructions: 'Save the webhook secret securely. It will not be shown again.',
           },
         };
@@ -269,11 +275,22 @@ export const protectedOnboardingRoutes = new Elysia()
       params: t.Object({
         tenantId: t.String(),
       }),
+      body: t.Optional(
+        t.Object({
+          invoiceIdKey: t.Optional(
+            t.String({
+              description:
+                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "header.documentId")',
+            })
+          ),
+        })
+      ),
       detail: {
         tags: ['Onboarding'],
         security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
         summary: 'Generate Webhook URL',
-        description: 'Generate a unique webhook URL for receiving inbound invoices',
+        description:
+          'Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.',
       },
     }
   )

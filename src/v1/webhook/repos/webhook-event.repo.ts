@@ -5,6 +5,7 @@ import {
   WebhookEventModel,
   WebhookEventType,
   WebhookDeliveryStatus,
+  IJobError,
 } from '../models/webhook-event.model';
 
 export class WebhookEventRepository {
@@ -478,6 +479,22 @@ export class WebhookEventRepository {
         throw error;
       }
       throw new AppError(500, 'Failed to mark webhook as failed');
+    }
+  }
+
+  /**
+   * Append a job step failure to the event's jobErrors array
+   */
+  async appendJobError(eventId: string, jobError: IJobError): Promise<void> {
+    try {
+      await this.webhookEventModel.base
+        .updateOne(
+          { eventId },
+          { $push: { jobErrors: jobError } }
+        )
+        .exec();
+    } catch {
+      // Non-critical — do not propagate
     }
   }
 

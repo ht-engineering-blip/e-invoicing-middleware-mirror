@@ -1,6 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { SchemaSourceType } from './invoice-schema-dictionary.model';
-import { WebhookEventDocument } from '../../webhook/models';
 /**
  * Outbound Invoice Status
  */
@@ -11,6 +10,18 @@ export enum OutboundInvoiceStatus {
   TRANSMITTED = 'TRANSMITTED',
   DELIVERED = 'DELIVERED',
   FAILED = 'FAILED',
+}
+
+export enum OutboundPaymentStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  PARTIAL = 'PARTIAL',
+  OVERDUE = 'OVERDUE',
+}
+
+export enum OutboundInvoiceSource {
+  WEBHOOK = 'webhook',
+  API = 'api',
 }
 
 /**
@@ -48,18 +59,45 @@ export interface IValidationError {
 
 
 /**
+ * Last job failure recorded on the invoice for quick display
+ */
+export interface ILastJobError {
+  action: string;
+  error: string;
+  failedAt: Date;
+}
+
+/**
+ * Payment details for a paid outbound invoice
+ */
+export interface IOutboundPaymentDetails {
+  paymentDate?: Date;
+  paymentMethod?: string;
+  transactionReference?: string;
+  amountPaid?: number;
+}
+
+/**
  * MongoDB Document interface for Outbound Invoice
  */
 export interface OutboundInvoiceDocument extends Document {
   tenantId: string;
   irn: string;
+  erpInvoiceId?: string;       // raw ID extracted from ERP payload
+  source: OutboundInvoiceSource;
 
   // Status & Workflow
   status: OutboundInvoiceStatus;
   workflowState: IWorkflowState;
+  lastJobError?: ILastJobError;
 
-  //FIRS resp
-  qrCode: String
+  // Payment
+  paymentStatus: OutboundPaymentStatus;
+  paymentDetails?: IOutboundPaymentDetails;
+
+  // FIRS resp
+  qrCode: String;
+
   // Validation
   validationAttempts: number;
   validationErrors?: IValidationError[];
@@ -68,10 +106,10 @@ export interface OutboundInvoiceDocument extends Document {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
-  webhookEvents: WebhookEventDocument[];
+  webhookEvents: string[];     // array of WebhookEvent.eventId references
 
   // Metadata
-  erpSystem: SchemaSourceType| string;
+  erpSystem: SchemaSourceType | string;
   metadata: Record<string, any>;
 }
 
@@ -87,9 +125,16 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
     },
     irn: {
       type: String,
-      required: true 
+      required: true,
     },
-
+    erpInvoiceId: {
+      type: String, 
+    },
+    source: {
+      type: String,
+      enum: Object.values(OutboundInvoiceSource),
+      default: OutboundInvoiceSource.API,
+    },
 
     // Status & Workflow
     status: {
@@ -105,7 +150,25 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
       transmitted: { type: Boolean, default: false },
       delivered: { type: Boolean, default: false },
     },
+    lastJobError: {
+      action: { type: String },
+      error: { type: String },
+      failedAt: { type: Date },
+    },
 
+    // Payment
+    paymentStatus: {
+      type: String,
+      enum: Object.values(OutboundPaymentStatus),
+      default: OutboundPaymentStatus.PENDING,
+      index: true,
+    },
+    paymentDetails: {
+      paymentDate: { type: Date },
+      paymentMethod: { type: String },
+      transactionReference: { type: String },
+      amountPaid: { type: Number },
+    },
 
     // Validation
     validationAttempts: {
@@ -125,20 +188,15 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
       type: String,
       required: true,
     },
-    webhookEvents: [
-      {
-        eventType: { type: String, required: true },
-        timestamp: { type: Date, default: Date.now },
-        payload: { type: Schema.Types.Mixed },
-        response: { type: Schema.Types.Mixed },
-        success: { type: Boolean, required: true },
-      },
-    ],
+    // Array of WebhookEvent.eventId strings
+    webhookEvents: [{ type: String }],
+
     // FIRS resp
     qrCode: { type: String },
+
     // Metadata
     erpSystem: {
-      type: String, 
+      type: String,
       required: true,
     },
     metadata: {
@@ -155,9 +213,10 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
 
 // Compound Indexes for performance
 OutboundInvoiceSchema.index({ tenantId: 1, status: 1 });
-OutboundInvoiceSchema.index({  irn: 1 }, { unique: true });
+OutboundInvoiceSchema.index({ irn: 1 }, { unique: true });
+OutboundInvoiceSchema.index({ tenantId: 1, erpInvoiceId: 1 }, { unique: true, sparse: true });
 OutboundInvoiceSchema.index({ createdAt: -1 });
-OutboundInvoiceSchema.index({ invoiceNumber: 1 });
+OutboundInvoiceSchema.index({ source: 1 });
 
 /**
  * Outbound Invoice Model

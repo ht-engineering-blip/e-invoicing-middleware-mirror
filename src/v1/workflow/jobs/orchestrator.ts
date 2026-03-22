@@ -15,6 +15,10 @@ export interface ScheduleChainInput {
   actions: string[];
   routeId?: string;
   priority?: number;
+  /** ERP invoice identifier extracted from the webhook payload */
+  erpInvoiceId?: string;
+  /** Pre-generated IRN from the webhook handler (avoids duplicate generation) */
+  irn?: string;
 }
 
 /**
@@ -71,6 +75,8 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
     context: {
       originalPayload: payload,
       sourceType: payload?.sourceType ?? tenant?.config?.erpSystem,
+      irn: input.irn,
+      erpInvoiceId: input.erpInvoiceId,
     },
     priority,
     routeId,

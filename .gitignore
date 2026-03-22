@@ -24,6 +24,7 @@ log
 .vscode/* 
 .claude/* 
 !.vscode/extensions.json
+IMPLEMENTATION_PLAN.md
 .idea
 .DS_Store
 *.suo

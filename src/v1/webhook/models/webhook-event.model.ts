@@ -31,6 +31,17 @@ export enum WebhookDeliveryStatus {
 }
 
 /**
+ * Per-step job failure recorded when a chain step throws
+ */
+export interface IJobError {
+  step: number;
+  action: string;
+  jobChainId: string;
+  error: string;
+  failedAt: Date;
+}
+
+/**
  * Webhook Delivery Attempt Interface
  */
 export interface IWebhookDeliveryAttempt {
@@ -68,6 +79,9 @@ export interface WebhookEventDocument extends Document {
   deliveredAt?: Date;
   failedAt?: Date;
   failureReason?: string;
+
+  // Job chain error history
+  jobErrors: IJobError[];
 
   // Metadata
   createdAt: Date;
@@ -157,6 +171,17 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
     failureReason: {
       type: String,
     },
+
+    // Job chain error history
+    jobErrors: [
+      {
+        step: { type: Number, required: true },
+        action: { type: String, required: true },
+        jobChainId: { type: String, required: true },
+        error: { type: String, required: true },
+        failedAt: { type: Date, default: Date.now },
+      },
+    ],
 
     // Metadata
     metadata: {
