@@ -565,6 +565,7 @@ const protectedAuthRoutes = new Elysia()
               limits: (tenant as any).config?.limits,
               webhookUrl: (tenant as any).config?.webhookUrl,
               webhookEnabled: (tenant as any).config?.webhookEnabled,
+              invoiceIdKey: (tenant as any).config?.invoiceIdKey,
             },
             onboarding: onboarding
               ? {
