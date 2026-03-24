@@ -1,0 +1,59 @@
+import type { Job } from 'agenda';
+import { agenda } from '../../../../@lib/queue/agenda';
+import { logger } from '../../../../@lib/logger';
+import { chainNext, chainFail } from '../chain';
+import type { JobChainData } from '../types'; 
+import { FIRSService } from '../../../../@lib/adapters/firs/firs.service';
+ 
+
+async function getOutboundRepo() {
+  const { OutboundInvoiceRepository } = await import('../../repos/outbound-invoice.repo');
+  return new OutboundInvoiceRepository();
+}
+
+async function getFirsService() {
+   return new FIRSService();
+}
+
+export function registerUpdatePaymentStatusJob(): void {
+  agenda.define(
+    'workflow:update-payment-status',
+    async (job: Job<JobChainData>) => {
+      const { tenantId, context, jobChainId, authContext } = job.attrs.data;
+      const irn = context.irn;
+
+      logger.info('[Job:update-payment-status] Starting', { jobChainId, tenantId, irn });
+
+      if (!irn) {
+        const err = new Error('irn is required for update-payment-status job');
+        await chainFail(job, err);
+        throw err;
+      }
+
+      try {
+        const outboundRepo = await getOutboundRepo();
+        const firsService = await getFirsService();
+
+        const vatReportData = context.vatReportData ?? context.originalPayload?.vatReportData;
+
+        // Submit VAT post-payment report to FIRS
+        const vatResult = await firsService.reportInvoice({
+          irn,
+          businessId: authContext.businessId,
+          ...vatReportData,
+        });
+
+        logger.info('[Job:update-payment-status] VAT report submitted', {
+          jobChainId,
+          irn,
+          vatResult,
+        });
+
+        await chainNext(job, { vatReportResult: vatResult });
+      } catch (err: any) {
+        await chainFail(job, err);
+        throw err;
+      }
+    }
+  );
+}

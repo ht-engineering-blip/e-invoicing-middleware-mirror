@@ -31,6 +31,18 @@ export enum WebhookDeliveryStatus {
 }
 
 /**
+ * Per-step job failure recorded when a chain step throws
+ */
+export interface IJobError {
+  step: number;
+  action: string;
+  jobChainId: string;
+  agendaJobId?: string;
+  error: string;
+  failedAt: Date;
+}
+
+/**
  * Webhook Delivery Attempt Interface
  */
 export interface IWebhookDeliveryAttempt {
@@ -48,7 +60,7 @@ export interface IWebhookDeliveryAttempt {
 export interface WebhookEventDocument extends Document {
   tenantId: string; 
   eventId: string;
-  eventType: WebhookEventType;
+  eventType: string;
 
   // Event Data
   payload: any;
@@ -68,6 +80,12 @@ export interface WebhookEventDocument extends Document {
   deliveredAt?: Date;
   failedAt?: Date;
   failureReason?: string;
+
+  // Job chain error history
+  jobErrors: IJobError[];
+
+  // Agenda job IDs for every step scheduled in this chain (for tracing)
+  jobIds: string[];
 
   // Metadata
   createdAt: Date;
@@ -93,8 +111,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       index: true,
     },
     eventType: {
-      type: String,
-      enum: Object.values(WebhookEventType),
+      type: String, 
       required: true,
       index: true,
     },
@@ -158,6 +175,21 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
     failureReason: {
       type: String,
     },
+
+    // Job chain error history
+    jobErrors: [
+      {
+        step: { type: Number, required: true },
+        action: { type: String, required: true },
+        jobChainId: { type: String, required: true },
+        agendaJobId: { type: String },
+        error: { type: String, required: true },
+        failedAt: { type: Date, default: Date.now },
+      },
+    ],
+
+    // Agenda job IDs for every step in this chain
+    jobIds: [{ type: String }],
 
     // Metadata
     metadata: {

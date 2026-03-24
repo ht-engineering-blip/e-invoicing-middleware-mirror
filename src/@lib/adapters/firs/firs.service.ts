@@ -326,6 +326,22 @@ export class FIRSService {
         return this.client.post('/api/v1/vat/postpayment', reportData);
     }
 
+    /**
+     * Update invoice payment status on FIRS
+     * PATCH /api/v1/invoice/update/:irn
+     */
+    public async reportInvoice(input: {
+        irn: string;
+        payment_status: 'PENDING' | 'PAID' | 'CANCELED';
+        reference?: string;
+        [key: string]: any;
+    }) {
+        const { irn, payment_status, reference } = input;
+        const body: Record<string, any> = { payment_status };
+        if (reference !== undefined) body.reference = reference;
+        return this.client.execute(`api/v1/invoice/update/${irn}`, body, { verb: 'patch' });
+    }
+
     // Database operations
     public async saveInboundInvoiceToDB(invoice: any) {
         return this.inboundInvoiceRepository.create(invoice);

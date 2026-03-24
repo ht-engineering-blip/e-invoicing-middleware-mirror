@@ -12,7 +12,6 @@ const inboundInvoiceRoutes = new Elysia({ prefix: '/inbound'})
   .use(requireAuth)
   .decorate('tenantService', new TenantService())
   .decorate('inboundWorkflowService', new InboundWorkflowService())
-
   /**
    * POST /api/v1/workflow/inbound
    * Run inbound invoice workflow
@@ -35,11 +34,13 @@ const inboundInvoiceRoutes = new Elysia({ prefix: '/inbound'})
       }
     },
     {
-      body: t.Object({}),
+      body: t.Any({default: {}}),
       detail: {
         summary: 'Inbound Invoice',
         description: 'Process inbound workflow and transmit invoice',
+       // hide: true
       },
+      
     }
   )
  

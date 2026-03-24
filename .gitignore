@@ -12,6 +12,7 @@ dist
 .next
 .api
 docs/*
+documentation/*
 logs/*
 plan/*
 dist-ssr
@@ -23,6 +24,7 @@ log
 .vscode/* 
 .claude/* 
 !.vscode/extensions.json
+IMPLEMENTATION_PLAN.md
 .idea
 .DS_Store
 *.suo

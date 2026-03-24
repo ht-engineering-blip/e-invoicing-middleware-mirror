@@ -70,23 +70,7 @@ services:
 
 
   # Job Worker — processes Agenda job queue and serves Agendash dashboard
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    container_name: e-invoicing-middleware-worker
-    restart: unless-stopped
-    ports:
-      - "${AGENDASH_PORT:-3001}:3001"
-    env_file:
-      - .env
-    environment: 
-      AGENDASH_PORT: 3001
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - e-invoicing-middleware-network
+
 
 volumes:
   mongodb_data:

@@ -214,6 +214,14 @@ export const WORKFLOW_ACTIONS = [
     description: 'Query FIRS to confirm the current status of a transmitted invoice.',
     endpoint: 'GET /api/v1/workflow/status/:irn',
   },
+  {
+    id: 'update_payment_status',
+    name: 'Update Payment Status',
+    order: 10,
+    category: 'reporting',
+    description: 'Submit VAT post-payment report to FIRS after payment is recorded on a DELIVERED invoice.',
+    endpoint: 'PATCH /api/v1/workflow/invoices/outbound/:irn/payment-status',
+  },
 ] as const;
 
 /**

@@ -3,6 +3,7 @@ import { Elysia } from 'elysia';
 import { authModuleRoutes } from './auth';
 import { workflowRoutes } from './workflow';
 import { webhookRoutes } from './webhook';
+import { webhookEventRoutes } from './webhook/routes/webhook-events.routes';
 import { invoicingRoutes } from './invoicing';
 import { auditRoutes } from './audit';
 import { tenantRoutes, teamPublicRoutes } from './tenants';
@@ -56,4 +57,5 @@ export const v1Routes = new Elysia({ prefix: '/v1' })
   .use(invoicingRoutes)
   .use(workflowRoutes)
   .use(webhookRoutes)
+  .use(webhookEventRoutes)
   .use(auditRoutes);

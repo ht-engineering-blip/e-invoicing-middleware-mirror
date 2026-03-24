@@ -59,6 +59,7 @@ export interface ITenantConfig {
   webhookUrl?: string;
   webhookAuth?: string;
   webhookEnabled?: boolean;
+  invoiceIdKey?: string;
   features?: {
     autoFix: boolean;
     maxRetries: number;
@@ -182,6 +183,7 @@ const TenantSchema = new Schema<TenantDocument>(
       webhookUrl: { type: String },
       webhookAuth: { type: String },
       webhookEnabled: { type: Boolean, default: false },
+      invoiceIdKey: { type: String },
       features: {
         autoFix: { type: Boolean, default: true },
         maxRetries: { type: Number, default: 5 },

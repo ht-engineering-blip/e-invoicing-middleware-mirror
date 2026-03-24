@@ -3,9 +3,14 @@ import { agenda } from '../../../@lib/queue/agenda';
 import { ACTION_TO_JOB, type JobChainData } from './types';
 import { logger } from '../../../@lib/logger';
 import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
-import { WebhookDeliveryStatus } from '../../webhook/models';
 
 const webhookEventRepo = new WebhookEventRepository();
+
+// Lazy-loaded to avoid circular dependency at module load time
+async function getOutboundRepo() {
+  const { OutboundInvoiceRepository } = await import('../repos/outbound-invoice.repo');
+  return new OutboundInvoiceRepository();
+}
 
 /**
  * Called at the end of every successful job step.
@@ -54,7 +59,13 @@ export async function chainNext(
     context: updatedContext,
   };
 
-  await agenda.now(nextJobName, nextData);
+  const nextJob = await agenda.now(nextJobName, nextData);
+
+  // Track the new Agenda job ID on the webhook event for chain tracing
+  const nextAgendaJobId = nextJob.attrs._id?.toString();
+  if (nextAgendaJobId) {
+    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId).catch(() => {});
+  }
 
   logger.info('[Job] Scheduled next step', {
     jobChainId: data.jobChainId,
@@ -66,24 +77,44 @@ export async function chainNext(
 
 /**
  * Called when a job step fails.
- * Marks the webhook event as FAILED and stops the chain.
+ * - Appends a structured error entry to WebhookEvent.jobErrors
+ * - Records the last failure on the OutboundInvoice (best-effort)
+ * - Marks the webhook event as FAILED and stops the chain
  */
 export async function chainFail(
   job: Job<JobChainData>,
   error: Error
 ): Promise<void> {
   const data = job.attrs.data;
+  const action = data.actions[data.stepIndex];
 
   logger.error('[Job] Step failed — chain halted', {
     jobChainId: data.jobChainId,
     step: data.stepIndex,
-    action: data.actions[data.stepIndex],
+    action,
     error: error.message,
   });
 
+  // Append structured job error to the webhook event
+  await webhookEventRepo.appendJobError(data.webhookEventId, {
+    step: data.stepIndex,
+    action,
+    jobChainId: data.jobChainId,
+    agendaJobId: job.attrs._id?.toString(),
+    error: error.message,
+    failedAt: new Date(),
+  });
+
+  // Record the last failure on the invoice (best-effort — do not block)
+  const irn = data.context?.irn;
+  if (irn) {
+    const outboundRepo = await getOutboundRepo();
+    await outboundRepo.setLastJobError(irn, action, error.message);
+  }
+
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${data.actions[data.stepIndex]}] failed: ${error.message}`,
+    `Step [${action}] failed: ${error.message}`,
     500
   );
 }

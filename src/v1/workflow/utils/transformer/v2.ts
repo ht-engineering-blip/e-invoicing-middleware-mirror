@@ -102,18 +102,18 @@ export class FIRSInvoiceTransformerV2 {
         try {
 
             const schemaGraph = this.buildSchemaGraph(firsSchema)
-            logger.info("Schema Graph", schemaGraph)
+            //logger.info("Schema Graph", schemaGraph)
 
             const mapped = this.deterministicTransform(invoice, mappingRules)
-            logger.info("Mapped", mapped)
+            //logger.info("Mapped", mapped)
             const base = { ...invoice, ...mapped }
-            logger.info("base", base)
+           // logger.info("base", base)
             const resolved = this.ensureRequiredFields(base, firsSchema)
-            logger.info("resolved", resolved)
+           // logger.info("resolved", resolved)
             const missing = this.findMissingFields(resolved, firsSchema)
-            logger.info("missing", missing)
+          //  logger.info("missing", missing)
             let completed = resolved
-            logger.info("completed", completed)
+          //  logger.info("completed", completed)
             if (missing.length > 0) {
 
                 const prompt = this.buildSchemaAwarePrompt(
@@ -125,9 +125,9 @@ export class FIRSInvoiceTransformerV2 {
                 )
                 //logger.info("prompt", prompt)
                 const response = await this.callLLM(prompt)
-                logger.info("response", response)
+              //  logger.info("response", response)
                 const parsed = this.safeParseLLMJSON(response)
-                logger.info("parsed", parsed)
+              //  logger.info("parsed", parsed)
                 completed = { ...resolved, ...parsed }
                 logger.info("completed", completed)
             }
@@ -371,7 +371,7 @@ export class FIRSInvoiceTransformerV2 {
         firsSchema: ISchemaField[],
         missingFields: string[]
     ) {
-
+  
         const requiredFields = firsSchema
             .filter(f => f.is_required || f.validation_rules!.indexOf('required') > -1)
             .map(f => ({
@@ -396,7 +396,7 @@ export class FIRSInvoiceTransformerV2 {
             - Tenant Business Name: ${authContext.businessName}
             - Tenant Business TIN: ${authContext.businessTIN}
             - Service ID: ${authContext?.serviceId}
-            - Default IRN: ${irn}
+            - Default IRN: ${invoice.irn ?? irn}
             `;
         return `
 You are a Nigerian FIRS UBL invoice transformation engine.
@@ -435,7 +435,7 @@ ${JSON.stringify(invoice, null, 2)}
 
 ## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
 - business_id: Use "${authContext?.businessId || '{{TEST_BUSINESS_ID}}'}"
-- irn: Generate unique reference if not provided, use "${irn}" as default
+- irn: Generate unique reference if not provided, use ${invoice.irn ?? irn} as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
 - invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES default to "396" if not specified
@@ -502,7 +502,7 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 
 Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON
 
-Complete the missing fields.
+Complete the missing fields also generate emails here missing currency should default to NGN when missing.
 `
     }
 

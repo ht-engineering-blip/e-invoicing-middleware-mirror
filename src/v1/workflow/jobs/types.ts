@@ -28,6 +28,7 @@ export interface JobChainData {
     originalPayload: any;
     sourceType?: string;
     irn?: string;
+    erpInvoiceId?: string;
     transformedInvoice?: any;
     validationResult?: any;
     signedInvoice?: any;
@@ -46,15 +47,16 @@ export interface JobChainData {
 
 /** Maps workflow action IDs → Agenda job names */
 export const ACTION_TO_JOB: Record<string, string> = {
-  generate_irn:            'workflow:generate-irn',
-  transform:               'workflow:transform',
-  validate:                'workflow:validate',
-  sign:                    'workflow:sign',
-  transmit:                'workflow:transmit',
-  complete_outbound:       'workflow:complete-outbound',
-  complete_inbound:        'workflow:complete-inbound',
-  report_vat:              'workflow:report-vat',
-  confirm_invoice_status:  'workflow:confirm-status',
+  generate_irn:             'workflow:generate-irn',
+  transform:                'workflow:transform',
+  validate:                 'workflow:validate',
+  sign:                     'workflow:sign',
+  transmit:                 'workflow:transmit',
+  complete_outbound:        'workflow:complete-outbound',
+  complete_inbound:         'workflow:complete-inbound',
+  report_vat:               'workflow:report-vat',
+  confirm_invoice_status:   'workflow:confirm-status',
+  update_payment_status:    'workflow:update-payment-status',
 };
 
 /** Default priority per event type */

@@ -4,7 +4,10 @@ import {
   OutboundInvoiceDocument,
   OutboundInvoiceModel,
   OutboundInvoiceStatus,
+  OutboundPaymentStatus,
+  IOutboundPaymentDetails,
 } from '../models/outbound-invoice.model';
+import { WebhookEventModel } from '../../webhook/models/webhook-event.model';
 
 export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
@@ -277,6 +280,26 @@ export class OutboundInvoiceRepository {
   }
 
   /**
+   * Record the most recent job failure on the invoice
+   */
+  async setLastJobError(
+    irn: string,
+    action: string,
+    error: string
+  ): Promise<void> {
+    try {
+      await this.outboundInvoiceModel.base
+        .updateOne(
+          { irn },
+          { $set: { lastJobError: { action, error, failedAt: new Date() } } }
+        )
+        .exec();
+    } catch {
+      // Non-critical — do not propagate
+    }
+  }
+
+  /**
    * Update invoice status
    */
   async updateStatus(
@@ -381,27 +404,14 @@ export class OutboundInvoiceRepository {
   }
 
   /**
-   * Add webhook event
+   * Link a webhook event ID to this invoice
    */
-  async addWebhookEvent(
-    irn: string,
-    event: {
-      eventType: string;
-      timestamp: Date;
-      payload: any;
-      response?: any;
-      success: boolean;
-    }
-  ): Promise<OutboundInvoiceDocument> {
+  async addWebhookEvent(irn: string, eventId: string): Promise<OutboundInvoiceDocument> {
     try {
       const doc = await this.outboundInvoiceModel.base
         .findOneAndUpdate(
           { irn },
-          {
-            $push: {
-              webhookEvents: event,
-            },
-          },
+          { $addToSet: { webhookEvents: eventId } },
           { new: true }
         )
         .exec();
@@ -412,11 +422,109 @@ export class OutboundInvoiceRepository {
 
       return doc;
     } catch (error) {
-      console.error('Error adding webhook event:', error);
-      if (error instanceof AppError) {
-        throw error;
+      console.error('Error adding webhook event reference:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError(500, 'Failed to add webhook event reference');
+    }
+  }
+
+  /**
+   * Find an outbound invoice by ERP invoice ID
+   */
+  async findByErpInvoiceId(
+    tenantId: string,
+    erpInvoiceId: string
+  ): Promise<OutboundInvoiceDocument | null> {
+    try {
+      return await this.outboundInvoiceModel.base.findOne({ tenantId, erpInvoiceId }).exec();
+    } catch (error) {
+      console.error('Error finding invoice by erpInvoiceId:', error);
+      throw new AppError(500, 'Failed to fetch outbound invoice');
+    }
+  }
+
+  /**
+   * Find or create an outbound invoice keyed by (tenantId, erpInvoiceId).
+   * Returns the document plus a flag indicating whether it was newly created.
+   */
+  async findOrCreateByErpInvoiceId(
+    tenantId: string,
+    erpInvoiceId: string,
+    defaults: Partial<OutboundInvoiceDocument>
+  ): Promise<{ doc: OutboundInvoiceDocument; created: boolean }> {
+    try {
+      const existing = await this.outboundInvoiceModel.base
+        .findOne({ tenantId, erpInvoiceId })
+        .exec();
+
+      if (existing) {
+        return { doc: existing, created: false };
       }
-      throw new AppError(500, 'Failed to add webhook event');
+
+      const doc = await this.create({ ...defaults, tenantId, erpInvoiceId });
+      return { doc, created: true };
+    } catch (error: any) {
+      // Race condition — another request created it between our find and create
+      if (error.code === 11000) {
+        const existing = await this.outboundInvoiceModel.base
+          .findOne({ tenantId, erpInvoiceId })
+          .exec();
+        if (existing) return { doc: existing, created: false };
+      }
+      console.error('Error in findOrCreateByErpInvoiceId:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError(500, 'Failed to find or create outbound invoice');
+    }
+  }
+
+  /**
+   * Update payment status and optional payment details
+   */
+  async updatePaymentStatus(
+    irn: string,
+    paymentStatus: OutboundPaymentStatus,
+    paymentDetails?: IOutboundPaymentDetails
+  ): Promise<OutboundInvoiceDocument> {
+    try {
+      const update: any = { paymentStatus };
+      if (paymentDetails) update.paymentDetails = paymentDetails;
+
+      const doc = await this.outboundInvoiceModel.base
+        .findOneAndUpdate({ irn }, { $set: update }, { new: true })
+        .exec();
+
+      if (!doc) throw new AppError(404, 'Outbound invoice not found');
+      return doc;
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      if (error instanceof AppError) throw error;
+      throw new AppError(500, 'Failed to update payment status');
+    }
+  }
+
+  /**
+   * Find an invoice by IRN and populate the full WebhookEvent documents
+   * for each eventId stored in invoice.webhookEvents.
+   */
+  async findByIrnWithWebhookEvents(
+    irn: string
+  ): Promise<{ invoice: OutboundInvoiceDocument; webhookEvents: any[] } | null> {
+    try {
+      const invoice = await this.outboundInvoiceModel.base.findOne({ irn }).exec();
+      if (!invoice) return null;
+
+      const eventIds: string[] = invoice.webhookEvents ?? [];
+      const webhookEvents =
+        eventIds.length > 0
+          ? await WebhookEventModel.find({ eventId: { $in: eventIds } })
+              .sort({ createdAt: 1 })
+              .exec()
+          : [];
+
+      return { invoice, webhookEvents };
+    } catch (error) {
+      console.error('Error fetching invoice with webhook events:', error);
+      throw new AppError(500, 'Failed to fetch invoice details');
     }
   }
 

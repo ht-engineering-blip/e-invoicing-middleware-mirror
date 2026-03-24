@@ -2,7 +2,11 @@ import crypto from 'crypto';
 import { agenda } from '../../../@lib/queue/agenda';
 import { ACTION_TO_JOB, getPriority, type JobChainData } from './types';
 import { TenantRepository } from '../../tenants/repos/tenant.repo';
+import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
 import { logger } from '../../../@lib/logger';
+import { decryptSensitiveData } from '../../../@lib/crypto';
+
+const webhookEventRepo = new WebhookEventRepository();
 
 const tenantRepo = new TenantRepository();
 
@@ -14,6 +18,10 @@ export interface ScheduleChainInput {
   actions: string[];
   routeId?: string;
   priority?: number;
+  /** ERP invoice identifier extracted from the webhook payload */
+  erpInvoiceId?: string;
+  /** Pre-generated IRN from the webhook handler (avoids duplicate generation) */
+  irn?: string;
 }
 
 /**
@@ -23,7 +31,7 @@ export interface ScheduleChainInput {
  */
 export async function scheduleJobChain(input: ScheduleChainInput): Promise<string> {
   const { webhookEventId, tenantId, eventType, payload, actions, routeId } = input;
-
+   let decryptedClientID: any;
   if (!actions.length) {
     logger.warn('[Orchestrator] No actions to schedule', { webhookEventId, tenantId, eventType });
     return '';
@@ -38,9 +46,15 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
 
   // Build auth context from tenant
   const tenant = await tenantRepo.findOne({ tenantId: { _eq: tenantId } });
+
+  // Decrypt Business ID
+  if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
+     decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
+     // (tenant as any).businessId = decryptedClientID
+  }
   const authContext: JobChainData['authContext'] = {
     tenantId,
-    businessId: (tenant as any)?.businessId,
+    businessId: decryptedClientID ?? (tenant as any)?.businessId,
     businessTIN: tenant?.tin,
     serviceId: tenant?.config?.firsCredentials?.serviceId,
     tenantERP: tenant?.config?.erpSystem,
@@ -64,6 +78,8 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
     context: {
       originalPayload: payload,
       sourceType: payload?.sourceType ?? tenant?.config?.erpSystem,
+      irn: input.irn,
+      erpInvoiceId: input.erpInvoiceId,
     },
     priority,
     routeId,
@@ -73,6 +89,12 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
   // Set priority after scheduling (Agenda stores it on the attrs)
   job.priority(priority);
   await job.save();
+
+  // Track the first Agenda job ID on the webhook event for chain tracing
+  const agendaJobId = job.attrs._id?.toString();
+  if (agendaJobId) {
+    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => {});
+  }
 
   logger.info('[Orchestrator] Chain scheduled', {
     jobChainId,
