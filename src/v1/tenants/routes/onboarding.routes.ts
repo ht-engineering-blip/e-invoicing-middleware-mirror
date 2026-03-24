@@ -238,9 +238,6 @@ export const protectedOnboardingRoutes = new Elysia()
             ...tenant.config,
             invoiceIdKey,
           },
-        } as any);
-
-        await tenantService.updateTenant(params.tenantId, {
           metadata: {
             ...tenant.metadata,
             webhookUrl,
@@ -280,7 +277,7 @@ export const protectedOnboardingRoutes = new Elysia()
           invoiceIdKey: t.Optional(
             t.String({
               description:
-                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "header.documentId")',
+                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
             })
           ),
         })

@@ -49,7 +49,8 @@ export interface UpdateTenantInput {
     monthlyInvoiceLimit?: number;
     apiRateLimit?: number;
   };
-  metadata?: any
+  metadata?: any;
+  config?: any;
 }
 
 export interface FIRSCredentialsInput {
@@ -340,11 +341,19 @@ export class TenantService {
     if (input.erpSystem) {
       updateData['config.erpSystem'] = input.erpSystem
     }
+   
     // Update metadata 
     if (input.metadata) {
       updateData['metadata'] = {
         ...tenant.metadata,
         ...input.metadata
+      }
+    }
+
+    if (input.config) {
+      updateData['config'] = {
+        ...tenant.config,
+        ...input.config
       }
     }
 
