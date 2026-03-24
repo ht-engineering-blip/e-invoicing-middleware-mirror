@@ -59,7 +59,13 @@ export async function chainNext(
     context: updatedContext,
   };
 
-  await agenda.now(nextJobName, nextData);
+  const nextJob = await agenda.now(nextJobName, nextData);
+
+  // Track the new Agenda job ID on the webhook event for chain tracing
+  const nextAgendaJobId = nextJob.attrs._id?.toString();
+  if (nextAgendaJobId) {
+    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId).catch(() => {});
+  }
 
   logger.info('[Job] Scheduled next step', {
     jobChainId: data.jobChainId,
@@ -94,6 +100,7 @@ export async function chainFail(
     step: data.stepIndex,
     action,
     jobChainId: data.jobChainId,
+    agendaJobId: job.attrs._id?.toString(),
     error: error.message,
     failedAt: new Date(),
   });

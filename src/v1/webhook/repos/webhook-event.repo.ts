@@ -483,6 +483,19 @@ export class WebhookEventRepository {
   }
 
   /**
+   * Append an Agenda job ID to the event's jobIds array for chain tracing
+   */
+  async addJobId(eventId: string, agendaJobId: string): Promise<void> {
+    try {
+      await this.webhookEventModel.base
+        .updateOne({ eventId }, { $addToSet: { jobIds: agendaJobId } })
+        .exec();
+    } catch {
+      // Non-critical — do not propagate
+    }
+  }
+
+  /**
    * Append a job step failure to the event's jobErrors array
    */
   async appendJobError(eventId: string, jobError: IJobError): Promise<void> {

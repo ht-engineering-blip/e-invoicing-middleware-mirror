@@ -7,6 +7,7 @@ import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
 import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
 import { OutboundWorkflowService } from '../services/workflows/outbound.service';
 import {
+  IOutboundPaymentDetails,
   OutboundInvoiceStatus,
   OutboundPaymentStatus,
 } from '../models/outbound-invoice.model';
@@ -232,7 +233,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         const updated = await outboundRepo.updatePaymentStatus(
           params.irn,
           body.paymentStatus as OutboundPaymentStatus,
-          body.paymentDetails
+          body.paymentDetails as IOutboundPaymentDetails
         );
 
         // Schedule report_vat when invoice is DELIVERED and now PAID

@@ -2,8 +2,11 @@ import crypto from 'crypto';
 import { agenda } from '../../../@lib/queue/agenda';
 import { ACTION_TO_JOB, getPriority, type JobChainData } from './types';
 import { TenantRepository } from '../../tenants/repos/tenant.repo';
+import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
 import { logger } from '../../../@lib/logger';
 import { decryptSensitiveData } from '../../../@lib/crypto';
+
+const webhookEventRepo = new WebhookEventRepository();
 
 const tenantRepo = new TenantRepository();
 
@@ -86,6 +89,12 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
   // Set priority after scheduling (Agenda stores it on the attrs)
   job.priority(priority);
   await job.save();
+
+  // Track the first Agenda job ID on the webhook event for chain tracing
+  const agendaJobId = job.attrs._id?.toString();
+  if (agendaJobId) {
+    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => {});
+  }
 
   logger.info('[Orchestrator] Chain scheduled', {
     jobChainId,

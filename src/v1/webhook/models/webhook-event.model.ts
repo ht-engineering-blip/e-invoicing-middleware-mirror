@@ -37,6 +37,7 @@ export interface IJobError {
   step: number;
   action: string;
   jobChainId: string;
+  agendaJobId?: string;
   error: string;
   failedAt: Date;
 }
@@ -82,6 +83,9 @@ export interface WebhookEventDocument extends Document {
 
   // Job chain error history
   jobErrors: IJobError[];
+
+  // Agenda job IDs for every step scheduled in this chain (for tracing)
+  jobIds: string[];
 
   // Metadata
   createdAt: Date;
@@ -178,10 +182,14 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
         step: { type: Number, required: true },
         action: { type: String, required: true },
         jobChainId: { type: String, required: true },
+        agendaJobId: { type: String },
         error: { type: String, required: true },
         failedAt: { type: Date, default: Date.now },
       },
     ],
+
+    // Agenda job IDs for every step in this chain
+    jobIds: [{ type: String }],
 
     // Metadata
     metadata: {
