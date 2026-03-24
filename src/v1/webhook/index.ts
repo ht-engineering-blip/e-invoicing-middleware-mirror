@@ -229,7 +229,7 @@ export const webhookRoutes = new Elysia({
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
-        const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        const invoiceRef = `${erpInvoiceId}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
         const generatedIrn = generateIRN(
           invoiceRef,
           tenant.config?.firsCredentials?.serviceId,
