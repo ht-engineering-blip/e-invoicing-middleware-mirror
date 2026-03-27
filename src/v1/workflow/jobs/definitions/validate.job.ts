@@ -17,8 +17,9 @@ export function registerValidateJob(): void {
 
       try {
         const invoice = {
+
+          ...(context.transformedInvoice || {}),
           ...(context.originalPayload || {}),
-          ...(context.transformedInvoice || {})
         }
         //  context.transformedInvoice ?? context.originalPayload;
         const result = await invoiceService.validateInvoice(
