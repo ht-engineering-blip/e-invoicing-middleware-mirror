@@ -258,7 +258,7 @@ ${firsSchemaSection}
 
 ## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
 - business_id: Use "${authContext?.businessId || '{{TEST_BUSINESS_ID}}'}"
-- irn: Generate unique reference if not provided, use "${irn}" as default
+- "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
 - invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES default to "396" if not specified
@@ -328,6 +328,7 @@ Each invoice_line must contain:
 9. Do not include escape sequences (\\n, \\t, \\r, etc.)
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
+12. invoice_unique_number should be "irn" in the final result
 
 ## MAPPING RULES TO USE INCASE THE FIELDS EXIST:
 ${JSON.stringify(mappingRules)}

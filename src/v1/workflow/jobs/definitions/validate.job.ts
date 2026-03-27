@@ -16,7 +16,11 @@ export function registerValidateJob(): void {
       logger.info('[Job:validate] Starting', { jobChainId, tenantId });
 
       try {
-        const invoice = context.transformedInvoice ?? context.originalPayload;
+        const invoice = {
+          ...(context.originalPayload || {}),
+          ...(context.transformedInvoice || {})
+        }
+        //  context.transformedInvoice ?? context.originalPayload;
         const result = await invoiceService.validateInvoice(
           authContext.businessId || tenantId,
           invoice
