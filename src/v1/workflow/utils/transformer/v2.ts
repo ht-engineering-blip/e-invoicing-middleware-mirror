@@ -666,10 +666,59 @@ Complete the missing fields also generate emails here missing currency should de
                 JSON:
                 ${JSON.stringify(json)}
 
+
+## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
+- business_id: Use "${authContext?.businessId || '{{TEST_BUSINESS_ID}}'}" 
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES default to "396" if not specified
+- document_currency_code: REQUIRED, default to "NGN"
+- accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
+- accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
+- tax_total: REQUIRED - must include tax_amount and tax_subtotal array
+- legal_monetary_total: REQUIRED with line_extension_amount, tax_exclusive_amount, tax_inclusive_amount, payable_amount
+- invoice_line: REQUIRED array with at least one item
+
+Ensure all keys above are not changed
+
+## TAX TOTAL REQUIREMENTS (CRITICAL):
+- tax_total MUST be present as an array with at least one object
+- Each tax_total object must contain:
+  * tax_amount: total tax amount for this tax type
+  * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
+
+## VALID TAX CATEGORIES:
+${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
+
+## VALID INVOICE TYPES:
+${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
+
+## DATE/TIME FORMATTING RULES:
+1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
+2. NEVER leave date fields empty or as empty strings
+3. For missing dates in document references, use the main invoice's issue_date
+4. Times must be in HH:MM:SS format
+
+## AUTO-POPULATION RULES:
+1. payment_status: default to "PENDING" if missing
+2. document_currency_code: default to "NGN" if missing
+3. tax_currency_code: default to "NGN" if missing
+4. postal_zone: use "100001" if missing
+5. telephone: ensure it starts with "+" (country code)
+6. invoice_kind: default to "B2B" if missing
+
+## PARTY INFORMATION RULES:
+- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
+- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
+- All party objects require: party_name, tin, email, postal_address
+- Telephone must start with "+" if provided
+- TIN format should be preserved from source
+
+## FIELD METADATA REQUIREMENTS:
+${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
+
                 Return valid JSON only.
 `
 
-        const response = await this.callLLM(systemPrompt)
+        const response = await this.callLLM(prompt)
 
         return this.safeParseLLMJSON(response)
 
