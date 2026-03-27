@@ -192,7 +192,8 @@ export const SYSTEM_PROMPT_V2 = (
     authContext?: AuthContext,
     sourceSchema?: ISchemaField[],
     firsSchema?: ISchemaField[],
-    mappingRules?: Array<Record<string, any>>
+    mappingRules?: Array<Record<string, any>>,
+    metaContext?: string
 ): string => {
     const today = new Date().toISOString().slice(0, 10);
     const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
@@ -335,6 +336,8 @@ ${JSON.stringify(mappingRules)}
 ## INPUT INVOICE DATA TO TRANSFORM:
 ${JSON.stringify(invoice, null, 2)}
 
+${metaContext|| ""}
+
 Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON.`;
 };
 
@@ -347,23 +350,25 @@ Transform the input data to match the FIRS UBL schema exactly. Return only valid
 export const generateTransformPrompt = async (
     invoice: any,
     authContext?: AuthContext,
-    sourceType?: SchemaSourceType | string
+    sourceType?: SchemaSourceType | string,
+    sourceSchema?: ISchemaField[] | undefined,
+     metaContext?: string
 ): Promise<string> => {
     const transformService = new TransformWorkflowService();
 
-    let sourceSchema: ISchemaField[] = [];
+    //let sourceSchema: ISchemaField[] = [];
     let mappingRules: Array<Record<string, any>> = [];
     let firsSchema: ISchemaField[] = [];
 
     try {
         // Fetch source ERP schema if source type is provided
-        if (sourceType) {
+        if (!sourceSchema && sourceType) {
             const sourceSchemaDoc = await transformService.getInvoiceSchema(sourceType);
             if (sourceSchemaDoc) {
                 sourceSchema = sourceSchemaDoc.fields;
                 mappingRules = sourceSchemaDoc.mapping_rules || []
             }
-        }
+        }  
 
         // Fetch FIRS UBL schema
         const firsSchemaDoc = await transformService.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
@@ -375,5 +380,5 @@ export const generateTransformPrompt = async (
         // Continue with empty schemas - prompt will use defaults
     }
 
-    return SYSTEM_PROMPT_V2(invoice, authContext, sourceSchema, firsSchema, mappingRules);
+    return SYSTEM_PROMPT_V2(invoice, authContext, sourceSchema, firsSchema, mappingRules, metaContext);
 };
