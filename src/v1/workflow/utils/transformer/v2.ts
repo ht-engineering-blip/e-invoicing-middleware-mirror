@@ -6,7 +6,7 @@ import { FIRSInvoiceSchema, TransformationResult } from "."
 import { InternalServerError, logger } from "../../../../@lib"
 import { generateDatestamp, generateIRN } from "./utils"
 import { FIRS_INVOICE_METADATA } from "../defaults"
-import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES } from "../../../../@lib/adapters/llm/prompts"
+import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES, generateTransformPrompt } from "../../../../@lib/adapters/llm/prompts"
 
 /* -----------------------------------------------------
  CLASS
@@ -73,7 +73,7 @@ export class FIRSInvoiceTransformerV2 {
                 console.error(result.error)
 
             }
- 
+
             const transformedData = result.data;
             return {
                 success: true,
@@ -106,13 +106,13 @@ export class FIRSInvoiceTransformerV2 {
             const mapped = this.deterministicTransform(invoice, mappingRules)
             //logger.info("Mapped", mapped)
             const base = { ...invoice, ...mapped }
-           // logger.info("base", base)
+            // logger.info("base", base)
             const resolved = this.ensureRequiredFields(base, firsSchema)
-           // logger.info("resolved", resolved)
+            // logger.info("resolved", resolved)
             const missing = this.findMissingFields(resolved, firsSchema)
-          //  logger.info("missing", missing)
+            //  logger.info("missing", missing)
             let completed = resolved
-          //  logger.info("completed", completed)
+            //  logger.info("completed", completed)
             if (missing.length > 0) {
 
                 const prompt = this.buildSchemaAwarePrompt(
@@ -124,9 +124,9 @@ export class FIRSInvoiceTransformerV2 {
                 )
                 //logger.info("prompt", prompt)
                 const response = await this.callLLM(prompt)
-              //  logger.info("response", response)
+                //  logger.info("response", response)
                 const parsed = this.safeParseLLMJSON(response)
-              //  logger.info("parsed", parsed)
+                //  logger.info("parsed", parsed)
                 completed = { ...resolved, ...parsed }
                 logger.info("completed", completed)
             }
@@ -141,7 +141,9 @@ export class FIRSInvoiceTransformerV2 {
 
                 completed = await this.repairJSON(
                     completed,
-                    validation.errors
+                    validation.errors,
+                    authContext,
+                    sourceSchema
                 )
 
             }
@@ -418,7 +420,7 @@ export class FIRSInvoiceTransformerV2 {
         firsSchema: ISchemaField[],
         missingFields: string[]
     ) {
-  
+
         const requiredFields = firsSchema
             .filter(f => f.is_required || f.validation_rules!.indexOf('required') > -1)
             .map(f => ({
@@ -436,7 +438,7 @@ export class FIRSInvoiceTransformerV2 {
             authContext?.serviceId,
             invoice.issueDate ? new Date(invoice.issueDate) : undefined,
         );
-       let  businessContext = `
+        let businessContext = `
             ## BUSINESS CONTEXT:
             - Business ID: ${authContext.businessId || '{{TEST_BUSINESS_ID}}'}
             - Tenant ID: ${authContext.tenantId || 'N/A'}
@@ -640,8 +642,18 @@ Complete the missing fields also generate emails here missing currency should de
 
     private async repairJSON(
         json: any,
-        errors: any
+        errors: any,
+        authContext: AuthContext,
+        sourceSchema: ISchemaField[],
     ) {
+        const metaContext: string = `
+                Initial Validation Errors:
+                ${JSON.stringify(errors)} 
+
+`
+
+
+        const systemPrompt = await generateTransformPrompt(json, authContext, undefined, sourceSchema, metaContext);
 
         const prompt = `
                 The JSON below failed validation.
@@ -657,7 +669,7 @@ Complete the missing fields also generate emails here missing currency should de
                 Return valid JSON only.
 `
 
-        const response = await this.callLLM(prompt)
+        const response = await this.callLLM(systemPrompt)
 
         return this.safeParseLLMJSON(response)
 
