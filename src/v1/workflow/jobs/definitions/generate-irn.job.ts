@@ -19,21 +19,18 @@ export function registerGenerateIrnJob(): void {
 
       logger.info('[Job:generate-irn] Starting', { jobChainId, tenantId });
 
-      try {
-        const outboundRepo = await getOutboundRepo();
+      try { 
 
-        // Generate IRN by looking up an existing outbound record,
-        // or fall back to creating one keyed by a hash of the payload.
-        const existingInvoice = context.irn
-          ? await outboundRepo.findByIrn(context.irn)
-          : null;
+        //Use existing IRN from context
+        const existingInvoice = context.irn;
+        console.log({context})
 
         const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
         console.log(invoiceRef,
                   authContext?.serviceId,
                   context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate ) : new Date(),)
-        const irn = generateIRN(
+        const irn = existingInvoice || generateIRN(
             invoiceRef,
             authContext?.serviceId,
             context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),

@@ -37,9 +37,12 @@ export const webhookRoutes = new Elysia({
    * SSE endpoint - subscribe to real-time inbound webhook events.
    * Clients connect here to listen for data as it arrives on the webhook.
    */
-  .get(
+  .all(
     '/listen/:webhookPath',
-    async function* ({ params, set }) {
+    async function* ({request, params, set }) {
+      if(request.method == "OPTIONS"){
+        return {}
+      }
       const { webhookPath } = params;
 
       // Validate tenant
