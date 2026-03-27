@@ -81,19 +81,35 @@ const getOptionalFields = (fields: ISchemaField[]): string[] => {
 /**
  * FIRS Tax Categories reference
  */
-export const FIRS_TAX_CATEGORIES = [
-    { code: "STANDARD_VAT", value: "Standard Value-Added Tax", percent: "7.5" },
-    { code: "REDUCED_VAT", value: "Reduced Value-Added Tax", percent: "7.5" },
-    { code: "ZERO_VAT", value: "Zero Value-Added Tax", percent: "0.0" },
-    { code: "STANDARD_GST", value: "Standard Goods and Services Tax", percent: "N/A" },
-    { code: "REDUCED_GST", value: "Reduced Goods and Services Tax", percent: "N/A" },
-    { code: "ZERO_GST", value: "Zero Goods and Services Tax", percent: "N/A" },
-    { code: "STATE_SALES_TAX", value: "State Sales Tax", percent: "N/A" },
-    { code: "LOCAL_SALES_TAX", value: "Local Sales Tax", percent: "N/A" },
-    { code: "IMPORT_DUTY", value: "Import Duty", percent: "N/A" },
-    { code: "EXPORT_DUTY", value: "Export Duty", percent: "N/A" },
-    { code: "SERVICE_TAX", value: "Service Tax", percent: "N/A" },
-];
+export const FIRS_TAX_CATEGORIES: { code: string; value: string; percent: number }[] = [
+    { "code": "STANDARD_GST",         "value": "Standard Goods and Services Tax",  "percent": 7.5  },
+    { "code": "REDUCED_GST",           "value": "Reduced Goods and Services Tax",   "percent": 5.0  },
+    { "code": "ZERO_GST",              "value": "Zero Goods and Services Tax",      "percent": 0.0  },
+    { "code": "STANDARD_VAT",          "value": "Standard Value-Added Tax",         "percent": 7.5  },
+    { "code": "REDUCED_VAT",           "value": "Reduced Value-Added Tax",          "percent": 5.0  },
+    { "code": "ZERO_VAT",              "value": "Zero Value-Added Tax",             "percent": 0.0  },
+    { "code": "STATE_SALES_TAX",       "value": "State Sales Tax",                  "percent": 0.0  },
+    { "code": "LOCAL_SALES_TAX",       "value": "Local Sales Tax",                  "percent": 0.0  },
+    { "code": "ALCOHOL_EXCISE_TAX",    "value": "Alcohol Excise Tax",               "percent": 20.0 },
+    { "code": "TOBACCO_EXCISE_TAX",    "value": "Tobacco Excise Tax",               "percent": 20.0 },
+    { "code": "FUEL_EXCISE_TAX",       "value": "Fuel Excise Tax",                  "percent": 0.0  },
+    { "code": "CORPORATE_INCOME_TAX",  "value": "Corporate Income Tax",             "percent": 30.0 },
+    { "code": "PERSONAL_INCOME_TAX",   "value": "Personal Income Tax",              "percent": 24.0 },
+    { "code": "SOCIAL_SECURITY_TAX",   "value": "Social Security Tax",              "percent": 0.0  },
+    { "code": "MEDICARE_TAX",          "value": "Medicare Tax",                     "percent": 0.0  },
+    { "code": "REAL_ESTATE_TAX",       "value": "Real Estate Tax",                  "percent": 0.0  },
+    { "code": "PERSONAL_PROPERTY_TAX", "value": "Personal Property Tax",            "percent": 0.0  },
+    { "code": "CARBON_TAX",            "value": "Carbon Tax",                       "percent": 0.0  },
+    { "code": "PLASTIC_TAX",           "value": "Plastic Tax",                      "percent": 0.0  },
+    { "code": "IMPORT_DUTY",           "value": "Import Duty",                      "percent": 0.0  },
+    { "code": "EXPORT_DUTY",           "value": "Export Duty",                      "percent": 0.0  },
+    { "code": "LUXURY_TAX",            "value": "Luxury Tax",                       "percent": 0.0  },
+    { "code": "SERVICE_TAX",           "value": "Service Tax",                      "percent": 0.0  },
+    { "code": "TOURISM_TAX",           "value": "Tourism Tax",                      "percent": 0.0  },
+    { "code": "WITHHOLDING_TAX",       "value": "Withholding Tax",                  "percent": 10.0 },
+    { "code": "STAMP_DUTY",            "value": "Stamp Duty",                       "percent": 0.0  },
+    { "code": "EXEMPTED",              "value": "Tax Exemption",                    "percent": 0.0  },
+  ];
 
 /* FIRS Invoice Types reference */
 export const FIRS_INVOICE_TYPES = [
