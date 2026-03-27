@@ -24,7 +24,7 @@ export function registerValidateJob(): void {
 
         if (!result.valid) {
           throw new Error(
-            `Validation failed: ${(result.errors ?? []).join('; ')}`
+            `Error: ${(result.errors ?? []).join('; ')}`
           );
         }
 

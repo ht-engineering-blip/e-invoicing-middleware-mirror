@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { requireAuth } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
+import { agenda } from '../../../@lib/queue/agenda';
 import { OutboundInvoiceRepository } from '../repos/outbound-invoice.repo';
 import { InboundInvoiceRepository } from '../repos/inbound-invoice.repo';
 import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
@@ -135,6 +136,48 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           return { success: false, error: 'Not authorized to view this invoice', statusCode: 403 };
         }
 
+        // Fetch all Agenda jobs referenced across all webhook events
+        const allJobIds = webhookEvents.flatMap((ev: any) => ev.jobIds ?? []);
+        const agendaJobsById = new Map<string, any>();
+        if (allJobIds.length > 0) {
+          try {
+            const { jobs } = await agenda.db.queryJobs({ ids: allJobIds });
+            for (const job of jobs) {
+              const id = job._id?.toString();
+              if (id) agendaJobsById.set(id, job);
+            }
+          } catch (e: any) {
+            logger.warn('Failed to fetch agenda jobs for invoice detail', { error: e.message });
+          }
+        }
+
+        // Build a sorted job-steps list for a given event's jobIds
+        function buildJobSteps(jobIds: string[]) {
+          return (jobIds ?? [])
+            .map((id: string) => {
+              const job = agendaJobsById.get(id);
+              if (!job) return null;
+              const data = (job.data ?? {}) as any;
+              const action = data.actions?.[data.stepIndex] ?? job.name;
+              return {
+                agendaJobId: id,
+                jobName: job.name,
+                action,
+                stepIndex: data.stepIndex ?? null,
+                jobChainId: data.jobChainId ?? null,
+                status: job.state,
+                scheduledAt: job.nextRunAt ?? null,
+                startedAt: job.lastRunAt ?? null,
+                finishedAt: job.lastFinishedAt ?? null,
+                failedAt: job.failedAt ?? null,
+                failReason: job.failReason ?? null,
+                output: data.context ?? null,
+              };
+            })
+            .filter(Boolean)
+            .sort((a: any, b: any) => (a.stepIndex ?? 0) - (b.stepIndex ?? 0));
+        }
+
         // Build status timeline from webhook events + their job errors
         const statusHistory = webhookEvents.flatMap((ev: any) => {
           const entries: any[] = [
@@ -153,6 +196,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
               status: 'failed',
               eventId: ev.eventId,
               jobChainId: je.jobChainId,
+              agendaJobId: je.agendaJobId ?? null,
               at: je.failedAt,
               error: je.error,
             });
@@ -187,6 +231,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
               status: ev.status,
               payload: ev.payload,
               jobErrors: ev.jobErrors ?? [],
+              jobSteps: buildJobSteps(ev.jobIds ?? []),
               routing: ev.metadata?.matchedRoutes,
               receivedAt: ev.createdAt,
               deliveredAt: ev.deliveredAt,

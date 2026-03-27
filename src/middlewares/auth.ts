@@ -329,8 +329,7 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
             },
           };
         }
-
-        console.log({ decoded })
+ 
         // Handle set-password token 
         if (decoded?.purpose && decoded?.purpose == 'set-password') {
           decoded.businessId = decoded.tenantId

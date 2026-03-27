@@ -73,8 +73,7 @@ export class FIRSInvoiceTransformerV2 {
                 console.error(result.error)
 
             }
-
-            console.log({ result })
+ 
             const transformedData = result.data;
             return {
                 success: true,
@@ -193,72 +192,103 @@ export class FIRSInvoiceTransformerV2 {
      OBJECT UTILITIES
     ----------------------------------------------------- */
 
+    /**
+     * Flatten a nested object (including arrays) into dot-notation keys.
+     * Arrays are keyed by numeric index: "items.0.description", "items.1.description"
+     * This ensures deterministicTransform can always locate any value in the source.
+     */
     private flattenObject(
-        obj: Record<string, any>,
+        obj: any,
         prefix = "",
         res: Record<string, any> = {}
-    ) {
+    ): Record<string, any> {
 
-        for (const key in obj) {
+        if (obj == null || typeof obj !== "object") {
+            if (prefix) res[prefix] = obj
+            return res
+        }
 
+        const entries: [string, any][] = Array.isArray(obj)
+            ? obj.map((v, i) => [String(i), v])
+            : Object.entries(obj)
+
+        for (const [key, val] of entries) {
             const prop = prefix ? `${prefix}.${key}` : key
-
-            if (
-                typeof obj[key] === "object" &&
-                !Array.isArray(obj[key])
-            ) {
-
-                this.flattenObject(obj[key], prop, res)
-
+            if (val !== null && typeof val === "object") {
+                this.flattenObject(val, prop, res)
             } else {
-
-                res[prop] = obj[key]
-
+                res[prop] = val
             }
-
         }
 
         return res
     }
 
-    private setDeepValue(obj: any, path: string, value: any) {
+    /**
+     * Set a value anywhere in a nested object/array using a dot-notation path.
+     * Bracket notation is normalised: "items[0].name" → "items.0.name"
+     * Numeric segments auto-create arrays; string segments auto-create objects.
+     * "[*]" sets the value on every element of the target array.
+     */
+    private setDeepValue(obj: any, path: string, value: any): void {
 
-        const keys = path.replace("[*]", "").split(".")
+        // Normalise bracket notation to dot-notation
+        const keys = path.replace(/\[(\d+|\*)\]/g, ".$1").split(".").filter(Boolean)
 
         let current = obj
 
-        keys.forEach((key, i) => {
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i]
+            const nextKey = keys[i + 1]
 
-            if (i === keys.length - 1) {
-
-                current[key] = value
-                return
-
+            if (current[key] == null) {
+                // Create array if next key is numeric, otherwise create object
+                current[key] = /^\d+$/.test(nextKey) ? [] : {}
             }
 
-            if (!current[key]) current[key] = {}
-
             current = current[key]
-
-        })
-
-    }
-
-    private getDeepValue(obj: any, path: string) {
-
-        const keys = path.replace("[*]", "").split(".")
-
-        let current = obj
-
-        for (const key of keys) {
-
-            if (!current) return undefined
-
-            current = current[key]
-
         }
 
-        return current
+        const last = keys[keys.length - 1]
+
+        if (last === "*") {
+            // Wildcard: apply value to every element of the current array
+            if (Array.isArray(current)) {
+                current.forEach((_: any, i: number) => { current[i] = value })
+            }
+        } else {
+            current[last] = value
+        }
+    }
+
+    /**
+     * Get a value from anywhere in a nested object/array using a dot-notation path.
+     * Bracket notation is normalised: "items[0].name" → "items.0.name"
+     * "[*]" collects the value from every element of the array at that position.
+     */
+    private getDeepValue(obj: any, path: string): any {
+
+        const keys = path.replace(/\[(\d+|\*)\]/g, ".$1").split(".").filter(Boolean)
+        return this._traverseDeep(obj, keys)
+    }
+
+    private _traverseDeep(current: any, keys: string[]): any {
+
+        if (keys.length === 0) return current
+        if (current == null) return undefined
+
+        const [head, ...rest] = keys
+
+        if (head === "*") {
+            if (!Array.isArray(current)) return undefined
+            const results = current
+                .map((item: any) => this._traverseDeep(item, rest))
+                .filter((v: any) => v !== undefined)
+            if (results.length === 0) return undefined
+            return results.length === 1 ? results[0] : results
+        }
+
+        return this._traverseDeep(current[head], rest)
     }
 
     /* -----------------------------------------------------
@@ -270,19 +300,36 @@ export class FIRSInvoiceTransformerV2 {
         mappingRules: any[]
     ) {
 
+        // Flatten the entire invoice (arrays included) so every leaf value
+        // is reachable by its dot-notation path e.g. "items.0.description"
         const flat = this.flattenObject(invoice)
 
         const result: Record<string, any> = {}
 
         for (const rule of mappingRules || []) {
 
+            if (!rule.source || !rule.target) continue
 
-            const value = flat[rule.source]
-            console.log({ rule, value })
+            // Normalise the source path to dot-notation for flat-map lookup
+            const normalised = rule.source.replace(/\[(\d+|\*)\]/g, ".$1")
+
+            // 1. Exact match in the flat map (fastest, handles simple paths)
+            let value: any = flat[normalised] ?? flat[rule.source]
+
+            // 2. Fallback: traverse the original invoice (handles [*] wildcards
+            //    and any path format the flat key normalisation may have missed)
+            if (value === undefined) {
+                value = this.getDeepValue(invoice, rule.source)
+            }
+
+            // 3. If a wildcard returned an array but the target is a scalar,
+            //    take the first element
+            if (Array.isArray(value) && !rule.target.includes("[*]") && !rule.target.includes(".*")) {
+                value = value[0]
+            }
+
             if (value !== undefined) {
-
                 this.setDeepValue(result, rule.target, value)
-
             }
 
         }

@@ -5,12 +5,34 @@ export * from './encryption';
 export * from './json';
 
 /**
- * Resolve a dot-notation path against a nested object.
+ * Resolve a dot-notation (or bracket-notation) path against a nested object/array.
  * Returns undefined if any segment is missing.
- * Example: getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
+ *
+ * Supports:
+ *   "header.id"            → plain nested object
+ *   "items[0].description" → array index access
+ *   "items.0.description"  → same, dot-notation index
+ *   "items[*].description" → returns array of values from every element
+ *
+ * Examples:
+ *   getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
+ *   getNestedValue({ items: [{ qty: 2 }, { qty: 5 }] }, "items[*].qty") → [2, 5]
  */
 export function getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
-  return path.split('.').reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
+  const keys = path.replace(/\[(\d+|\*)\]/g, '.$1').split('.').filter(Boolean);
+  return _traverse(obj, keys);
+}
+
+function _traverse(current: any, keys: string[]): any {
+  if (keys.length === 0) return current;
+  if (current == null) return undefined;
+  const [head, ...rest] = keys;
+  if (head === '*') {
+    if (!Array.isArray(current)) return undefined;
+    const results = current.map((item: any) => _traverse(item, rest)).filter((v: any) => v !== undefined);
+    return results.length === 0 ? undefined : results.length === 1 ? results[0] : results;
+  }
+  return _traverse(current[head], rest);
 }
 

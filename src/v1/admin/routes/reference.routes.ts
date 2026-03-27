@@ -94,6 +94,13 @@ export const INVOICE_EVENT_TYPES = [
 
   // ── ERP-originating events ───────────────────────────────────────────────
   {
+    id: 'erp.invoice.created',
+    name: '<TMP> ERP Invoice Created',
+    category: 'erp',
+    direction: 'inbound',
+    description: 'Invoice created from ERP system into the middleware.',
+  },
+  {
     id: 'erp.invoice.submitted',
     name: 'ERP Invoice Submitted',
     category: 'erp',
