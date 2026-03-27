@@ -313,6 +313,8 @@ export const webhookRoutes = new Elysia({
           irn,
         });
 
+        const originalPayload =  (body as any)?.data || (body as any)?.invoice || body
+
         // 11. Schedule background job chain (fire-and-forget)
         let jobChainId: string | undefined;
         if (routedActions.length > 0) {
@@ -320,7 +322,7 @@ export const webhookRoutes = new Elysia({
             webhookEventId: eventId,
             tenantId: tenant.tenantId,
             eventType,
-            payload: body,
+            payload: originalPayload,
             actions: matchedRoutes.flatMap((r) => r.actions),
             routeId: matchedRoutes[0]?.routeId,
             erpInvoiceId,
@@ -341,7 +343,7 @@ export const webhookRoutes = new Elysia({
           eventId,
           tenantId: tenant.tenantId,
           eventType,
-          payload: body,
+          payload: originalPayload,
           receivedAt: new Date().toISOString(),
           irn,
           erpInvoiceId,
