@@ -16,12 +16,10 @@ export function registerValidateJob(): void {
       logger.info('[Job:validate] Starting', { jobChainId, tenantId });
 
       try {
-        const invoice = {
-
-          ...(context.transformedInvoice || {}),
-          ...(context.originalPayload || {}),
-        }
-        //  context.transformedInvoice ?? context.originalPayload;
+        // transformedInvoice is the FIRS-formatted output from the transform step.
+        // originalPayload is the raw ERP data. Prefer transformedInvoice; only
+        // fall back to originalPayload if no transform step ran before this one.
+        const invoice = context.transformedInvoice ?? context.originalPayload;
         const result = await invoiceService.validateInvoice(
           authContext.businessId || tenantId,
           invoice

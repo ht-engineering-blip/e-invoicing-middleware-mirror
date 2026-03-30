@@ -69,7 +69,7 @@ export class TransformWorkflowService {
         const transformer = new FIRSInvoiceTransformerV2(aiConfig?.openAIApiKey!, aiConfig?.openApiEndpoint!);
 
         const result = await transformer.transformAndValidate(invoice, authContext, sourceType);
-        console.log({ result })
+        console.log(JSON.stringify({ result }))
         if (result?.success) {
 
             // Data is valid and ready to send to FIRS

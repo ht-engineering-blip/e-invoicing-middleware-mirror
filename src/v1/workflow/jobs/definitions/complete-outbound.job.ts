@@ -4,29 +4,101 @@ import { logger } from '../../../../@lib/logger';
 import { chainNext, chainFail } from '../chain';
 import type { JobChainData } from '../types';
 import { OutboundWorkflowService } from '../../services';
+import { TransformWorkflowService } from '../../services';
+import { OutboundInvoiceRepository } from '../../repos/outbound-invoice.repo';
+import { OutboundInvoiceStatus, OutboundInvoiceSource } from '../../models';
 
 const outboundService = new OutboundWorkflowService();
+const transformService = new TransformWorkflowService();
+const outboundRepo = new OutboundInvoiceRepository();
 
 export function registerCompleteOutboundJob(): void {
   agenda.define(
     'workflow:complete-outbound',
     async (job: Job<JobChainData>) => {
-      const { tenantId, context, jobChainId } = job.attrs.data;
+      const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+      const businessId = authContext?.businessId ?? tenantId;
 
-      logger.info('[Job:complete-outbound] Starting full pipeline', { jobChainId, tenantId });
+      logger.info('[Job:complete-outbound] Starting', {
+        jobChainId,
+        tenantId,
+        mode: context.transformedInvoice ? 'finalize' : 'full-pipeline',
+      });
 
       try {
-        const result = await outboundService.handleOutboundWorkflow(
-          context.originalPayload,
-          true // transmit = true
-        );
+        let irn = context.irn;
+        let qrCode: string | undefined;
+        let firsSignedData: any;
 
-        logger.info('[Job:complete-outbound] Done', { jobChainId });
+        if (!context.transformedInvoice) {
+          // ── Full-pipeline mode ────────────────────────────────────────────────
+          // Used when complete_outbound is the ONLY action (standalone invocation).
+          // Runs: transform → validate + sign + confirm + QR + transmit (via handleOutboundWorkflow)
 
-        await chainNext(job, {
-          qrCode: result.qrCode,
-          signedInvoice: result.data,
-        });
+          logger.info('[Job:complete-outbound] Full-pipeline mode', { jobChainId });
+
+          // Step 1: Transform ERP payload → FIRS format
+          const transformed = await transformService.transformInvoiceV2(
+            context.originalPayload,
+            authContext as any,
+            context.sourceType
+          );
+
+          // Step 2: Ensure IRN is on the transformed invoice
+          irn = irn ?? transformed.irn;
+          if (irn) transformed.irn = irn;
+
+          // Step 3: Persist invoice record
+          if (irn) {
+            await outboundRepo.upsertByIrn({
+              irn,
+              tenantId: authContext?.tenantId,
+              erpSystem: authContext?.tenantERP,
+              createdBy: authContext?.tenantId,
+              source: (context.source as OutboundInvoiceSource) ?? OutboundInvoiceSource.API,
+              erpInvoiceId: context.erpInvoiceId,
+              metadata: { transformedInvoice: transformed },
+            });
+            await outboundRepo.updateWorkflowState(irn, { transformed: true });
+            transformed.tenant_id = tenantId
+          }
+
+          // Step 4: validate → sign (if needed) → confirm → QR → transmit
+          const result = await outboundService.handleOutboundWorkflow(transformed, true);
+          qrCode = result.qrCode as string;
+          firsSignedData = result.data;
+
+        } else {
+          // ── Finalize mode ─────────────────────────────────────────────────────
+          // Used as the LAST step in a chain where individual steps already ran.
+          // Only generates QR code and marks the invoice as DELIVERED.
+
+          logger.info('[Job:complete-outbound] Finalize mode', { jobChainId, irn });
+
+          if (!irn) throw new Error('IRN is required for complete-outbound finalize step');
+
+          const result = await outboundService.generateQRCode(irn, businessId);
+          qrCode = result.qrCode;
+          firsSignedData = result.data;
+        }
+
+        // ── Persist final state ─────────────────────────────────────────────────
+        if (irn) {
+          await outboundRepo.update(irn, {
+            qrCode,
+            status: OutboundInvoiceStatus.DELIVERED,
+            metadata: {
+              ...(context.metadata ?? {}),
+              firsSignedData,
+            },
+          });
+          await outboundRepo.updateWorkflowState(irn, { delivered: true });
+        }
+
+        logger.info('[Job:complete-outbound] Done — invoice DELIVERED', { jobChainId, irn });
+
+        await chainNext(job, { qrCode, firsSignedData, irn });
+
       } catch (err: any) {
         await chainFail(job, err);
         throw err;

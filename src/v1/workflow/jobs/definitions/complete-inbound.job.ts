@@ -13,12 +13,19 @@ export function registerCompleteInboundJob(): void {
     async (job: Job<JobChainData>) => {
       const { tenantId, context, jobChainId } = job.attrs.data;
 
-      logger.info('[Job:complete-inbound] Starting full inbound pipeline', { jobChainId, tenantId });
+      // Resolves to the IRN whether this job runs standalone or at the end of a chain.
+      // handleInboundWorkflow is itself the full inbound pipeline (download → decrypt
+      // → save → acknowledge), so there is no separate "finalize" mode here.
+      const irn = context.irn
+        ?? context.originalPayload?.irn
+        ?? context.originalPayload?.invoice?.irn;
+
+      logger.info('[Job:complete-inbound] Starting', { jobChainId, tenantId, irn });
 
       try {
-        const result = await inboundService.handleInboundWorkflow(
-          context.originalPayload
-        );
+        if (!irn) throw new Error('IRN is required for complete-inbound step');
+
+        const result = await inboundService.handleInboundWorkflow({ irn });
 
         if (!result.status) {
           throw new Error(result.error ?? 'Inbound workflow failed');

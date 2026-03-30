@@ -102,6 +102,8 @@ export class InvoiceWorkflowService {
       // Ensure business_id is set
       invoice.business_id = businessId;
 
+      console.log(JSON.stringify({invoice}, undefined, 2))
+
       // Call FIRS validation API
       const validationResult: any = await this.firsService.validateInvoice(invoice);
 
