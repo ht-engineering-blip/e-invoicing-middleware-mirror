@@ -9,7 +9,7 @@ import { OutboundInvoiceRepository } from '../workflow/repos/outbound-invoice.re
 import { scheduleJobChain } from '../workflow/jobs/orchestrator';
 import { WebhookDeliveryStatus, WebhookEventType } from './models';
 import { OutboundInvoiceSource } from '../workflow/models/outbound-invoice.model';
-import { hashString, logger, UnauthorizedError, getNestedValue } from '../../@lib';
+import { hashString, logger, UnauthorizedError, getNestedValue, generateRandomString } from '../../@lib';
 import { generateIRN } from '../workflow/utils/transformer/utils';
 import {
   cors
@@ -227,7 +227,7 @@ export const webhookRoutes = new Elysia({
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
       const invoiceIdKey = tenant.config?.invoiceIdKey ?? 'invoiceId';
       const erpInvoiceId: string | undefined =
-        String(getNestedValue(body, invoiceIdKey) ?? '').trim() || undefined;
+        String(getNestedValue(body, invoiceIdKey) ?? '').trim() ||  generateRandomString(10);
 
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
