@@ -118,10 +118,6 @@ export class OutboundWorkflowService {
                 wf.validated = true;
             }
 
-            console.log({
-                skipSigning,
-                alreadySigned: wf.signed
-            })
             // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
             if (!skipSigning && !wf.signed) {
                 const signedInvoice: OkayResponse =
@@ -158,16 +154,15 @@ export class OutboundWorkflowService {
             if (!encryptedData?.qrCode && !encryptedData?.data) {
                 throw new Error('QR code generation failed');
             }
- 
-            
-                  // Update stored invoice if exists
-                  const existingInvoice = await this.outboundRepo.findByIrn(invoice.irn);
-                  if (existingInvoice) {
-                    await this.outboundRepo.update(invoice.irn, {
-                      qrCode: encryptedData.qrCode
-                    });
-                  }
-            
+
+            // Update stored invoice if exists
+            const existingInvoice = await this.outboundRepo.findByIrn(invoice.irn);
+            if (existingInvoice) {
+                await this.outboundRepo.update(invoice.irn, {
+                    qrCode: encryptedData.qrCode
+                });
+            }
+
 
             // Step 5: Transmit
             if (transmit && (toTransmit || !wf.transmitted)) {
