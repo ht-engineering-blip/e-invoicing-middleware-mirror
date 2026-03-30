@@ -144,6 +144,51 @@ export class OutboundInvoiceRepository {
   }
 
   /**
+   * Insert or update an invoice by IRN.
+   * On first insert the workflow defaults (status, workflowState, etc.) are applied.
+   * On a subsequent call the payload fields are merged without overwriting
+   * existing status, webhookEvents, or workflowState.
+   */
+  async upsertByIrn(data: Partial<OutboundInvoiceDocument>): Promise<OutboundInvoiceDocument> {
+    const { irn, tenantId, erpInvoiceId, source, ...mutableFields } = data as any;
+    if (!irn) throw new AppError(400, 'IRN is required for upsert');
+
+    try {
+      const doc = await this.outboundInvoiceModel.findOneAndUpdate(
+        { irn },
+        {
+          // Only mutable fields go in $set — never identity/index fields
+          $set: mutableFields,
+          // Identity + defaults only applied on first insert
+          $setOnInsert: {
+            irn,
+            tenantId,
+            erpInvoiceId,
+            source,
+            status: OutboundInvoiceStatus.CREATED,
+            workflowState: {
+              transformed: false,
+              validated: false,
+              signed: false,
+              transmitted: false,
+              delivered: false,
+            },
+            validationAttempts: 0,
+            webhookEvents: [],
+          },
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
+
+      return doc!;
+    } catch (error: any) {
+      console.error('Error upserting outbound invoice:', error);
+      if (error.name === 'ValidationError') throw new AppError(400, error.message);
+      throw new AppError(500, 'Failed to upsert outbound invoice');
+    }
+  }
+
+  /**
    * Update an outbound invoice
    */
   async update(

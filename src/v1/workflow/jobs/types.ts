@@ -27,16 +27,20 @@ export interface JobChainData {
   context: {
     originalPayload: any;
     sourceType?: string;
+    source?: string;               // OutboundInvoiceSource ('webhook' | 'api')
     irn?: string;
     erpInvoiceId?: string;
-    transformedInvoice?: any;
-    validationResult?: any;
-    signedInvoice?: any;
-    qrCode?: string;
-    transmissionResult?: any;
-    vatReportResult?: any;
-    statusCheckResult?: any;
-    inboundResult?: any;
+    transformedInvoice?: any;      // FIRS-formatted invoice (output of transform)
+    validationResult?: any;        // output of validate
+    signedInvoice?: any;           // output of sign
+    transmissionResult?: any;      // output of transmit
+    statusCheckResult?: any;       // output of confirm_invoice_status
+    qrCode?: string;               // output of complete_outbound / generateQRCode
+    firsSignedData?: any;          // encrypted signed payload returned by FIRS
+    inboundResult?: any;           // output of complete_inbound
+    vatReportData?: any;           // payment details for VAT/payment reporting
+    vatReportResult?: any;         // output of report_vat / update_payment_status
+    metadata?: Record<string, any>;
     [key: string]: any;
   };
 

@@ -43,7 +43,7 @@ If payload is invalid/empty: Output ${format} fields only
 /**
  * Format schema fields into a readable mapping guide for the LLM
  */
-const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string => {
+export const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string => {
     if (!fields || fields.length === 0) {
         return `No fields defined for ${schemaName}`;
     }
@@ -63,7 +63,7 @@ const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string 
 /**
  * Extract required fields from schema
  */
-const getRequiredFields = (fields: ISchemaField[]): string[] => {
+export const getRequiredFields = (fields: ISchemaField[]): string[] => {
     return fields
         .filter(f => f.is_required || f.validation_rules!.indexOf('required') > -1)
         .map(f => f.field_id);
@@ -72,7 +72,7 @@ const getRequiredFields = (fields: ISchemaField[]): string[] => {
 /**
  * Extract optional fields from schema
  */
-const getOptionalFields = (fields: ISchemaField[]): string[] => {
+export const getOptionalFields = (fields: ISchemaField[]): string[] => {
     return fields
         .filter(f => !f.is_required)
         .map(f => f.field_id);

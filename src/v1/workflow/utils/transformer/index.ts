@@ -89,7 +89,7 @@ export const FIRSInvoiceSchema = z.object({
   payment_status: z.string().optional(),
   note: z.string().optional(),
   tax_point_date: DateSchema.optional(),
-  tax_currency_code: z.string().optional(),
+  tax_currency_code: z.string(),
   accounting_cost: z.string().optional(),
   buyer_reference: z.string().optional(),
   invoice_delivery_period: z.object({

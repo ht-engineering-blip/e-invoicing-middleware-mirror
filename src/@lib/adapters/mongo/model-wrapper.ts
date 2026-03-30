@@ -107,7 +107,7 @@ export class ModelWrapper<T = any> {
   // Additional methods needed for e-invoicing modules
   findOneAndUpdate(query: any, update: UpdateQuery<T>, ...args: any[]): Query<T | null, T> {
     console.log(JSON.stringify({...query,  businessId: this.businessId },null, 2))
-    return this.model.findOneAndUpdate({...query,  businessId: this.businessId }, update, ...args);
+    return this.model.findOneAndUpdate({...query }, update, ...args);
   }
 
   aggregate(pipeline: any[]): any {

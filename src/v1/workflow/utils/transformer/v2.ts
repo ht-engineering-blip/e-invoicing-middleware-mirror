@@ -4,9 +4,9 @@ import { ISchemaField, SchemaSourceType } from "../../models"
 import { TransformWorkflowService } from "../../services"
 import { FIRSInvoiceSchema, TransformationResult } from "."
 import { InternalServerError, logger } from "../../../../@lib"
-import { generateDatestamp, generateIRN } from "./utils"
+import { FIRS_SCHEMA_EXAMPLE, generateDatestamp, generateIRN } from "./utils"
 import { FIRS_INVOICE_METADATA } from "../defaults"
-import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES, generateTransformPrompt } from "../../../../@lib/adapters/llm/prompts"
+import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES, formatSchemaFields, generateTransformPrompt, getOptionalFields, getRequiredFields } from "../../../../@lib/adapters/llm/prompts"
 
 /* -----------------------------------------------------
  CLASS
@@ -438,6 +438,34 @@ export class FIRSInvoiceTransformerV2 {
             authContext?.serviceId,
             invoice.issueDate ? new Date(invoice.issueDate) : undefined,
         );
+
+        // Build source schema section
+        let sourceSchemaSection = '';
+        if (sourceSchema && sourceSchema.length > 0) {
+            const sourceRequired = getRequiredFields(sourceSchema);
+            const sourceOptional = getOptionalFields(sourceSchema);
+            sourceSchemaSection = `
+## SOURCE ERP SCHEMA FIELDS:
+${formatSchemaFields(sourceSchema, 'Source ERP')}
+
+Source Required Fields: ${sourceRequired.join(', ') || 'None specified'}
+Source Optional Fields: ${sourceOptional.join(', ') || 'None specified'}
+`;
+        }
+
+        // Build FIRS schema section
+        let firsSchemaSection = '';
+        if (firsSchema && firsSchema.length > 0) {
+            const firsRequired = getRequiredFields(firsSchema);
+            const firsOptional = getOptionalFields(firsSchema);
+            firsSchemaSection = `
+## TARGET FIRS UBL SCHEMA FIELDS:
+${formatSchemaFields(firsSchema, 'FIRS UBL')}
+
+FIRS Required Fields: ${firsRequired.join(', ') || 'None specified'}
+FIRS Optional Fields: ${firsOptional.join(', ') || 'None specified'}
+`;
+        }
         let businessContext = `
             ## BUSINESS CONTEXT:
             - Business ID: ${authContext.businessId || '{{TEST_BUSINESS_ID}}'}
@@ -448,36 +476,16 @@ export class FIRSInvoiceTransformerV2 {
             - Default IRN: ${invoice.irn ?? irn}
             `;
         return `
-You are a Nigerian FIRS UBL invoice transformation engine.
+You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
 
-Only return valid JSON.
-
---------------------------------
-
-BUSINESS CONTEXT
-${JSON.stringify(authContext)}
 ${businessContext}
+${sourceSchemaSection}
+${firsSchemaSection}
 
 --------------------------------
 
 MISSING FIELDS
 ${JSON.stringify(missingFields)}
-
---------------------------------
-
-TARGET FIRS REQUIRED FIELDS
-
-${JSON.stringify(requiredFields, null, 2)}
-
---------------------------------
-
-SOURCE ERP SCHEMA
-${JSON.stringify(sourceSchema, null, 2)}
-
---------------------------------
-
-INPUT INVOICE
-${JSON.stringify(invoice, null, 2)}
 
 --------------------------------
 # FIRS INVOICE TRANSFORMATION RULES
@@ -534,6 +542,15 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 --------------------------------
 
+## INVOICE LINE ITEM RULES:
+Each invoice_line must contain:
+- hsn_code: product/service classification code should not be empty and should be populated based on product category
+- product_category: category name
+- invoiced_quantity: quantity (number)
+- line_extension_amount: line total before tax
+- item: object with name, description
+- price: object with price_amount, base_quantity, price_unit
+
 ## IMPORTANT INSTRUCTIONS:
 1. Return ONLY valid JSON in the exact FIRS schema format
 2. Do not include any explanation, comments, or additional text
@@ -546,10 +563,18 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 9. Do not include escape sequences (\\n, \\t, \\r, etc.)
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
-12. DO not return 'undefined', instead put the approriate empty values
+12. invoice_unique_number should be "irn" in the final result
+13. Extract nexted keys in payload to match the valid FIRS schema
+14. optional fields should not be included if not provided by invoice input! [allowance_charge]
+15. Descriptions and should have default values derived from product
+ 
+FIRS SCHEMA EXAMPLE (Use this only as an example for a valid invoice payload):
+${FIRS_SCHEMA_EXAMPLE}
 
-
-Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON
+## INPUT INVOICE DATA TO TRANSFORM:
+${JSON.stringify(invoice, null, 2)}
+ 
+Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON.
 
 Complete the missing fields also generate emails here missing currency should default to NGN when missing.
 `

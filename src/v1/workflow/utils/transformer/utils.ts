@@ -18,7 +18,7 @@ export function generateIRN(invoiceNumber: string, serviceId: string | undefined
     return `${inv}-${serviceId}-${generateDatestamp(date)}`.toUpperCase();
 }
 
-const FIRS_SCHEMA_EXAMPLE = `{
+export const FIRS_SCHEMA_EXAMPLE = `{
     "business_id": "{{TEST_BUSINESS_ID}}",
     "irn": "IRN",
     "issue_date": "2024-05-14",
