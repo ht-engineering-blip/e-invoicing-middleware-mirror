@@ -27,8 +27,8 @@ const outboundRepo = new OutboundInvoiceRepository();
 const webhookBus = new EventEmitter();
 webhookBus.setMaxListeners(0);
 
-export const webhookRoutes = new Elysia({ 
-  prefix: '/webhook', 
+export const webhookRoutes = new Elysia({
+  prefix: '/webhook',
 })
   .use(cors())
 
@@ -39,8 +39,8 @@ export const webhookRoutes = new Elysia({
    */
   .all(
     '/listen/:webhookPath',
-    async function* ({request, params, set }) {
-      if(request.method == "OPTIONS"){
+    async function* ({ request, params, set }) {
+      if (request.method == "OPTIONS") {
         return {}
       }
       const { webhookPath } = params;
@@ -82,7 +82,7 @@ export const webhookRoutes = new Elysia({
         while (true) {
           if (queue.length === 0) {
             await new Promise<void>((r) => {
-              resolve = r; 
+              resolve = r;
             });
           }
           while (queue.length > 0) {
@@ -94,8 +94,8 @@ export const webhookRoutes = new Elysia({
             });
           }
         }
-      } catch(e){
-        console.log({e})
+      } catch (e) {
+        console.log({ e })
       } finally {
         webhookBus.off(channel, handler);
         logger.info('SSE client disconnected', {
@@ -126,7 +126,8 @@ export const webhookRoutes = new Elysia({
     '/inbound/:webhookPath',
     async ({ params, body, headers, set }) => {
       const { webhookPath } = params;
- const originalPayload =  (body as any)?.data || (body as any)?.invoice || body
+      //      (body as any)?.data || (body as any)?.invoice ||
+      const originalPayload = body
       // 1. Look up tenant by webhook path
       const tenant = await tenantRepo.findByWebhookPath(webhookPath);
       if (!tenant) {
@@ -226,9 +227,10 @@ export const webhookRoutes = new Elysia({
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
       const invoiceIdKey = tenant.config?.invoiceIdKey ?? 'invoiceId';
-      const erpInvoiceId: string | undefined =
-        String(getNestedValue(originalPayload, invoiceIdKey) ?? '').trim() ||  generateRandomString(10);
+      const erpInvoiceId: string =
+        String(getNestedValue(originalPayload, invoiceIdKey) ?? '').trim() || generateRandomString(10);
 
+      console.log({ erpInvoiceId })
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
@@ -258,6 +260,8 @@ export const webhookRoutes = new Elysia({
           irn,
           created,
         });
+      } else {
+        //TODO:: Return Invoice ID Key Error
       }
 
       // 9. Store the webhook event
@@ -313,7 +317,7 @@ export const webhookRoutes = new Elysia({
           irn,
         });
 
-       
+
 
         // 11. Schedule background job chain (fire-and-forget)
         let jobChainId: string | undefined;

@@ -40,6 +40,7 @@ export interface JobChainData {
     inboundResult?: any;           // output of complete_inbound
     vatReportData?: any;           // payment details for VAT/payment reporting
     vatReportResult?: any;         // output of report_vat / update_payment_status
+    erpSyncResult?: any;           // output of sync_erp
     metadata?: Record<string, any>;
     [key: string]: any;
   };
@@ -61,6 +62,7 @@ export const ACTION_TO_JOB: Record<string, string> = {
   report_vat:               'workflow:report-vat',
   confirm_invoice_status:   'workflow:confirm-status',
   update_payment_status:    'workflow:update-payment-status',
+  sync_erp:                 'workflow:sync-erp',
 };
 
 /** Default priority per event type */

@@ -164,12 +164,17 @@ export class OutboundWorkflowService {
             }
 
 
-            // Step 5: Transmit
-            if (transmit && (toTransmit || !wf.transmitted)) {
-                await firsService.transmitInvoice(invoice.irn);
-                await this.outboundRepo.update(invoice.irn, { status: OutboundInvoiceStatus.DELIVERED });
-                await this.outboundRepo.updateWorkflowState(invoice.irn, { delivered: true });
+            try {
+                // Step 5: Transmit
+                if (transmit && (toTransmit || !wf.transmitted)) {
+                    await firsService.transmitInvoice(invoice.irn);
+                    await this.outboundRepo.update(invoice.irn, { status: OutboundInvoiceStatus.DELIVERED });
+                    await this.outboundRepo.updateWorkflowState(invoice.irn, { delivered: true });
+                }
+            } catch (error) {
+                // Fail gracefully
             }
+
 
             return encryptedData;
 
