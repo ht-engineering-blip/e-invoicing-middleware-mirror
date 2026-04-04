@@ -229,6 +229,14 @@ export const WORKFLOW_ACTIONS = [
     description: 'Submit VAT post-payment report to FIRS after payment is recorded on a DELIVERED invoice.',
     endpoint: 'PATCH /api/v1/workflow/invoices/outbound/:irn/payment-status',
   },
+  {
+    id: 'sync_erp',
+    name: 'Sync to ERP',
+    order: 11,
+    category: 'outbound',
+    description: 'Push processed invoice data back to the tenant ERP using the configured sync endpoint and Handlebars body template.',
+    endpoint: 'POST /api/v1/workflow/erp-sync',
+  },
 ] as const;
 
 /**

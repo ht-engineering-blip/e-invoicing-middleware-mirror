@@ -4,8 +4,9 @@ import { TenantService } from '../../tenants/services/tenant.service';
 import { InvoiceWorkflowService, InvoicePaymentStatus } from '../services';
 import { TransformWorkflowService } from '../../workflow/services';
 import { generateIRN } from '../../workflow/utils/transformer/utils';
-import { generateRandomString } from '../../../@lib';
+import { generateRandomString, logger } from '../../../@lib';
 import { faker } from '@faker-js/faker/.';
+import { scheduleJobChain } from '../../workflow/jobs/orchestrator';
 
 /**
  * Invoice workflow routes
@@ -352,6 +353,29 @@ const invoiceMgmtRoutes = new Elysia()
           }
         );
 
+        // run a job to update invoice status to FIRS
+       // if (body.status === InvoicePaymentStatus.PAID) {
+          scheduleJobChain({
+            webhookEventId: `status_${params.irn}_${Date.now()}`,
+            tenantId: auth.tenantId,
+            eventType: 'invoice.'+ body.status.toLowerCase(),
+            actions: ['update_payment_status'],
+            payload: {
+              irn: params.irn,
+              vatReportData: {
+                payment_status: body.status,
+                reference: body.paymentReference,
+              },
+            },
+            irn: params.irn,
+          }).catch((err) =>
+            logger.error('[invoices.routes] Failed to schedule update-payment-status job', {
+              irn: params.irn,
+              error: err.message,
+            })
+          );
+       // }
+
         return {
           success: true,
           data: result,
@@ -380,7 +404,7 @@ const invoiceMgmtRoutes = new Elysia()
         rejectionReason: t.Optional(t.String()),
       }),
       detail: {
-        summary: 'Update Invoice Status',
+        summary: 'Update Invoice Payment Status',
         description: 'Update the payment status of an invoice (PENDING, PAID, REJECTED)',
         tags: ['Invoicing'],
       },

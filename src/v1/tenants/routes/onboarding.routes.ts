@@ -291,6 +291,71 @@ export const protectedOnboardingRoutes = new Elysia()
       },
     }
   )
+  /**
+   * PUT /tenants/:tenantId/invoice-id-key
+   * Update Invoice ID Key for tenant
+   */
+  .put(
+    '/:tenantId/invoice-id-key',
+    async ({ params, body, auth, tenantService, webhookService }) => {
+      try {
+        // Check authorization
+        onlySelf(auth!, params.tenantId)
+
+        logger.info('Updating Invoice ID Key', { tenantId: params.tenantId });
+ 
+        // Load current tenant to merge existing config
+        const tenant = await tenantService.getTenantById(params.tenantId);
+
+        // Persist invoiceIdKey if provided; otherwise keep existing value
+        const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
+ 
+
+        await tenantService.updateTenant(params.tenantId, { 
+          config: {
+            ...tenant.config,
+            invoiceIdKey,
+          }
+        } as any);
+
+        
+        return {
+          success: true,
+          message: 'Invoice ID Key updated successfully',
+          data: { 
+            invoiceIdKey: invoiceIdKey ?? null, 
+          },
+        };
+      } catch (error: any) {
+        logger.error('Failed to update invoice id key', { error: error.message });
+        return {
+          success: false,
+          error: error.message || 'Failed to update invoice id key',
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    {
+      params: t.Object({
+        tenantId: t.String(),
+      }),
+      body: t.Optional(
+        t.Object({
+          invoiceIdKey: t.String({
+              description:
+                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
+            }),
+        })
+      ),
+      detail: {
+        tags: ['Onboarding'],
+        security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
+        summary: 'Update Invoice ID Key for tenant',
+        description:
+          'Update invoiceIdKey to configure which payload field identifies the ERP invoice.',
+      },
+    }
+  )
 
   /**
    * POST /tenants/:tenantId/webhook/test

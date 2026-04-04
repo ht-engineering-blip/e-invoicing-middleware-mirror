@@ -4,6 +4,20 @@ export * from './validation';
 export * from './encryption';
 export * from './json';
 
+
+
+/**
+ * Resolve a dot-notation path against a nested object.
+ * Returns undefined if any segment is missing.
+ * Example: getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
+ */
+export function getNestedValue(obj: any, path: string): any {
+  if (!obj || !path) return undefined;
+  return path.split('.').reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
+}
+
+
+
 /**
  * Resolve a dot-notation (or bracket-notation) path against a nested object/array.
  * Returns undefined if any segment is missing.
@@ -18,9 +32,15 @@ export * from './json';
  *   getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
  *   getNestedValue({ items: [{ qty: 2 }, { qty: 5 }] }, "items[*].qty") → [2, 5]
  */
-export function getNestedValue(obj: any, path: string): any {
+export function _getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
-  const keys = path.replace(/\[(\d+|\*)\]/g, '.$1').split('.').filter(Boolean);
+  // Normalise bracket notation → dot notation, trim each segment, drop blanks
+  const keys = path
+    .replace(/\[(\d+|\*)\]/g, '.$1')
+    .split('.')
+    .map(k => k.trim())
+    .filter(k => k.length > 0);
+  if (keys.length === 0) return undefined;
   return _traverse(obj, keys);
 }
 

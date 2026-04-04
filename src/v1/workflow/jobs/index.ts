@@ -12,6 +12,7 @@ import { registerCompleteInboundJob } from './definitions/complete-inbound.job';
 import { registerReportVatJob } from './definitions/report-vat.job';
 import { registerConfirmStatusJob } from './definitions/confirm-status.job';
 import { registerUpdatePaymentStatusJob } from './definitions/update-payment-status.job';
+import { registerSyncErpJob } from './definitions/sync-erp.job';
 
 export function registerAllJobs(): void {
   registerGenerateIrnJob();
@@ -24,4 +25,5 @@ export function registerAllJobs(): void {
   registerReportVatJob();
   registerConfirmStatusJob();
   registerUpdatePaymentStatusJob();
+  registerSyncErpJob();
 }
