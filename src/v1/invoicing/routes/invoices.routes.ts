@@ -5,8 +5,15 @@ import { InvoiceWorkflowService, InvoicePaymentStatus } from '../services';
 import { TransformWorkflowService } from '../../workflow/services';
 import { generateIRN } from '../../workflow/utils/transformer/utils';
 import { generateRandomString, logger } from '../../../@lib';
-import { faker } from '@faker-js/faker/.';
 import { scheduleJobChain } from '../../workflow/jobs/orchestrator';
+import {
+  SAMPLE_INVOICE_BODY,
+  generateIrnExample,
+  irnOnlyExample,
+  acknowledgeExample,
+  statusUpdateExample,
+  vatReportExample,
+} from '../examples/invoices.examples';
 
 /**
  * Invoice workflow routes
@@ -50,8 +57,10 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        invoiceNumber: t.String({ minLength: 1 }),
-        issueDate: t.Optional(t.String()),
+        invoiceNumber: t.String({ minLength: 1, example: generateIrnExample.invoiceNumber }),
+        issueDate: t.Optional(t.String({ example: generateIrnExample.issueDate })),
+      }, {
+        examples: [generateIrnExample],
       }),
       detail: {
         summary: 'Generate IRN',
@@ -96,7 +105,7 @@ const invoiceMgmtRoutes = new Elysia()
       }
     },
     {
-      body: t.Any({ default: {} }),
+      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
       detail: {
         summary: 'Transform Invoice',
         description: 'Transform invoice data to FIRS UBL format',
@@ -133,7 +142,8 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    { body: t.Any({ default: {} }),
+    {
+      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
       detail: {
         summary: 'Validate Invoice',
         description: 'Validate invoice against FIRS requirements',
@@ -171,7 +181,8 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    { body: t.Any({ default: {} }),
+    {
+      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
       detail: {
         summary: 'Sign Invoice',
         description: 'Sign the invoice using tenant FIRS credentials',
@@ -207,7 +218,9 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        irn: t.String({ minLength: 8 }),
+        irn: t.String({ minLength: 8, example: irnOnlyExample.irn }),
+      }, {
+        examples: [irnOnlyExample],
       }),
       detail: {
         summary: 'Generate QR Code',
@@ -244,7 +257,9 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        irn: t.String({ minLength: 1 }),
+        irn: t.String({ minLength: 1, example: irnOnlyExample.irn }),
+      }, {
+        examples: [irnOnlyExample],
       }),
       detail: {
         summary: 'Transmit Invoice',
@@ -278,7 +293,9 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        irn: t.String({ minLength: 1 }),
+        irn: t.String({ minLength: 1, example: irnOnlyExample.irn }),
+      }, {
+        examples: [irnOnlyExample],
       }),
       detail: {
         summary: 'Decrypt Invoice',
@@ -319,8 +336,10 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        irn: t.String({ minLength: 1 }),
-        message: t.Optional(t.String()),
+        irn: t.String({ minLength: 1, example: acknowledgeExample.irn }),
+        message: t.Optional(t.String({ example: acknowledgeExample.message })),
+      }, {
+        examples: [acknowledgeExample],
       }),
       detail: {
         summary: 'Acknowledge Invoice',
@@ -398,10 +417,12 @@ const invoiceMgmtRoutes = new Elysia()
           t.Literal('PAID'),
           t.Literal('REJECTED'),
         ]),
-        paymentDate: t.Optional(t.String()),
-        paymentAmount: t.Optional(t.Number()),
-        paymentReference: t.Optional(t.String()),
-        rejectionReason: t.Optional(t.String()),
+        paymentDate: t.Optional(t.String({ example: statusUpdateExample.paymentDate })),
+        paymentAmount: t.Optional(t.Number({ example: statusUpdateExample.paymentAmount })),
+        paymentReference: t.Optional(t.String({ example: statusUpdateExample.paymentReference })),
+        rejectionReason: t.Optional(t.String({ example: 'Duplicate invoice' })),
+      }, {
+        examples: [statusUpdateExample],
       }),
       detail: {
         summary: 'Update Invoice Payment Status',
@@ -458,23 +479,25 @@ const invoiceMgmtRoutes = new Elysia()
     },
     {
       body: t.Object({
-        agent_tin: t.String({ minLength: 1, description: 'Accounting Supplier Party TIN' }),
-        base_amount: t.String({ description: 'Line extension amount (amount to be taxed)' }),
-        beneficiary_tin: t.String({ minLength: 1, description: 'Accounting Buyer Party TIN' }),
-        currency: t.String({ default: 'NGN', description: 'Document currency code' }),
-        item_description: t.String({ description: 'Item description within the invoice line' }),
-        irn: t.String({ minLength: 1, description: 'Invoice Reference Number' }),
-        other_taxes: t.String({ description: 'Summation of tax amount for Tax categories other than VAT' }),
-        total_amount: t.String({ description: 'Payable amount (amount to be collected)' }),
-        transaction_date: t.String({ description: 'Issue date (YYYY-MM-DD)' }),
+        agent_tin: t.String({ minLength: 1, description: 'Accounting Supplier Party TIN', example: vatReportExample.agent_tin }),
+        base_amount: t.String({ description: 'Line extension amount (amount to be taxed)', example: vatReportExample.base_amount }),
+        beneficiary_tin: t.String({ minLength: 1, description: 'Accounting Buyer Party TIN', example: vatReportExample.beneficiary_tin }),
+        currency: t.String({ default: 'NGN', description: 'Document currency code', example: 'NGN' }),
+        item_description: t.String({ description: 'Item description within the invoice line', example: vatReportExample.item_description }),
+        irn: t.String({ minLength: 1, description: 'Invoice Reference Number', example: vatReportExample.irn }),
+        other_taxes: t.String({ description: 'Summation of tax amount for Tax categories other than VAT', example: '0.00' }),
+        total_amount: t.String({ description: 'Payable amount (amount to be collected)', example: vatReportExample.total_amount }),
+        transaction_date: t.String({ description: 'Issue date (YYYY-MM-DD)', example: vatReportExample.transaction_date }),
         integrator_service_id: t.Optional(t.String({ description: 'Service ID of Access Point Provider (uses auth.serviceId if not provided)' })),
-        vat_calculated: t.String({ description: 'Tax amount with VAT category (STANDARD_VAT, ZERO_VAT, REDUCED_VAT)' }),
-        vat_rate: t.String({ description: 'Percentage attached to tax category ID (e.g., "7.5")' }),
+        vat_calculated: t.String({ description: 'Tax amount with VAT category (STANDARD_VAT, ZERO_VAT, REDUCED_VAT)', example: vatReportExample.vat_calculated }),
+        vat_rate: t.String({ description: 'Percentage attached to tax category ID (e.g., "7.5")', example: '7.5' }),
         vat_status: t.Union([
           t.Literal('STANDARD_VAT'),
           t.Literal('ZERO_VAT'),
           t.Literal('REDUCED_VAT'),
         ], { description: 'Tax (VAT) ID related to VAT type' }),
+      }, {
+        examples: [vatReportExample],
       }),
       detail: {
         summary: 'Report VAT Post-Payment',

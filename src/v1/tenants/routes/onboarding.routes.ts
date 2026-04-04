@@ -10,6 +10,12 @@ import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
 import app from '../../..';
+import {
+  updateCredentialsExample,
+  generateWebhookExample,
+  updateInvoiceIdKeyExample,
+  testWebhookExample,
+} from '../examples/onboarding.examples';
 
 /**
  * Public Onboarding Routes (no auth required)
@@ -189,9 +195,9 @@ export const protectedOnboardingRoutes = new Elysia()
         tenantId: t.String(),
       }),
       body: t.Object({
-        publicKey: t.String({ minLength: 1 }),
-        certificate: t.String({ minLength: 1 }),
-      }),
+        publicKey: t.String({ minLength: 1, example: updateCredentialsExample.publicKey }),
+        certificate: t.String({ minLength: 1, example: updateCredentialsExample.certificate }),
+      }, { examples: [updateCredentialsExample] }),
       detail: {
         tags: ['Onboarding'],
         security: [{ apiKey: [] }, { bearerAuth: [] }],

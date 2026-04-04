@@ -4,6 +4,7 @@ import { logger } from '../../../@lib';
 import { TeamMemberService } from '../services/team-member.service';
 import { TeamMemberRole, TeamMemberStatus } from '../models/team-member.model';
 import { onlySelf } from '../../auth/utils/access-checks';
+import { acceptInviteExample, inviteMemberExample, updateMemberExample } from '../examples/team.examples';
 
 /**
  * Public Team Routes (for accepting invitations)
@@ -50,8 +51,8 @@ export const publicTeamRoutes = new Elysia({ prefix: '/team' })
         token: t.String(),
       }),
       body: t.Object({
-        password: t.String({ minLength: 8 }),
-      }),
+        password: t.String({ minLength: 8, example: acceptInviteExample.password }),
+      }, { examples: [acceptInviteExample] }),
       detail: {
         tags: ['Team Management'],
         summary: 'Accept Invitation',
@@ -179,16 +180,16 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         tenantId: t.String(),
       }),
       body: t.Object({
-        email: t.String({ format: 'email' }),
-        firstName: t.String({ minLength: 1 }),
-        lastName: t.String({ minLength: 1 }),
+        email: t.String({ format: 'email', example: inviteMemberExample.email }),
+        firstName: t.String({ minLength: 1, example: inviteMemberExample.firstName }),
+        lastName: t.String({ minLength: 1, example: inviteMemberExample.lastName }),
         role: t.Enum({
           admin: 'admin',
           member: 'member',
           viewer: 'viewer',
         }),
         permissions: t.Optional(t.Array(t.String())),
-      }),
+      }, { examples: [inviteMemberExample] }),
       detail: {
         tags: ['Team Management'],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
@@ -302,8 +303,8 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         userId: t.String(),
       }),
       body: t.Object({
-        firstName: t.Optional(t.String()),
-        lastName: t.Optional(t.String()),
+        firstName: t.Optional(t.String({ example: updateMemberExample.firstName })),
+        lastName: t.Optional(t.String({ example: updateMemberExample.lastName })),
         role: t.Optional(
           t.Enum({
             admin: 'admin',
@@ -318,7 +319,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
             suspended: 'suspended',
           })
         ),
-      }),
+      }, { examples: [updateMemberExample] }),
       detail: {
         tags: ['Team Management'],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
