@@ -2,7 +2,7 @@ import { faker } from '@faker-js/faker';
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
-export const SAMPLE_IRN = `${faker.string.alphanumeric(6).toUpperCase()}|${faker.string.alphanumeric(8).toUpperCase()}|${faker.date.recent().toISOString().split('T')[0].replace(/-/g, '')}`;
+export const SAMPLE_IRN = `${faker.string.alphanumeric(6).toUpperCase()}-${faker.string.alphanumeric(8).toUpperCase()}-${faker.date.recent().toISOString().split('T')[0].replace(/-/g, '')}`;
 export const SAMPLE_INVOICE_NUMBER = `INV-${faker.number.int({ min: 1000, max: 9999 })}`;
 export const SAMPLE_ISSUE_DATE = faker.date.recent({ days: 30 }).toISOString().split('T')[0];
 export const SAMPLE_DUE_DATE = faker.date.soon({ days: 30 }).toISOString().split('T')[0];
