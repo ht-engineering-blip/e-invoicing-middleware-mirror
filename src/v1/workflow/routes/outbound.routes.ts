@@ -2,7 +2,7 @@ import Elysia, { t } from "elysia";
 import { requireAuth } from "../../../middlewares";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { OutboundWorkflowService } from "../services";
-import { faker } from "@faker-js/faker/.";
+import { faker } from "@faker-js/faker";
 
 /**
  * Admin-protected tenant routes

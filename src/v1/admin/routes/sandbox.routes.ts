@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { SystemConfigService } from '../services/system-config.service';
 import { SchemaSourceType } from '../../workflow/models';
+import { testTransformExample, testValidateExample, testFullExample } from '../examples/sandbox.examples';
 
 /**
  * Sandbox Testing Routes
@@ -41,8 +42,8 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
     {
       body: t.Object({
         erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
-        invoice: t.Any({default: {}}),
-      }),
+        invoice: t.Any({ default: {}, examples: [testTransformExample.invoice] }),
+      }, { examples: [testTransformExample] }),
       detail: {
         tags: ['Admin', 'Sandbox'],
         security: [{ adminKey: [] }],
@@ -81,8 +82,8 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
     },
     {
       body: t.Object({
-        invoice: t.Any({default: {}}),
-      }),
+        invoice: t.Any({ default: {}, examples: [testValidateExample.invoice] }),
+      }, { examples: [testValidateExample] }),
       detail: {
         tags: ['Admin', 'Sandbox'],
         security: [{ adminKey: [] }],
@@ -120,10 +121,10 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
       }
     },
     {
-       body: t.Object({
+      body: t.Object({
         erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
-        invoice: t.Any({default: {}}),
-      }),
+        invoice: t.Any({ default: {}, examples: [testFullExample.invoice] }),
+      }, { examples: [testFullExample] }),
       detail: {
         tags: ['Admin', 'Sandbox'],
         security: [{ adminKey: [] }],

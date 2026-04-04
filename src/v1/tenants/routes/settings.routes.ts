@@ -3,6 +3,7 @@ import { requireAuth } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { TenantService } from '../services/tenant.service';
 import { onlySelf } from '../../auth/utils/access-checks';
+import { updateBusinessInfoExample } from '../examples/settings.examples';
 
 /**
  * Tenant Settings Routes
@@ -121,21 +122,21 @@ onlySelf(auth!, params.tenantId)
         tenantId: t.String(),
       }),
       body: t.Object({
-        businessName: t.Optional(t.String()),
-        contactEmail: t.Optional(t.String({ format: 'email' })),
-        contactPhone: t.Optional(t.String()),
+        businessName: t.Optional(t.String({ example: updateBusinessInfoExample.businessName })),
+        contactEmail: t.Optional(t.String({ format: 'email', example: updateBusinessInfoExample.contactEmail })),
+        contactPhone: t.Optional(t.String({ example: updateBusinessInfoExample.contactPhone })),
         address: t.Optional(
           t.Object({
-            street: t.Optional(t.String()),
-            city: t.Optional(t.String()),
-            state: t.Optional(t.String()),
-            country: t.Optional(t.String()),
-            postalCode: t.Optional(t.String()),
+            street: t.Optional(t.String({ example: updateBusinessInfoExample.address.street })),
+            city: t.Optional(t.String({ example: updateBusinessInfoExample.address.city })),
+            state: t.Optional(t.String({ example: updateBusinessInfoExample.address.state })),
+            country: t.Optional(t.String({ example: updateBusinessInfoExample.address.country })),
+            postalCode: t.Optional(t.String({ example: updateBusinessInfoExample.address.postalCode })),
           })
         ),
-        website: t.Optional(t.String()),
-        industry: t.Optional(t.String()),
-      }),
+        website: t.Optional(t.String({ example: updateBusinessInfoExample.website })),
+        industry: t.Optional(t.String({ example: updateBusinessInfoExample.industry })),
+      }, { examples: [updateBusinessInfoExample] }),
       detail: {
         tags: ['Tenant'],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
