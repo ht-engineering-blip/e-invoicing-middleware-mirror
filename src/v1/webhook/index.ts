@@ -231,6 +231,7 @@ export const webhookRoutes = new Elysia({
         String(getNestedValue(originalPayload, invoiceIdKey) ?? '').trim() || generateRandomString(10);
 
       console.log({ erpInvoiceId })
+      
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {

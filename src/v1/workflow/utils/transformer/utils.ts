@@ -10,6 +10,7 @@ export function generateDatestamp(date: Date = new Date()): string {
 
 export function generateIRN(invoiceNumber: string, serviceId: string | undefined, date: Date = new Date()): string | undefined {
     if (!serviceId) return undefined;
+    console.log({serviceId}, "=============")
     // Validate inputs: invoiceNumber alphanumeric, serviceId 8 alphanumeric
     let padding = generateRandomString(4).substring(0, 4).toUpperCase();
     const inv = (invoiceNumber + padding).replace(/[^A-Za-z0-9]/g, '');
