@@ -88,6 +88,8 @@ export async function chainFail(
   const data = job.attrs.data;
   const action = data.actions[data.stepIndex];
 
+  error.message = error.message.indexOf('undefined -') > -1? "Something went wrong,  Please retry from failed step.": error.message
+
   logger.error('[Job] Step failed — chain halted', {
     jobChainId: data.jobChainId,
     step: data.stepIndex,
@@ -114,7 +116,7 @@ export async function chainFail(
 
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${action}] failed: ${error.message}`,
+    `Step [${action}] failed: ${error.message.indexOf('undefined -') > -1? "": error.message}`,
     500
   );
 }

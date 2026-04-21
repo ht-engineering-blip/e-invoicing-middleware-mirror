@@ -1,10 +1,12 @@
 import { faker } from '@faker-js/faker';
+import { FIRS_SCHEMA_EXAMPLE } from '../../workflow/utils/transformer/utils';
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
 export const SAMPLE_IRN = `${faker.string.alphanumeric(6).toUpperCase()}-${faker.string.alphanumeric(8).toUpperCase()}-${faker.date.recent().toISOString().split('T')[0].replace(/-/g, '')}`;
 export const SAMPLE_INVOICE_NUMBER = `INV-${faker.number.int({ min: 1000, max: 9999 })}`;
 export const SAMPLE_ISSUE_DATE = faker.date.recent({ days: 30 }).toISOString().split('T')[0];
+export const SAMPLE_ISSUE_TIME = faker.date.recent({ days: 30 }).toISOString().split('T')[1];
 export const SAMPLE_DUE_DATE = faker.date.soon({ days: 30 }).toISOString().split('T')[0];
 export const SAMPLE_SUPPLIER_TIN = `${faker.number.int({ min: 10000000, max: 99999999 })}-0001`;
 export const SAMPLE_BUYER_TIN = `${faker.number.int({ min: 10000000, max: 99999999 })}-0001`;
@@ -12,14 +14,23 @@ export const SAMPLE_AMOUNT = faker.number.float({ min: 10000, max: 500000, fract
 export const SAMPLE_VAT = parseFloat((SAMPLE_AMOUNT * 0.075).toFixed(2));
 export const SAMPLE_TOTAL = parseFloat((SAMPLE_AMOUNT + SAMPLE_VAT).toFixed(2));
 export const SAMPLE_PAYMENT_REF = `TRF-${faker.date.recent().toISOString().split('T')[0].replace(/-/g, '')}-${faker.string.alphanumeric(6).toUpperCase()}`;
+export const SAMPLE_BUSINESS_ID = faker.string.uuid()
+export const SAMPLE_INVOICE_KIND = `B2B`
 
 // ── Invoice body (shared across transform / validate / sign) ──────────────────
 
 export const SAMPLE_INVOICE_BODY = {
+  ...(JSON.parse(FIRS_SCHEMA_EXAMPLE)),
   irn: SAMPLE_IRN,
   issue_date: SAMPLE_ISSUE_DATE,
+
+  "issue_time": SAMPLE_ISSUE_TIME,
+
+  "payment_status": "PENDING",
   due_date: SAMPLE_DUE_DATE,
+  business_id: SAMPLE_BUSINESS_ID,
   invoice_type_code: '381',
+  invoice_kind: SAMPLE_INVOICE_KIND,
   document_currency_code: 'NGN',
   tax_currency_code: 'NGN',
   accounting_supplier_party: {
@@ -43,6 +54,11 @@ export const SAMPLE_INVOICE_BODY = {
   invoice_lines: [
     {
       id: '1',
+      hsn_code: "1282.10",
+      isic_code: "4100",
+      product_category: "Computer Hardware",
+      service_category: "Information Security",
+
       invoiced_quantity: faker.number.int({ min: 1, max: 10 }),
       line_extension_amount: SAMPLE_AMOUNT,
       item: {

@@ -7,6 +7,7 @@ import { InternalServerError, logger } from "../../../../@lib"
 import { FIRS_SCHEMA_EXAMPLE, generateDatestamp, generateIRN } from "./utils"
 import { FIRS_INVOICE_METADATA } from "../defaults"
 import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES, formatSchemaFields, generateTransformPrompt, getOptionalFields, getRequiredFields } from "../../../../@lib/adapters/llm/prompts"
+import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples"
 
 /* -----------------------------------------------------
  CLASS
@@ -569,7 +570,7 @@ Each invoice_line must contain:
 15. Descriptions and should have default values derived from product
  
 FIRS SCHEMA EXAMPLE (Use this only as an example for a valid invoice payload):
-${FIRS_SCHEMA_EXAMPLE}
+${SAMPLE_INVOICE_BODY}
 
 ## INPUT INVOICE DATA TO TRANSFORM:
 ${JSON.stringify(invoice, null, 2)}

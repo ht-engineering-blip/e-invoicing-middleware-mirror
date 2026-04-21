@@ -100,6 +100,8 @@ export function registerCompleteOutboundJob(): void {
         await chainNext(job, { qrCode, firsSignedData, irn });
 
       } catch (err: any) {
+         const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+        await outboundRepo.update(context.irn!, { status: OutboundInvoiceStatus.FAILED });
         await chainFail(job, err);
         throw err;
       }
