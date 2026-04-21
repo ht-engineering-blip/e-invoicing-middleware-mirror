@@ -114,7 +114,7 @@ export async function chainFail(
 
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${action}] failed: ${error.message}`,
+    `Step [${action}] failed: ${error.message =='undefined-undefined'? "": error.message} Please retry from failed step`,
     500
   );
 }
