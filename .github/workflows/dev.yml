@@ -50,13 +50,15 @@ jobs:
         run: |
           echo "=== Runner's public IP ==="
           curl -s https://api.ipify.org && echo
+          echo "=== Host value length (for sanity) ==="
+          echo -n "${{ secrets.EC2_HOST }}" | wc -c
           echo "=== DNS resolution ==="
-          getent hosts ${{ secrets.HOST }} || echo "DNS failed"
+          getent hosts ${{ secrets.EC2_HOST }} || echo "DNS failed"
           echo "=== TCP reachability ==="
-          nc -vz -w 10 ${{ secrets.HOST }} 22 || echo "Port 22 unreachable"
-          echo "=== Traceroute (first 10 hops) ==="
+          nc -vz -w 10 ${{ secrets.EC2_HOST }} 22 || echo "Port 22 unreachable"
+          echo "=== Traceroute ==="
           sudo apt-get install -y traceroute >/dev/null 2>&1 || true
-          traceroute -n -m 10 -w 3 ${{ secrets.HOST }} || true
+          traceroute -n -m 15 -w 3 ${{ secrets.EC2_HOST }} || true
 
       # Deploy to EC2
       - name: Deploy on EC2
