@@ -179,6 +179,7 @@ export class OutboundWorkflowService {
             return encryptedData;
 
         } catch (error) {
+            await this.outboundRepo.update(invoice.irn, { status: OutboundInvoiceStatus.FAILED });
             throw error;
         }
     }
