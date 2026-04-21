@@ -46,6 +46,18 @@ jobs:
           docker push \
           ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
 
+      - name: Debug SSH connectivity
+        run: |
+          echo "=== Runner's public IP ==="
+          curl -s https://api.ipify.org && echo
+          echo "=== DNS resolution ==="
+          getent hosts ${{ secrets.HOST }} || echo "DNS failed"
+          echo "=== TCP reachability ==="
+          nc -vz -w 10 ${{ secrets.HOST }} 22 || echo "Port 22 unreachable"
+          echo "=== Traceroute (first 10 hops) ==="
+          sudo apt-get install -y traceroute >/dev/null 2>&1 || true
+          traceroute -n -m 10 -w 3 ${{ secrets.HOST }} || true
+
       # Deploy to EC2
       - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.0.3
