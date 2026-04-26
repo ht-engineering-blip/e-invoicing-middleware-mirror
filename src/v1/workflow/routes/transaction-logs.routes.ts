@@ -365,19 +365,70 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
           return { success: false, error: 'Not authorized', statusCode: 403 };
         }
-        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
-          return { success: false, error: 'Only FAILED invoices can be retried', statusCode: 400 };
-        }
-
+        // Allow all retries, so we can handle duplicated events internally
+        /*         if ([ OutboundInvoiceStatus.FAILED, OutboundInvoiceStatus.CREATED, ].includes(invoice.status)) {
+                  return { success: false, error: 'Only FAILED invoices can be retried', statusCode: 400 };
+                }
+         */
         const startAction = body.fromStep;
         if (!ACTION_TO_JOB[startAction]) {
           return { success: false, error: `Unknown action: ${startAction}`, statusCode: 400 };
         }
 
-        // Default chain from the requested step onward
-        const defaultChain = ['transform', 'validate', 'sign', 'generate_irn', 'transmit', 'confirm_invoice_status', 'complete_outbound'];
-        const startIndex = defaultChain.indexOf(startAction);
-        const actions = startIndex >= 0 ? defaultChain.slice(startIndex) : [startAction];
+        // ── Recover original action chain from the invoice's existing webhook events ──
+        let originalActions: string[] | null = null;
+        let originalWebhookUrl = '';
+        const existingEventIds: string[] = invoice.webhookEvents ?? [];
+
+        if (existingEventIds.length > 0) {
+          // Find the earliest non-retry event (the original trigger for this invoice)
+          const priorEvents = await webhookEventRepo.find(
+            { eventId: { $in: existingEventIds }, 'metadata.source': { $ne: 'manual_retry' } },
+            0,
+            100
+          );
+          const originalEvent = priorEvents
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+
+          if (originalEvent) {
+            originalWebhookUrl = originalEvent.webhookUrl ?? '';
+
+            // Tier 1: matchedRoutes stored in metadata (webhook-triggered flows)
+            const matchedRoutes: any[] = (originalEvent as any).metadata?.matchedRoutes ?? [];
+            const fromRoutes = matchedRoutes.flatMap((r: any) => r.actions ?? []);
+            if (fromRoutes.length > 0) {
+              originalActions = fromRoutes;
+            } else if (originalEvent.jobIds?.length) {
+              // Tier 2: read the first Agenda job's data.actions
+              const { jobs } = await agenda.db.queryJobs({ ids: [originalEvent.jobIds[0]] });
+              const jobActions: string[] | undefined = (jobs[0] as any)?.data?.actions;
+              if (jobActions?.length) originalActions = jobActions;
+            }
+          }
+        }
+
+        // ── Build the retry action list from the recovered chain ──────────────────
+        let actions: string[];
+        if (originalActions?.length) {
+          const startIndex = originalActions.indexOf(startAction);
+          // If step is in the original chain, resume from there; otherwise run just that step
+          actions = startIndex >= 0 ? originalActions.slice(startIndex) : [startAction];
+        } else {
+          // No history recoverable — fall back to the canonical outbound chain order
+          const fallbackChain = [
+            'generate_irn',
+            'transform',
+            'validate',
+            'sign',
+            'transmit',
+            'confirm_invoice_status',
+            'complete_outbound',
+            'report_vat',
+            'sync_erp',
+          ];
+          const startIndex = fallbackChain.indexOf(startAction);
+          actions = startIndex >= 0 ? fallbackChain.slice(startIndex) : [startAction];
+        }
 
         // Create a retry webhook event to anchor the new chain
         const eventId = `wh_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -388,7 +439,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           payload: { irn: params.irn, fromStep: startAction },
           resourceId: params.irn,
           resourceType: 'invoice',
-          webhookUrl: '',
+          webhookUrl: originalWebhookUrl,
           maxRetries: 0,
           jobErrors: [],
           metadata: { source: 'manual_retry', fromStep: startAction },

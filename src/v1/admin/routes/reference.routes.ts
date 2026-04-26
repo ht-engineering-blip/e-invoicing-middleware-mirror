@@ -120,6 +120,13 @@ export const INVOICE_EVENT_TYPES = [
     category: 'erp',
     direction: 'inbound',
     description: 'Invoice has been voided in the ERP.',
+  }, 
+  {
+    id: 'erp.invoice.canceled',
+    name: 'ERP Invoice Canceled',
+    category: 'erp',
+    direction: 'inbound',
+    description: 'Invoice has been canceled in the ERP.',
   },
   {
     id: 'erp.payment.received',
