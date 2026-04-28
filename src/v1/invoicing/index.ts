@@ -5,9 +5,9 @@ import { requireAuth } from '../../middlewares';
 import invoiceMgmtRoutes from './routes/invoices.routes';
 
 export const invoicingRoutes = new Elysia({
-    prefix: '/invoicing', detail: { 
+    prefix: '/invoicing', detail: {
         security: [{ apiKey: [] }, {bearerToken: []}],
     }
 })
     .use(requireAuth)
-    .use(invoiceMgmtRoutes)
+    .use(invoiceMgmtRoutes);
