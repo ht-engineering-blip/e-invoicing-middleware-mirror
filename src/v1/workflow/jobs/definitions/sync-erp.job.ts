@@ -6,6 +6,7 @@ import { chainNext, chainFail } from '../chain';
 import type { JobChainData } from '../types';
 import { TenantService } from '../../../tenants/services/tenant.service';
 import type { IERPSyncConfig } from '../../../tenants/models/tenant.model';
+import { buildQrUrl } from '../../../../@lib';
 
 const tenantService = new TenantService();
 
@@ -141,10 +142,15 @@ export function registerSyncErpJob(): void {
 
         logger.debug("headers::", headers)
         // Render body from Handlebars template using the full job context as data
+      let qrCode = context.qrCode
+        if(context.qrCode && context.qrCode.indexOf("data:image/")>-1){
+          qrCode = buildQrUrl(context.irn, !!qrCode) as string
+        }
         const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
           ...context,
           tenantId,
           jobChainId,
+          qrCode
         });
 
         // Execute request with configurable timeout

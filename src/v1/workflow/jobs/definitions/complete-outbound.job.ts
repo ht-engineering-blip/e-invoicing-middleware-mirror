@@ -7,6 +7,7 @@ import { OutboundWorkflowService } from '../../services';
 import { TransformWorkflowService } from '../../services';
 import { OutboundInvoiceRepository } from '../../repos/outbound-invoice.repo';
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from '../../models';
+import { buildQrUrl } from '../../../../@lib';
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
@@ -78,7 +79,7 @@ export function registerCompleteOutboundJob(): void {
           if (!irn) throw new Error('IRN is required for complete-outbound finalize step');
 
           const result = await outboundService.generateQRCode(irn, businessId);
-          qrCode = result.qrCode;
+          qrCode = result.qrCode!;
           firsSignedData = result.data;
         }
 
@@ -97,10 +98,10 @@ export function registerCompleteOutboundJob(): void {
 
         logger.info('[Job:complete-outbound] Done — invoice DELIVERED', { jobChainId, irn });
 
-        await chainNext(job, { qrCode, firsSignedData, irn });
+        await chainNext(job, { qrCode: buildQrUrl(irn, !!qrCode) as string, firsSignedData, irn });
 
       } catch (err: any) {
-         const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+        const { tenantId, authContext, context, jobChainId } = job.attrs.data;
         await outboundRepo.update(context.irn!, { status: OutboundInvoiceStatus.FAILED });
         await chainFail(job, err);
         throw err;

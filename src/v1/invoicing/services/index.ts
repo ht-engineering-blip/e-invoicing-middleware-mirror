@@ -9,7 +9,7 @@ import { TenantService } from '../../tenants/services/tenant.service';
 import { OutboundInvoiceRepository } from '../../workflow/repos/outbound-invoice.repo';
 import { InboundInvoiceRepository } from '../../workflow/repos/inbound-invoice.repo';
 import { OutboundInvoiceStatus, type OutboundInvoiceDocument } from '../../workflow/models/outbound-invoice.model';
-import { AppError, NotFoundError, ValidationError } from '../../../@lib/errors';
+import { AppError, NotFoundError, ValidationError } from '../../../@lib';
 import { TransformWorkflowService } from '../../workflow/services/workflows/transform.service';
 import { InboundInvoiceStatus } from '../../workflow/models';
 import { AuthContext } from '../../../middlewares'; 

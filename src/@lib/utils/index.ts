@@ -4,6 +4,20 @@ export * from './validation';
 export * from './encryption';
 export * from './json';
 
+import { appConfig } from '../../@config';
+
+/**
+ * Build the public URL for an invoice's QR code image.
+ * Returns null when the invoice has no qrCode stored yet.
+ *
+ * Format: <API_BASE_URL>/v1/invoice/<IRN>/qr
+ */
+export function buildQrUrl(irn: string | undefined, hasQrCode: boolean): string | null {
+  if (!irn || !hasQrCode) return null;
+  const base = (appConfig?.apiBaseURL ?? '').replace(/\/$/, '');
+  return `${base}/v1/invoice/${encodeURIComponent(irn)}/qr`;
+}
+
 
 
 /**
