@@ -1,0 +1,144 @@
+name: Deploy Middleware to AWS
+
+on:
+  push:
+    branches:
+      - production
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-west-1
+  ECR_REPOSITORY: heirs-inv-middleware
+  EC2_TAG_NAME: heirs-inv-middleware
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        id: meta
+        run: |
+          SHA_TAG="${GITHUB_SHA::7}"
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "image_uri_sha=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "image_uri_latest=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_uri_sha }}
+            ${{ steps.meta.outputs.image_uri_latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Find middleware EC2 instance
+        id: find-ec2
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${{ env.EC2_TAG_NAME }}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          if [ "$INSTANCE_ID" = "None" ] || [ -z "$INSTANCE_ID" ]; then
+            echo "No running middleware EC2 found"
+            exit 1
+          fi
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Found instance: $INSTANCE_ID"
+
+      - name: Deploy via SSM run-command
+        id: ssm-deploy
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ steps.find-ec2.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy middleware ${{ steps.meta.outputs.sha_tag }}" \
+            --parameters 'commands=[
+              "set -e",
+              "cd /opt/middleware",
+              "aws ecr get-login-password --region '"${{ env.AWS_REGION }}"' | docker login --username AWS --password-stdin '"${{ steps.login-ecr.outputs.registry }}"'",
+              "docker compose pull",
+              "docker compose up -d --force-recreate",
+              "sleep 5",
+              "docker ps --filter name=middleware --format \"{{.Status}}\""
+            ]' \
+            --output text \
+            --query "Command.CommandId")
+
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          echo "Command sent: $COMMAND_ID"
+
+      - name: Wait for SSM command to complete
+        run: |
+          INSTANCE_ID="${{ steps.find-ec2.outputs.instance_id }}"
+          COMMAND_ID="${{ steps.ssm-deploy.outputs.command_id }}"
+
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "[$i] Status: $STATUS"
+
+            case "$STATUS" in
+              Success)
+                echo "Deploy succeeded"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardOutputContent" \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut)
+                echo "Deploy failed with status: $STATUS"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardErrorContent" \
+                  --output text
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          echo "Timeout waiting for SSM command"
+          exit 1
+
+      - name: Deploy summary
+        run: |
+          echo "Middleware deploy successful"
+          echo "Image: ${{ steps.meta.outputs.image_uri_sha }}"
+          echo "Instance: ${{ steps.find-ec2.outputs.instance_id }}"
