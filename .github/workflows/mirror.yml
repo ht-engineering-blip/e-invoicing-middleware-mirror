@@ -1,38 +1,32 @@
 name: Mirror to Deploy Repo
-# gboyega
 on:
   push:
     branches:
       - deploy
-
+      - production
 jobs:
   mirror:
     if: github.repository == 'HeirsHQ/e-invoicing-middleware'
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for complete mirroring
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Git
         run: |
           git config --local user.name "HT DevOps"
           git config --local user.email "platform-engineering@heirstechnologies.com"
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-
       - name: Add mirror remote
         run: |
           git remote add mirror git@github.com:${{ secrets.USERNAME }}/e-invoicing-middleware-mirror.git
-
       - name: Push to mirror
         run: |
-          git push mirror deploy:deploy --force
+          git push mirror ${{ github.ref_name }}:${{ github.ref_name }} --force
