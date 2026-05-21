@@ -5,7 +5,7 @@ export interface SecureInvoice {
   tenant_id: string;
   business_id: string;
   supplier_tin: string;
-  agent_tin?: string;
+  agent_tin: string;
   irn: string;
   [key: string]: unknown;
 }

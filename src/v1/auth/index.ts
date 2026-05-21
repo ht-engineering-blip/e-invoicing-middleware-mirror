@@ -1,24 +1,31 @@
 // Auth module routes
-import { Elysia, t } from 'elysia';
-import { requireAuth } from '../../middlewares/auth';
-import { logger } from '../../@lib';
-import { TenantService } from '../tenants/services/tenant.service';
-import { TeamMemberService } from '../tenants/services/team-member.service';
-import { hashString } from '../../@lib/utils/encryption';
-import { AppError, InternalServerError, UnauthorizedError, ValidationError } from '../../@lib/errors';
-import { jwtConfig } from '../../@config';
-import * as jwt from 'jsonwebtoken';
-import axios from 'axios';
-import { firsConfig } from '../../@config';
-import { FIRSService, FIRSUserInfoBusiness } from '../../@lib/adapters/firs/firs.service';
-import { AuthService } from './services';
- 
+import { Elysia, t } from "elysia";
+import { requireAuth } from "../../middlewares/auth";
+import { logger } from "../../@lib";
+import { TenantService } from "../tenants/services/tenant.service";
+import { TeamMemberService } from "../tenants/services/team-member.service";
+import { hashString } from "../../@lib/utils/encryption";
+import {
+  AppError,
+  InternalServerError,
+  UnauthorizedError,
+  ValidationError,
+} from "../../@lib/errors";
+import { jwtConfig } from "../../@config";
+import * as jwt from "jsonwebtoken";
+import axios from "axios";
+import { firsConfig } from "../../@config";
+import {
+  FIRSService,
+  FIRSUserInfoBusiness,
+} from "../../@lib/adapters/firs/firs.service";
+import { AuthService } from "./services";
 
 /**
  * Login Request Validator
  */
 const loginValidator = t.Object({
-  email: t.String({ format: 'email' }),
+  email: t.String({ format: "email" }),
   password: t.String({ minLength: 6 }),
 });
 
@@ -33,7 +40,7 @@ const passwordValidator = t.Object({
  * FIRS OAuth Request Validator
  */
 const firsOAuthValidator = t.Object({
-  email: t.String({ format: 'email' }),
+  email: t.String({ format: "email" }),
   password: t.String({ minLength: 1 }),
   mock: t.Optional(t.Boolean()),
 });
@@ -42,7 +49,7 @@ const firsOAuthValidator = t.Object({
  * Forgot Password Request Validator
  */
 const forgotPasswordValidator = t.Object({
-  email: t.String({ format: 'email' }),
+  email: t.String({ format: "email" }),
 });
 
 /**
@@ -57,26 +64,26 @@ const resetPasswordValidator = t.Object({
  * Auth Routes (public)
  */
 const authRoutes = new Elysia()
-  .decorate('tenantService', new TenantService())
-  .decorate('firsService', new FIRSService())
-  .decorate('authService', new AuthService())
-  .decorate('teamMemberService', new TeamMemberService())
+  .decorate("tenantService", new TenantService())
+  .decorate("firsService", new FIRSService())
+  .decorate("authService", new AuthService())
+  .decorate("teamMemberService", new TeamMemberService())
 
   /**
    * POST /auth
    * Login with email and password to get JWT token
    */
   .post(
-    '/',
+    "/",
     async ({ body, tenantService, authService }) => {
       try {
-        logger.info('Login attempt', { email: body.email });
+        logger.info("Login attempt", { email: body.email });
 
         // Find tenant by contact email
         const tenant = await tenantService.getTenantByEmail(body.email);
-     
+
         if (!tenant) {
-          throw new UnauthorizedError('Invalid credentials');
+          throw new UnauthorizedError("Invalid credentials");
         }
 
         // Verify password
@@ -84,30 +91,30 @@ const authRoutes = new Elysia()
         const storedPasswordHash = (tenant as any)?.password;
 
         if (!storedPasswordHash || passwordHash !== storedPasswordHash) {
-          throw new UnauthorizedError('Invalid credentials');
+          throw new UnauthorizedError("Invalid credentials");
         }
 
-        console.log({tenant})
+        console.log({ tenant });
         // Check if tenant is active
-      /*   if (tenant.status !== 'active') {
+        /*   if (tenant.status !== 'active') {
           throw new UnauthorizedError('Tenant account is not active');
         } */
 
         // Generate JWT token
-        let token = await authService.createAuthToken(tenant as any)
+        let token = await authService.createAuthToken(tenant as any);
 
-        logger.info('Login successful', {
+        logger.info("Login successful", {
           tenantId: tenant._id,
           email: body.email,
         });
 
         return {
           success: true,
-          message: 'Login successful',
+          message: "Login successful",
           data: {
             token,
-            tokenType: 'Bearer',
-            expiresIn: jwtConfig?.expiry || '24h',
+            tokenType: "Bearer",
+            expiresIn: jwtConfig?.expiry || "24h",
             tenant: {
               id: tenant.tenantId,
               businessName: tenant.businessName,
@@ -117,10 +124,13 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        logger.error('Login failed', { email: body.email, error: error.message });
+        logger.error("Login failed", {
+          email: body.email,
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Login failed',
+          error: error.message || "Login failed",
           statusCode: error.statusCode || 401,
         };
       }
@@ -128,11 +138,11 @@ const authRoutes = new Elysia()
     {
       body: loginValidator,
       detail: {
-        tags: ['Authentication'],
-        summary: 'Login',
-        description: 'Login with email and password to receive a JWT token',
+        tags: ["Authentication"],
+        summary: "Login",
+        description: "Login with email and password to receive a JWT token",
       },
-    }
+    },
   )
 
   /**
@@ -140,14 +150,17 @@ const authRoutes = new Elysia()
    * Login as a team member with email and password
    */
   .post(
-    '/team-member',
+    "/team-member",
     async ({ body, teamMemberService }) => {
       try {
-        logger.info('Team member login attempt', { email: body.email });
+        logger.info("Team member login attempt", { email: body.email });
 
-        const result = await teamMemberService.loginTeamMember(body.email, body.password);
+        const result = await teamMemberService.loginTeamMember(
+          body.email,
+          body.password,
+        );
 
-        logger.info('Team member login successful', {
+        logger.info("Team member login successful", {
           tenantId: result.member.tenantId,
           userId: result.member.userId,
           email: body.email,
@@ -155,11 +168,11 @@ const authRoutes = new Elysia()
 
         return {
           success: true,
-          message: 'Login successful',
+          message: "Login successful",
           data: {
             token: result.authToken,
-            tokenType: 'Bearer',
-            expiresIn: jwtConfig?.expiry || '24h',
+            tokenType: "Bearer",
+            expiresIn: jwtConfig?.expiry || "24h",
             user: {
               userId: result.member.userId,
               tenantId: result.member.tenantId,
@@ -171,10 +184,13 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        logger.error('Team member login failed', { email: body.email, error: error.message });
+        logger.error("Team member login failed", {
+          email: body.email,
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Login failed',
+          error: error.message || "Login failed",
           statusCode: error.statusCode || 401,
         };
       }
@@ -182,11 +198,11 @@ const authRoutes = new Elysia()
     {
       body: loginValidator,
       detail: {
-        tags: ['Authentication'],
-        summary: 'Team Member Login',
-        description: 'Login as a team member with email and password',
+        tags: ["Authentication"],
+        summary: "Team Member Login",
+        description: "Login as a team member with email and password",
       },
-    }
+    },
   )
 
   /**
@@ -194,10 +210,10 @@ const authRoutes = new Elysia()
    * Authenticate with FIRS and sync credentials
    */
   .post(
-    '/oauth/firs',
+    "/oauth/firs",
     async ({ body, tenantService, firsService }) => {
       try {
-        logger.info('FIRS OAuth authentication request', {
+        logger.info("FIRS OAuth authentication request", {
           email: body.email,
           mock: body.mock,
         });
@@ -208,17 +224,17 @@ const authRoutes = new Elysia()
         if (body.mock) {
           firsResult = {
             data: {
-              id: 'a6de8bd8-43be-47b9-80a5-988ee3fb9cea',
-              reference: 'enim-itaque',
-              name: 'Test Business Ltd',
-              tin: '61392352-1056',
-              sector: 'Technology',
-              annual_turnover: 'above 100million',
+              id: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+              reference: "enim-itaque",
+              name: "Test Business Ltd",
+              tin: "61392352-1056",
+              sector: "Technology",
+              annual_turnover: "above 100million",
               support_peppol: true,
               is_realtime_reporting: true,
-              notification_channels: 'email',
-              erp_system: 'SAP',
-              irn_template: '{{invoice_id}}-34A843BE-{{YYYYMMDD}}',
+              notification_channels: "email",
+              erp_system: "SAP",
+              irn_template: "{{invoice_id}}-34A843BE-{{YYYYMMDD}}",
               is_active: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
@@ -229,85 +245,92 @@ const authRoutes = new Elysia()
           let credentials = {
             email: body.email,
             password: body.password,
-          }
+          };
           try {
-            firsResult = await firsService.authenticate(credentials) as { data: FIRSUserInfoBusiness };
-
+            firsResult = (await firsService.authenticate(credentials)) as {
+              data: FIRSUserInfoBusiness;
+            };
           } catch (firsError: any) {
-            logger.error('FIRS API error', {
+            logger.error("FIRS API error", {
               status: firsError.message.response?.data?.code,
               message: firsError.message.response?.data?.data?.message,
             });
             throw new UnauthorizedError(
-              firsError.message.response?.data?.data?.message || firsError.response?.data?.message || 'FIRS authentication failed'
+              firsError.message.response?.data?.data?.message ||
+                firsError.response?.data?.message ||
+                "FIRS authentication failed",
             );
           }
         }
 
-        logger.info('FIRS OAuth successful', {
+        logger.info("FIRS OAuth successful", {
           businessName: firsResult.data.name,
           tin: firsResult.data.tin,
         });
 
         // Find tenant by TIN or email
-        const tenant = await tenantService.getTenantByTinOrEmail(firsResult.data.tin);
+        const tenant = await tenantService.getTenantByTinOrEmail(
+          firsResult.data.tin,
+        );
 
         // Update FIRS credentials if tenant exists
         if (tenant) {
           try {
             // Get service id from irn template
-            let serviceId = firsResult.data.irn_template.split("-")[1]
+            let serviceId = firsResult.data.irn_template.split("-")[1];
             const credentials = {
               clientId: firsResult.data.id,
-              serviceId
+              serviceId,
             };
 
-            await tenantService.updateFIRSCredentials(tenant.tenantId, credentials);
+            await tenantService.updateFIRSCredentials(
+              tenant.tenantId,
+              credentials,
+            );
 
             // Update tenant metadata with FIRS info
             await tenantService.updateTenant(tenant.tenantId, {
               businessName: firsResult.data.name,
             });
 
-            logger.info('FIRS credentials updated for existing tenant', {
+            logger.info("FIRS credentials updated for existing tenant", {
               tenantId: tenant.tenantId,
             });
           } catch (updateError: any) {
-            logger.warn('Failed to update FIRS credentials', {
+            logger.warn("Failed to update FIRS credentials", {
               error: updateError.message,
             });
           }
         } else {
           return {
             success: false,
-            error: 'Your TIN have not been registered on our system.',
+            error: "Your TIN have not been registered on our system.",
             statusCode: 400,
           };
         }
 
-
-         // Generate JWT token
+        // Generate JWT token
         const tokenPayload = {
           tenantId: tenant.tenantId,
           businessId: (tenant as any).businessId || tenant.tenantId,
           email: tenant.contactEmail,
           businessName: tenant.businessName,
-          type: 'tenant',
+          type: "tenant",
         };
 
-        const jwtSecret = jwtConfig?.secret || 'default-secret-change-in-production';
-        const jwtExpiry = jwtConfig?.expiry || '24h';
-        const jwtAlgorithm = (jwtConfig?.algorithm || 'HS256') as jwt.Algorithm;
+        const jwtSecret =
+          jwtConfig?.secret || "default-secret-change-in-production";
+        const jwtExpiry = jwtConfig?.expiry || "24h";
+        const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
 
         const token = jwt.sign(tokenPayload, jwtSecret, {
           expiresIn: jwtExpiry as any,
           algorithm: jwtAlgorithm,
         });
 
-
         return {
           success: true,
-          message: 'FIRS authentication successful',
+          message: "FIRS authentication successful",
           data: {
             business: {
               id: firsResult.data.id,
@@ -322,15 +345,15 @@ const authRoutes = new Elysia()
             tenantExists: !!tenant,
             tenantId: tenant?.tenantId,
             message: tenant
-              ? 'FIRS credentials synced with existing tenant'
-              : 'FIRS authenticated - tenant can be created',
+              ? "FIRS credentials synced with existing tenant"
+              : "FIRS authenticated - tenant can be created",
           },
         };
       } catch (error: any) {
-        logger.error('FIRS OAuth failed', { error: error.message });
+        logger.error("FIRS OAuth failed", { error: error.message });
         return {
           success: false,
-          error: error.message || 'FIRS authentication failed',
+          error: error.message || "FIRS authentication failed",
           statusCode: error.statusCode || 500,
         };
       }
@@ -338,11 +361,12 @@ const authRoutes = new Elysia()
     {
       body: firsOAuthValidator,
       detail: {
-        tags: ['Authentication'],
-        summary: 'FIRS OAuth',
-        description: 'Authenticate with FIRS and optionally sync credentials to existing tenant',
+        tags: ["Authentication"],
+        summary: "FIRS OAuth",
+        description:
+          "Authenticate with FIRS and optionally sync credentials to existing tenant",
       },
-    }
+    },
   )
 
   /**
@@ -350,10 +374,10 @@ const authRoutes = new Elysia()
    * Request password reset email
    */
   .post(
-    '/forgot-password',
+    "/forgot-password",
     async ({ body, authService }) => {
       try {
-        logger.info('Password reset requested', { email: body.email });
+        logger.info("Password reset requested", { email: body.email });
 
         const result = await authService.requestPasswordReset(body.email);
 
@@ -362,10 +386,13 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
-        logger.error('Password reset request failed', { email: body.email, error: error.message });
+        logger.error("Password reset request failed", {
+          email: body.email,
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to process password reset request',
+          error: error.message || "Failed to process password reset request",
           statusCode: error.statusCode || 500,
         };
       }
@@ -373,11 +400,11 @@ const authRoutes = new Elysia()
     {
       body: forgotPasswordValidator,
       detail: {
-        tags: ['Authentication'],
-        summary: 'Forgot Password',
-        description: 'Request a password reset email',
+        tags: ["Authentication"],
+        summary: "Forgot Password",
+        description: "Request a password reset email",
       },
-    }
+    },
   )
 
   /**
@@ -385,22 +412,25 @@ const authRoutes = new Elysia()
    * Reset password using token from email
    */
   .post(
-    '/reset-password',
+    "/reset-password",
     async ({ body, authService }) => {
       try {
-        logger.info('Password reset attempt');
+        logger.info("Password reset attempt");
 
-        const result = await authService.resetPassword(body.token, body.password);
+        const result = await authService.resetPassword(
+          body.token,
+          body.password,
+        );
 
         return {
           success: true,
           message: result.message,
         };
       } catch (error: any) {
-        logger.error('Password reset failed', { error: error.message });
+        logger.error("Password reset failed", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Failed to reset password',
+          error: error.message || "Failed to reset password",
           statusCode: error.statusCode || 400,
         };
       }
@@ -408,11 +438,11 @@ const authRoutes = new Elysia()
     {
       body: resetPasswordValidator,
       detail: {
-        tags: ['Authentication'],
-        summary: 'Reset Password',
-        description: 'Reset password using the token received via email',
+        tags: ["Authentication"],
+        summary: "Reset Password",
+        description: "Reset password using the token received via email",
       },
-    }
+    },
   )
 
   /**
@@ -420,7 +450,7 @@ const authRoutes = new Elysia()
    * Validate if a reset token is still valid
    */
   .get(
-    '/validate-reset-token/:token',
+    "/validate-reset-token/:token",
     async ({ params, authService }) => {
       try {
         const result = await authService.validateResetToken(params.token);
@@ -428,7 +458,7 @@ const authRoutes = new Elysia()
         if (!result.valid) {
           return {
             success: false,
-            error: 'Invalid or expired reset token',
+            error: "Invalid or expired reset token",
             statusCode: 400,
           };
         }
@@ -443,7 +473,7 @@ const authRoutes = new Elysia()
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'Failed to validate token',
+          error: error.message || "Failed to validate token",
           statusCode: error.statusCode || 400,
         };
       }
@@ -453,11 +483,11 @@ const authRoutes = new Elysia()
         token: t.String(),
       }),
       detail: {
-        tags: ['Authentication'],
-        summary: 'Validate Reset Token',
-        description: 'Check if a password reset token is still valid',
+        tags: ["Authentication"],
+        summary: "Validate Reset Token",
+        description: "Check if a password reset token is still valid",
       },
-    }
+    },
   );
 
 /**
@@ -465,37 +495,40 @@ const authRoutes = new Elysia()
  */
 const protectedAuthRoutes = new Elysia()
   .use(requireAuth)
-  .decorate('tenantService', new TenantService())
-  .decorate('authService', new AuthService())
-  .decorate('teamMemberService', new TeamMemberService())
+  .decorate("tenantService", new TenantService())
+  .decorate("authService", new AuthService())
+  .decorate("teamMemberService", new TeamMemberService())
 
   /**
    * GET /auth/me
    * Get current authenticated user details (tenant or team member)
    */
   .get(
-    '/me',
+    "/me",
     async ({ auth, tenantService, teamMemberService }) => {
       try {
         if (!auth || !auth.tenantId) {
-          throw new UnauthorizedError('Not authenticated');
+          throw new UnauthorizedError("Not authenticated");
         }
 
-        console.log(auth)
+        console.log(auth);
         // Handle team member authentication
         if (auth.isTeamMember && auth.userId) {
-          logger.info('Fetching team member details', {
+          logger.info("Fetching team member details", {
             tenantId: auth.tenantId,
-            userId: auth.userId
+            userId: auth.userId,
           });
 
-          const member = await teamMemberService.getTeamMember(auth.tenantId, auth.userId);
+          const member = await teamMemberService.getTeamMember(
+            auth.tenantId,
+            auth.userId,
+          );
           const tenant = await tenantService.getTenantById(auth.tenantId);
 
           return {
             success: true,
             data: {
-              type: 'team_member',
+              type: "team_member",
               userId: member.userId,
               tenantId: member.tenantId,
               email: member.email,
@@ -515,7 +548,7 @@ const protectedAuthRoutes = new Elysia()
         }
 
         // Handle regular tenant authentication
-        logger.info('Fetching tenant details', { tenantId: auth.tenantId });
+        logger.info("Fetching tenant details", { tenantId: auth.tenantId });
 
         // Get full tenant details
         const tenant = await tenantService.getTenantById(auth.tenantId);
@@ -525,7 +558,7 @@ const protectedAuthRoutes = new Elysia()
         try {
           onboarding = await tenantService.getOnboardingStatus(auth.tenantId);
         } catch (onboardingError) {
-          logger.warn('Could not fetch onboarding status', {
+          logger.warn("Could not fetch onboarding status", {
             tenantId: auth.tenantId,
           });
         }
@@ -535,18 +568,18 @@ const protectedAuthRoutes = new Elysia()
         if (onboarding?.steps) {
           const steps = onboarding.steps;
           const completedSteps = Object.values(steps).filter(
-            (step: any) => step.completed
+            (step: any) => step.completed,
           ).length;
           const totalSteps = Object.keys(steps).length;
           onboardingProgress = Math.round((completedSteps / totalSteps) * 100);
         }
 
-        let showMeta = {...(tenant.metadata || {})}
-        delete showMeta.webhookSecretHash
+        let showMeta = { ...(tenant.metadata || {}) };
+        delete showMeta.webhookSecretHash;
         return {
           success: true,
           data: {
-            type: 'tenant',
+            type: "tenant",
             id: tenant.tenantId,
             businessName: tenant.businessName,
             tin: (tenant as any).tin,
@@ -569,36 +602,36 @@ const protectedAuthRoutes = new Elysia()
             },
             onboarding: onboarding
               ? {
-                status: onboarding.status,
-                progress: onboardingProgress,
-                steps: onboarding.steps,
-                approvedAt: onboarding.approvedAt,
-              }
+                  status: onboarding.status,
+                  progress: onboardingProgress,
+                  steps: onboarding.steps,
+                  approvedAt: onboarding.approvedAt,
+                }
               : null,
-              metadata: showMeta
+            metadata: showMeta,
           },
         };
       } catch (error: any) {
-        logger.error('Failed to fetch user details', {
+        logger.error("Failed to fetch user details", {
           tenantId: auth?.tenantId,
           userId: auth?.userId,
           error: error.message,
         });
         return {
           success: false,
-          error: error.message || 'Failed to fetch user details',
+          error: error.message || "Failed to fetch user details",
           statusCode: error.statusCode || 500,
         };
       }
     },
     {
       detail: {
-        tags: ['Authentication', 'Tenant'],
+        tags: ["Authentication", "Tenant"],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Me',
-        description: 'Get authenticated user details (tenant or team member)',
+        summary: "Me",
+        description: "Get authenticated user details (tenant or team member)",
       },
-    }
+    },
   )
 
   /**
@@ -606,54 +639,64 @@ const protectedAuthRoutes = new Elysia()
    * Set Account Password
    */
   .post(
-    '/set-password',
+    "/set-password",
     async ({ auth, body, tenantService, authService }) => {
       try {
         if (!auth || !auth.tenantId) {
-          throw new UnauthorizedError('Not authenticated');
+          throw new UnauthorizedError("Not authenticated");
         }
-        let {password}=body
-       // Store hashed password  
-       let parsedPassword = hashString(password)
-       let updatedTenant = await tenantService.updateTenant(auth.tenantId, {password: parsedPassword})
-       if(updatedTenant){
-        let authToken = await authService.createAuthToken(updatedTenant as any)
- 
-         // Automatically update onboarding step - mark Registration as complete
+        let { password } = body;
+        // Store hashed password
+        let parsedPassword = await hashString(password);
+        let updatedTenant = await tenantService.updateTenant(auth.tenantId, {
+          password: parsedPassword,
+        });
+        if (updatedTenant) {
+          let authToken = await authService.createAuthToken(
+            updatedTenant as any,
+          );
+
+          // Automatically update onboarding step - mark Registration as complete
           try {
-            const onboarding = await tenantService.getOnboardingStatus(updatedTenant.tenantId);
+            const onboarding = await tenantService.getOnboardingStatus(
+              updatedTenant.tenantId,
+            );
             if (onboarding && !onboarding.steps?.registration?.completed) {
-              await tenantService.completeOnboardingStep(updatedTenant.tenantId, 'registration');
+              await tenantService.completeOnboardingStep(
+                updatedTenant.tenantId,
+                "registration",
+              );
 
               // Update status to in_progress if still pending
-              if (onboarding.status === 'pending') {
+              if (onboarding.status === "pending") {
                 await tenantService.updateOnboarding(updatedTenant.tenantId, {
-                  status: 'in_progress',
+                  status: "in_progress",
                 });
               }
             }
           } catch (onboardingError) {
             // Don't fail the main operation if onboarding update fails
-            logger.warn('Failed to update onboarding status:', onboardingError);
+            logger.warn("Failed to update onboarding status:", onboardingError);
           }
 
-         return {
-          success: true,
-          message: 'Account password set successfully',
-          data: {
-            token: authToken,
-            tokenType: 'Bearer',
-            expiresIn: jwtConfig?.expiry || '24h',
-          },
-        };
-       }else {
-        throw new InternalServerError("Unable to set your password, Please try again.")
-       }
-      
+          return {
+            success: true,
+            message: "Account password set successfully",
+            data: {
+              token: authToken,
+              tokenType: "Bearer",
+              expiresIn: jwtConfig?.expiry || "24h",
+            },
+          };
+        } else {
+          throw new InternalServerError(
+            "Unable to set your password, Please try again.",
+          );
+        }
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'Token refresh failed',
+          error: error.message || "Token refresh failed",
           statusCode: error.statusCode || 401,
         };
       }
@@ -661,23 +704,23 @@ const protectedAuthRoutes = new Elysia()
     {
       body: passwordValidator,
       detail: {
-        tags: ['Authentication', 'Tenant'],
+        tags: ["Authentication", "Tenant"],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Set Password',
-        description: 'Set password using temporary auth token',
+        summary: "Set Password",
+        description: "Set password using temporary auth token",
       },
-    }
+    },
   )
   /**
    * POST /auth/refresh
    * Refresh JWT token
    */
   .post(
-    '/refresh',
+    "/refresh",
     async ({ auth }) => {
       try {
         if (!auth || !auth.tenantId) {
-          throw new UnauthorizedError('Not authenticated');
+          throw new UnauthorizedError("Not authenticated");
         }
 
         // Generate new token with same payload
@@ -686,50 +729,51 @@ const protectedAuthRoutes = new Elysia()
           businessId: auth.businessId,
           email: (auth as any).email,
           businessName: (auth as any).businessName,
-          type: 'tenant',
+          type: "tenant",
         };
 
-        const jwtSecret = jwtConfig?.secret || 'default-secret-change-in-production';
-        const jwtExpiry = jwtConfig?.expiry || '24h';
-        const jwtAlgorithm = (jwtConfig?.algorithm || 'HS256') as jwt.Algorithm;
+        const jwtSecret =
+          jwtConfig?.secret || "default-secret-change-in-production";
+        const jwtExpiry = jwtConfig?.expiry || "24h";
+        const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
 
         const token = jwt.sign(tokenPayload, jwtSecret, {
           expiresIn: jwtExpiry as any,
           algorithm: jwtAlgorithm,
         });
 
-        logger.info('Token refreshed', { tenantId: auth.tenantId });
+        logger.info("Token refreshed", { tenantId: auth.tenantId });
 
         return {
           success: true,
-          message: 'Token refreshed successfully',
+          message: "Token refreshed successfully",
           data: {
             token,
-            tokenType: 'Bearer',
-            expiresIn: jwtConfig?.expiry || '24h',
+            tokenType: "Bearer",
+            expiresIn: jwtConfig?.expiry || "24h",
           },
         };
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'Token refresh failed',
+          error: error.message || "Token refresh failed",
           statusCode: error.statusCode || 401,
         };
       }
     },
     {
       detail: {
-        tags: ['Authentication'],
+        tags: ["Authentication"],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Refresh token',
-        description: 'Refresh JWT token to extend session',
+        summary: "Refresh token",
+        description: "Refresh JWT token to extend session",
       },
-    }
-  )
+    },
+  );
 
 /**
  * Auth Module Routes
  */
-export const authModuleRoutes = new Elysia({ prefix: '/auth' })
+export const authModuleRoutes = new Elysia({ prefix: "/auth" })
   .use(authRoutes)
   .use(protectedAuthRoutes);

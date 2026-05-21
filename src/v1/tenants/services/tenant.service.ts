@@ -3,19 +3,41 @@
  * Business logic for tenant lifecycle management
  */
 
-import { TenantRepository } from '../repos/tenant.repo';
-import { ApiKeyRepository } from '../repos/api-key.repo';
-import { TenantOnboardingRepository } from '../repos/tenant-onboarding.repo';
-import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
-import { encryptSensitiveData, decryptSensitiveData } from '../../../@lib/crypto';
-import { hashString, generateRandomString } from '../../../@lib/utils/encryption';
-import { AppError, NotFoundError, ValidationError, ConflictError } from '../../../@lib/errors';
-import { logger } from '../../../@lib';
-import { type TenantDocument, TenantStatus, OnboardingStatus, ApiKeyDocument, ApiKeyStatus, TenantOnboardingDocument } from '../models';
-import { appConfig } from '../../../@config';
-import { AuditEventSeverity, AuditEventType } from '../../audit/models';
-import { MailContent, NodeMailerClient, withTemplate } from '../../../@lib/messaging';
-import { SchemaSourceType } from '../../workflow/models';
+import { TenantRepository } from "../repos/tenant.repo";
+import { ApiKeyRepository } from "../repos/api-key.repo";
+import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
+import { AuditLogRepository } from "../../audit/repos/audit-log.repo";
+import {
+  encryptSensitiveData,
+  decryptSensitiveData,
+} from "../../../@lib/crypto";
+import {
+  hashString,
+  generateRandomString,
+} from "../../../@lib/utils/encryption";
+import {
+  AppError,
+  NotFoundError,
+  ValidationError,
+  ConflictError,
+} from "../../../@lib/errors";
+import { logger } from "../../../@lib";
+import {
+  type TenantDocument,
+  TenantStatus,
+  OnboardingStatus,
+  ApiKeyDocument,
+  ApiKeyStatus,
+  TenantOnboardingDocument,
+} from "../models";
+import { appConfig } from "../../../@config";
+import { AuditEventSeverity, AuditEventType } from "../../audit/models";
+import {
+  MailContent,
+  NodeMailerClient,
+  withTemplate,
+} from "../../../@lib/messaging";
+import { SchemaSourceType } from "../../workflow/models";
 
 export interface CreateTenantInput {
   businessName: string;
@@ -34,7 +56,7 @@ export interface UpdateTenantInput {
   businessName?: string;
   contactEmail?: string;
   password?: string;
-  erpSystem?: SchemaSourceType |string;
+  erpSystem?: SchemaSourceType | string;
   contactPhone?: string;
   erpWebhookUrl?: string;
   erpApiKey?: string;
@@ -67,7 +89,7 @@ export interface CreateApiKeyInput {
 }
 
 export interface UpdateOnboardingInput {
-  status?: 'pending' | 'in_progress' | 'testing' | 'active' | 'rejected';
+  status?: "pending" | "in_progress" | "testing" | "active" | "rejected";
   notes?: string;
   rejectionReason?: string;
 }
@@ -76,20 +98,20 @@ export interface ERPSyncConfigInput {
   name: string;
   description?: string;
   enabled: boolean;
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   baseUrl: string;
   endpoint: string;
   headers?: Record<string, string>;
   queryParams?: Record<string, string>;
   bodyTemplate?: string;
   authentication?: {
-    type: 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2';
+    type: "none" | "basic" | "bearer" | "api-key" | "oauth2";
     username?: string;
     password?: string;
     token?: string;
     apiKeyName?: string;
     apiKeyValue?: string;
-    apiKeyLocation?: 'header' | 'query';
+    apiKeyLocation?: "header" | "query";
   };
   timeout?: number;
   retryConfig?: {
@@ -113,9 +135,9 @@ export class TenantService {
     this.onboardingRepo = new TenantOnboardingRepository();
     this.auditRepo = new AuditLogRepository();
   }
-  /* 
-   *Notify Tenant 
-  */
+  /*
+   *Notify Tenant
+   */
   async notifyTenant(mail: MailContent, tenant: TenantDocument): Promise<any> {
     // Send customer email to activate their account.
     let mailClient = new NodeMailerClient();
@@ -134,7 +156,7 @@ export class TenantService {
     // Check if TIN already exists
     const existingTenant = await this.tenantRepo.findByTIN(input.tin);
     if (existingTenant) {
-      throw new ConflictError('Tenant with this TIN already exists');
+      throw new ConflictError("Tenant with this TIN already exists");
     }
 
     // Generate business ID
@@ -150,7 +172,7 @@ export class TenantService {
       contactPhone: input.contactPhone,
       expectedVolume: input.expectedVolume,
       status: TenantStatus.ONBOARDING,
-      config: { erpSystem: input.erpSystem, }
+      config: { erpSystem: input.erpSystem },
     });
 
     // Create onboarding record
@@ -164,7 +186,7 @@ export class TenantService {
         testing: { completed: false },
         goLive: { completed: false },
       },
-      createdBy: 'system',
+      createdBy: "system",
     });
 
     // Audit log
@@ -175,12 +197,12 @@ export class TenantService {
       description: `Tenant ${tenant.businessName} created`,
       severity: AuditEventSeverity.INFO,
       actor: {
-        actorType: 'system',
-        actorId: 'system',
-        actorName: 'System',
+        actorType: "system",
+        actorId: "system",
+        actorName: "System",
       },
       resource: {
-        resourceType: 'tenant',
+        resourceType: "tenant",
         resourceId: tenant.tenantId,
         resourceName: tenant.businessName,
       },
@@ -198,10 +220,10 @@ export class TenantService {
    * Get tenant by email or tin
    */
   async getTenantByTinOrEmail(tinOrEmail: string): Promise<TenantDocument> {
-    const tenant = await this.tenantRepo.findOne({search: tinOrEmail});
-    console.log({tenant})
+    const tenant = await this.tenantRepo.findOne({ search: tinOrEmail });
+    console.log({ tenant });
     if (!tenant) {
-      throw new NotFoundError('Tenant');
+      throw new NotFoundError("Tenant");
     }
     return tenant;
   }
@@ -209,10 +231,15 @@ export class TenantService {
   /**
    * Get tenant by ID
    */
-  async getTenantById(tenantId: string, includeOnboarding: boolean = false): Promise<TenantDocument & { onboarding?: any }> {
-    const tenant = await this.tenantRepo.findOne({ tenantId: { _eq: tenantId } });
+  async getTenantById(
+    tenantId: string,
+    includeOnboarding: boolean = false,
+  ): Promise<TenantDocument & { onboarding?: any }> {
+    const tenant = await this.tenantRepo.findOne({
+      tenantId: { _eq: tenantId },
+    });
     if (!tenant) {
-      throw new NotFoundError('Tenant');
+      throw new NotFoundError("Tenant");
     }
 
     if (includeOnboarding) {
@@ -231,15 +258,21 @@ export class TenantService {
   /**
    * Get tenant by Email
    */
-  async getTenantByEmail(contactEmail: string, includeOnboarding: boolean = false): Promise<TenantDocument & { onboarding?: any }> {
-    const tenant = await this.tenantRepo.findOne({ contactEmail: { _iexact: contactEmail } });
+  async getTenantByEmail(
+    contactEmail: string,
+    includeOnboarding: boolean = false,
+  ): Promise<TenantDocument & { onboarding?: any }> {
+    const tenant = await this.tenantRepo.findOne({
+      contactEmail: { _iexact: contactEmail },
+    });
     if (!tenant) {
-      throw new NotFoundError('Tenant');
+      throw new NotFoundError("Tenant");
     }
 
     if (includeOnboarding) {
       try {
-        const onboarding = await this.onboardingRepo.findByTenantId(contactEmail);
+        const onboarding =
+          await this.onboardingRepo.findByTenantId(contactEmail);
         return { ...tenant.toObject(), onboarding } as any;
       } catch (error) {
         // If onboarding not found, return tenant without it
@@ -256,7 +289,7 @@ export class TenantService {
   async getTenantByBusinessId(businessId: string): Promise<TenantDocument> {
     const tenant = await this.tenantRepo.findByBusinessId(businessId);
     if (!tenant) {
-      throw new NotFoundError('Tenant');
+      throw new NotFoundError("Tenant");
     }
     return tenant;
   }
@@ -270,7 +303,10 @@ export class TenantService {
     skip?: number;
     limit?: number;
     includeOnboarding?: boolean;
-  }): Promise<{ tenants: Array<TenantDocument & { onboarding?: any }>; total: number }> {
+  }): Promise<{
+    tenants: Array<TenantDocument & { onboarding?: any }>;
+    total: number;
+  }> {
     const skip = filters?.skip || 0;
     const limit = filters?.limit || 20;
 
@@ -286,13 +322,15 @@ export class TenantService {
       const tenantsWithOnboarding = await Promise.all(
         tenants.map(async (tenant) => {
           try {
-            const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+            const onboarding = await this.onboardingRepo.findByTenantId(
+              tenant.tenantId,
+            );
             return { ...tenant.toObject(), onboarding } as any;
           } catch (error) {
             // If onboarding not found, return tenant without it
             return tenant;
           }
-        })
+        }),
       );
       return { tenants: tenantsWithOnboarding, total };
     }
@@ -303,7 +341,10 @@ export class TenantService {
   /**
    * Update tenant
    */
-  async updateTenant(tenantId: string, input: UpdateTenantInput): Promise<TenantDocument> {
+  async updateTenant(
+    tenantId: string,
+    input: UpdateTenantInput,
+  ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
     const updateData: any = {};
@@ -314,16 +355,20 @@ export class TenantService {
     if (input.contactPhone) updateData.contactPhone = input.contactPhone;
     if (input.erpWebhookUrl) updateData.erpWebhookUrl = input.erpWebhookUrl;
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
-    if (input.webhookEnabled !== undefined) updateData.webhookEnabled = input.webhookEnabled;
+    if (input.webhookEnabled !== undefined)
+      updateData.webhookEnabled = input.webhookEnabled;
 
     // Encrypt ERP API key if provided
     if (input.erpApiKey) {
-      updateData.erpApiKey = encryptSensitiveData(input.erpApiKey, appConfig?.adminKey);
+      updateData.erpApiKey = encryptSensitiveData(
+        input.erpApiKey,
+        appConfig?.adminKey,
+      );
     }
 
     // Update features
     if (input.features) {
-      updateData['config.features'] = {
+      updateData["config.features"] = {
         ...tenant?.config?.features,
         ...input.features,
       };
@@ -331,33 +376,33 @@ export class TenantService {
 
     // Update limits
     if (input.limits) {
-      updateData['config.limits'] = {
+      updateData["config.limits"] = {
         ...(tenant?.config?.limits || {}),
         ...(input?.limits || {}),
       };
     }
 
-    // Update Tenant ERP 
+    // Update Tenant ERP
     if (input.erpSystem) {
-      updateData['config.erpSystem'] = input.erpSystem
+      updateData["config.erpSystem"] = input.erpSystem;
     }
-   
-    // Update metadata 
+
+    // Update metadata
     if (input.metadata) {
-      updateData['metadata'] = {
+      updateData["metadata"] = {
         ...tenant.metadata,
-        ...input.metadata
-      }
+        ...input.metadata,
+      };
     }
 
     if (input.config) {
-      updateData['config'] = {
+      updateData["config"] = {
         ...tenant.config,
-        ...input.config
-      }
+        ...input.config,
+      };
     }
 
-    console.log({ updateData })
+    console.log({ updateData });
 
     const updatedTenant = await this.tenantRepo.update(tenantId, updateData);
 
@@ -366,10 +411,10 @@ export class TenantService {
       tenantId: tenant.tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
-      severity: 'info' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
-      description: 'Tenant updated',
+      severity: "info" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      description: "Tenant updated",
       metadata: updateData,
       timestamp: new Date(),
     });
@@ -383,8 +428,8 @@ export class TenantService {
   async activateTenant(tenantId: string): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
-    if (tenant.status === 'active') {
-      throw new ValidationError('Tenant is already active');
+    if (tenant.status === "active") {
+      throw new ValidationError("Tenant is already active");
     }
 
     const updatedTenant = await this.tenantRepo.activate(tenantId);
@@ -394,10 +439,10 @@ export class TenantService {
       tenantId: tenant.tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_ACTIVATED,
-      severity: 'info' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
-      description: 'Tenant activated',
+      severity: "info" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      description: "Tenant activated",
       metadata: {},
       timestamp: new Date(),
     });
@@ -408,11 +453,14 @@ export class TenantService {
   /**
    * Suspend tenant
    */
-  async suspendTenant(tenantId: string, reason?: string): Promise<TenantDocument> {
+  async suspendTenant(
+    tenantId: string,
+    reason?: string,
+  ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
-    if (tenant.status === 'suspended') {
-      throw new ValidationError('Tenant is already suspended');
+    if (tenant.status === "suspended") {
+      throw new ValidationError("Tenant is already suspended");
     }
 
     const updatedTenant = await this.tenantRepo.suspend(tenantId);
@@ -423,9 +471,9 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_SUSPENDED,
       severity: AuditEventSeverity.WARNING,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
-      description: `Tenant suspended${reason ? `: ${reason}` : ''}`,
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      description: `Tenant suspended${reason ? `: ${reason}` : ""}`,
       metadata: { reason },
       timestamp: new Date(),
     });
@@ -449,10 +497,10 @@ export class TenantService {
       tenantId: tenant.tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_DELETED,
-      severity: 'warning' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
-      description: 'Tenant deleted',
+      severity: "warning" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      description: "Tenant deleted",
       metadata: {},
       timestamp: new Date(),
     });
@@ -463,35 +511,34 @@ export class TenantService {
    */
   async updateFIRSCredentials(
     tenantId: string,
-    credentials: FIRSCredentialsInput
+    credentials: FIRSCredentialsInput,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
     let updateData: any = {
-      serviceId: credentials.serviceId
-    }
+      serviceId: credentials.serviceId,
+    };
     // Encrypt sensitive credentials
     if (credentials.certificate && credentials.publicKey) {
       const encryptedCertificate = encryptSensitiveData(
-        credentials.certificate
+        credentials.certificate,
       );
-      const encryptedPublicKey = encryptSensitiveData(
-        credentials.publicKey
-      );
+      const encryptedPublicKey = encryptSensitiveData(credentials.publicKey);
 
       updateData = {
         ...updateData,
-        'certificate': encryptedCertificate,
-        'publicKey': encryptedPublicKey,
+        certificate: encryptedCertificate,
+        publicKey: encryptedPublicKey,
       };
     }
 
     if (credentials.clientId) {
-      updateData['clientId'] = encryptSensitiveData(
-        credentials.clientId
-      );
+      updateData["clientId"] = encryptSensitiveData(credentials.clientId);
     }
-    console.log({ updateData })
-    const updatedTenant = await this.tenantRepo.updateFIRSCredentials(tenantId, updateData);
+    console.log({ updateData });
+    const updatedTenant = await this.tenantRepo.updateFIRSCredentials(
+      tenantId,
+      updateData,
+    );
 
     // Audit log
     await this.auditRepo.create({
@@ -499,10 +546,10 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
 
-      description: 'FIRS credentials updated',
+      description: "FIRS credentials updated",
       metadata: {},
       timestamp: new Date(),
     });
@@ -521,16 +568,15 @@ export class TenantService {
     const tenant = await this.getTenantById(tenantId);
 
     if (!tenant.config?.firsCredentials?.certificate) {
-      throw new NotFoundError('FIRS credentials not configured');
+      throw new NotFoundError("FIRS credentials not configured");
     }
 
     const certificate = decryptSensitiveData(
-      tenant.config.firsCredentials.certificate
+      tenant.config.firsCredentials.certificate,
     );
     const publicKey = decryptSensitiveData(
-      tenant.config.firsCredentials.publicKey!
+      tenant.config.firsCredentials.publicKey!,
     );
- 
 
     const result: any = {
       certificate,
@@ -540,7 +586,7 @@ export class TenantService {
 
     if (tenant.config.firsCredentials.clientId) {
       result.clientId = decryptSensitiveData(
-        tenant.config.firsCredentials.clientId 
+        tenant.config.firsCredentials.clientId,
       );
     }
 
@@ -552,13 +598,13 @@ export class TenantService {
    */
   async createApiKey(
     tenantId: string,
-    input: CreateApiKeyInput
+    input: CreateApiKeyInput,
   ): Promise<{ apiKey: ApiKeyDocument; plainKey: string }> {
     const tenant = await this.getTenantById(tenantId);
 
     // Generate API key
     const plainKey = this.generateApiKey();
-    const keyHash = hashString(plainKey);
+    const keyHash = await hashString(plainKey);
     const keyPrefix = plainKey.substring(0, 8);
 
     // Calculate expiry
@@ -583,8 +629,8 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'api_key', resourceId: apiKey._id.toString() },
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "api_key", resourceId: apiKey._id.toString() },
       description: `API key created: ${input.name}`,
       metadata: { name: input.name, keyPrefix },
       timestamp: new Date(),
@@ -596,7 +642,9 @@ export class TenantService {
   /**
    * List API keys for tenant
    */
-  async listApiKeys(tenantId: string): Promise<{ data: ApiKeyDocument[]; meta: any }> {
+  async listApiKeys(
+    tenantId: string,
+  ): Promise<{ data: ApiKeyDocument[]; meta: any }> {
     const tenant = await this.getTenantById(tenantId);
     return this.apiKeyRepo.findByTenantId(tenantId);
   }
@@ -604,12 +652,16 @@ export class TenantService {
   /**
    * Revoke API key
    */
-  async revokeApiKey(tenantId: string, keyId: string, reason?: string): Promise<void> {
+  async revokeApiKey(
+    tenantId: string,
+    keyId: string,
+    reason?: string,
+  ): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
     const apiKey = await this.apiKeyRepo.findOne({ id: { _eq: keyId } });
 
     if (!apiKey || apiKey.tenantId !== tenant.tenantId) {
-      throw new NotFoundError('API key');
+      throw new NotFoundError("API key");
     }
 
     await this.apiKeyRepo.revoke(keyId, "system", reason!);
@@ -619,10 +671,10 @@ export class TenantService {
       tenantId: tenant.tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_REVOKED,
-      severity: 'warning' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'api_key', resourceId: keyId },
-      description: `API key revoked${reason ? `: ${reason}` : ''}`,
+      severity: "warning" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "api_key", resourceId: keyId },
+      description: `API key revoked${reason ? `: ${reason}` : ""}`,
       metadata: { reason },
       timestamp: new Date(),
     });
@@ -634,20 +686,20 @@ export class TenantService {
   async rotateApiKey(
     tenantId: string,
     keyId: string,
-    options?: { sendEmail?: boolean; reason?: string }
+    options?: { sendEmail?: boolean; reason?: string },
   ): Promise<{ apiKey: ApiKeyDocument; plainKey: string }> {
     const tenant = await this.getTenantById(tenantId);
     const oldApiKey = await this.apiKeyRepo.findOne({ id: { _eq: keyId } });
 
     if (!oldApiKey || oldApiKey.tenantId !== tenant.tenantId) {
-      throw new NotFoundError('API key');
+      throw new NotFoundError("API key");
     }
 
     // Revoke old key
     await this.apiKeyRepo.revoke(
       keyId,
-      'system',
-      options?.reason || 'API key rotated'
+      "system",
+      options?.reason || "API key rotated",
     );
 
     // Create new key with same name and scopes
@@ -655,7 +707,10 @@ export class TenantService {
       name: oldApiKey.name,
       scopes: oldApiKey.scopes,
       expiresInDays: oldApiKey.expiresAt
-        ? Math.ceil((oldApiKey.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+        ? Math.ceil(
+            (oldApiKey.expiresAt.getTime() - Date.now()) /
+              (24 * 60 * 60 * 1000),
+          )
         : undefined,
     });
 
@@ -664,7 +719,7 @@ export class TenantService {
       try {
         const emailContent: MailContent = {
           to: tenant.contactEmail,
-          subject: 'API Key Rotated - Action Required',
+          subject: "API Key Rotated - Action Required",
           html: withTemplate(`
             <h2>API Key Rotation Notice</h2>
             <p>Hello <b>${tenant.businessName}</b>,</p>
@@ -692,10 +747,10 @@ export class TenantService {
               <li><strong>Key Name:</strong> ${newApiKey.name}</li>
               <li><strong>Key Prefix:</strong> ${newApiKey.keyPrefix}</li>
               <li><strong>Created:</strong> ${new Date().toLocaleString()}</li>
-              ${newApiKey.expiresAt ? `<li><strong>Expires:</strong> ${newApiKey.expiresAt.toLocaleString()}</li>` : ''}
+              ${newApiKey.expiresAt ? `<li><strong>Expires:</strong> ${newApiKey.expiresAt.toLocaleString()}</li>` : ""}
             </ul>
 
-            ${options?.reason ? `<p><strong>Rotation Reason:</strong> ${options.reason}</p>` : ''}
+            ${options?.reason ? `<p><strong>Rotation Reason:</strong> ${options.reason}</p>` : ""}
 
             <p>If you did not request this rotation, please contact support immediately.</p>
 
@@ -704,9 +759,9 @@ export class TenantService {
         };
 
         await this.notifyTenant(emailContent, tenant);
-        logger.info('API key rotation email sent', { tenantId, keyId });
+        logger.info("API key rotation email sent", { tenantId, keyId });
       } catch (emailError: any) {
-        logger.error('Failed to send API key rotation email', {
+        logger.error("Failed to send API key rotation email", {
           tenantId,
           error: emailError.message,
         });
@@ -720,8 +775,11 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'api_key', resourceId: newApiKey._id.toString() },
+      actor: { actorType: "system", actorId: "system" },
+      resource: {
+        resourceType: "api_key",
+        resourceId: newApiKey._id.toString(),
+      },
       description: `API key rotated: ${newApiKey.name} (old key: ${keyId})`,
       metadata: {
         oldKeyId: keyId,
@@ -738,12 +796,16 @@ export class TenantService {
   /**
    * Get onboarding status
    */
-  async getOnboardingStatus(tenantId: string): Promise<TenantOnboardingDocument> {
+  async getOnboardingStatus(
+    tenantId: string,
+  ): Promise<TenantOnboardingDocument> {
     const tenant = await this.getTenantById(tenantId);
-    const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+    const onboarding = await this.onboardingRepo.findByTenantId(
+      tenant.tenantId,
+    );
 
     if (!onboarding) {
-      throw new NotFoundError('Onboarding record');
+      throw new NotFoundError("Onboarding record");
     }
 
     return onboarding;
@@ -754,11 +816,19 @@ export class TenantService {
    */
   async completeOnboardingStep(
     tenantId: string,
-    step: 'registration' | 'firsProvisioning' | 'erpConfiguration' | 'testing' | 'goLive'
+    step:
+      | "registration"
+      | "firsProvisioning"
+      | "erpConfiguration"
+      | "testing"
+      | "goLive",
   ): Promise<TenantOnboardingDocument> {
     const tenant = await this.getTenantById(tenantId);
 
-    const updated = await this.onboardingRepo.completeStep(tenant.tenantId, step);
+    const updated = await this.onboardingRepo.completeStep(
+      tenant.tenantId,
+      step,
+    );
 
     // Audit log
     await this.auditRepo.create({
@@ -766,9 +836,9 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'onboarding', resourceId: updated.tenantId },
-      action: 'onboarding.step_completed',
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "onboarding", resourceId: updated.tenantId },
+      action: "onboarding.step_completed",
       description: `Onboarding step completed: ${step}`,
       metadata: { step },
       timestamp: new Date(),
@@ -782,22 +852,28 @@ export class TenantService {
    */
   async updateOnboarding(
     tenantId: string,
-    input: UpdateOnboardingInput
+    input: UpdateOnboardingInput,
   ): Promise<TenantOnboardingDocument> {
     const tenant = await this.getTenantById(tenantId);
-    const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+    const onboarding = await this.onboardingRepo.findByTenantId(
+      tenant.tenantId,
+    );
 
     if (!onboarding) {
-      throw new NotFoundError('Onboarding record');
+      throw new NotFoundError("Onboarding record");
     }
 
     const updateData: any = {};
 
     if (input.status) updateData.status = input.status;
     if (input.notes) updateData.notes = input.notes;
-    if (input.rejectionReason) updateData.rejectionReason = input.rejectionReason;
+    if (input.rejectionReason)
+      updateData.rejectionReason = input.rejectionReason;
 
-    const updated = await this.onboardingRepo.update(tenant.tenantId, updateData);
+    const updated = await this.onboardingRepo.update(
+      tenant.tenantId,
+      updateData,
+    );
 
     // Audit log
     await this.auditRepo.create({
@@ -805,10 +881,13 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'onboarding', resourceId: onboarding._id.toString() },
-      action: 'onboarding.status_updated',
-      description: 'Tenant onboarding status updated',
+      actor: { actorType: "system", actorId: "system" },
+      resource: {
+        resourceType: "onboarding",
+        resourceId: onboarding._id.toString(),
+      },
+      action: "onboarding.status_updated",
+      description: "Tenant onboarding status updated",
       metadata: updateData,
       timestamp: new Date(),
     } as any);
@@ -821,10 +900,12 @@ export class TenantService {
    */
   async approveOnboarding(tenantId: string): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
-    const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+    const onboarding = await this.onboardingRepo.findByTenantId(
+      tenant.tenantId,
+    );
 
     if (!onboarding) {
-      throw new NotFoundError('Onboarding record');
+      throw new NotFoundError("Onboarding record");
     }
 
     await this.onboardingRepo.approve(tenantId, "system");
@@ -835,10 +916,13 @@ export class TenantService {
       tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_ACTIVATED,
-      severity: 'info' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'onboarding', resourceId: onboarding._id.toString() },
-      description: 'Tenant onboarding approved',
+      severity: "info" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: {
+        resourceType: "onboarding",
+        resourceId: onboarding._id.toString(),
+      },
+      description: "Tenant onboarding approved",
       metadata: {},
       timestamp: new Date(),
     });
@@ -849,10 +933,12 @@ export class TenantService {
    */
   async rejectOnboarding(tenantId: string, reason: string): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
-    const onboarding = await this.onboardingRepo.findByTenantId(tenant.tenantId);
+    const onboarding = await this.onboardingRepo.findByTenantId(
+      tenant.tenantId,
+    );
 
     if (!onboarding) {
-      throw new NotFoundError('Onboarding record');
+      throw new NotFoundError("Onboarding record");
     }
 
     await this.onboardingRepo.reject(onboarding._id.toString(), reason);
@@ -862,9 +948,12 @@ export class TenantService {
       tenantId,
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
-      severity: 'warning' as any,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'onboarding', resourceId: onboarding._id.toString() },
+      severity: "warning" as any,
+      actor: { actorType: "system", actorId: "system" },
+      resource: {
+        resourceType: "onboarding",
+        resourceId: onboarding._id.toString(),
+      },
       description: `Tenant onboarding rejected: ${reason}`,
       metadata: { reason },
       timestamp: new Date(),
@@ -876,7 +965,7 @@ export class TenantService {
    */
   async configureERPSync(
     tenantId: string,
-    config: ERPSyncConfigInput
+    config: ERPSyncConfigInput,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
@@ -887,26 +976,26 @@ export class TenantService {
       if (config.authentication.password) {
         encryptedConfig.authentication.password = encryptSensitiveData(
           config.authentication.password,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
       if (config.authentication.token) {
         encryptedConfig.authentication.token = encryptSensitiveData(
           config.authentication.token,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
       if (config.authentication.apiKeyValue) {
         encryptedConfig.authentication.apiKeyValue = encryptSensitiveData(
           config.authentication.apiKeyValue,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
     }
 
     // Update tenant with ERP sync configuration
     const updateData: any = {
-      'config.erpSyncConfig': encryptedConfig,
+      "config.erpSyncConfig": encryptedConfig,
     };
 
     const updatedTenant = await this.tenantRepo.update(tenantId, updateData);
@@ -917,9 +1006,9 @@ export class TenantService {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: 'system', actorId: 'system' },
-      resource: { resourceType: 'tenant', resourceId: tenant.tenantId },
-      action: 'tenant.erp_sync_configured',
+      actor: { actorType: "system", actorId: "system" },
+      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      action: "tenant.erp_sync_configured",
       description: `ERP sync configuration updated: ${config.name}`,
       metadata: {
         configName: config.name,
@@ -951,19 +1040,19 @@ export class TenantService {
       if (config.authentication.password) {
         decryptedConfig.authentication.password = decryptSensitiveData(
           config.authentication.password,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
       if (config.authentication.token) {
         decryptedConfig.authentication.token = decryptSensitiveData(
           config.authentication.token,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
       if (config.authentication.apiKeyValue) {
         decryptedConfig.authentication.apiKeyValue = decryptSensitiveData(
           config.authentication.apiKeyValue,
-          appConfig?.adminKey
+          appConfig?.adminKey,
         );
       }
     }
@@ -997,7 +1086,7 @@ export class TenantService {
     // Build query
     const query: any = {};
     if (filters?.erpSystem) {
-      query['config.erpSystem'] = { _eq: filters.erpSystem };
+      query["config.erpSystem"] = { _eq: filters.erpSystem };
     }
 
     // Get all tenants
@@ -1011,7 +1100,10 @@ export class TenantService {
         const erpSyncConfig = config?.erpSyncConfig;
 
         // Filter by enabled status if specified
-        if (filters?.enabled !== undefined && erpSyncConfig?.enabled !== filters.enabled) {
+        if (
+          filters?.enabled !== undefined &&
+          erpSyncConfig?.enabled !== filters.enabled
+        ) {
           return null;
         }
 
@@ -1021,18 +1113,20 @@ export class TenantService {
           contactEmail: tenant.contactEmail,
           status: tenant.status,
           erpSystem: config?.erpSystem,
-          erpSyncConfig: erpSyncConfig ? {
-            name: erpSyncConfig.name,
-            description: erpSyncConfig.description,
-            enabled: erpSyncConfig.enabled,
-            method: erpSyncConfig.method,
-            baseUrl: erpSyncConfig.baseUrl,
-            endpoint: erpSyncConfig.endpoint,
-            authenticationType: erpSyncConfig.authentication?.type,
-            hasAuthentication: !!erpSyncConfig.authentication,
-            timeout: erpSyncConfig.timeout,
-            retryEnabled: erpSyncConfig.retryConfig?.enabled,
-          } : null,
+          erpSyncConfig: erpSyncConfig
+            ? {
+                name: erpSyncConfig.name,
+                description: erpSyncConfig.description,
+                enabled: erpSyncConfig.enabled,
+                method: erpSyncConfig.method,
+                baseUrl: erpSyncConfig.baseUrl,
+                endpoint: erpSyncConfig.endpoint,
+                authenticationType: erpSyncConfig.authentication?.type,
+                hasAuthentication: !!erpSyncConfig.authentication,
+                timeout: erpSyncConfig.timeout,
+                retryEnabled: erpSyncConfig.retryConfig?.enabled,
+              }
+            : null,
           configuredAt: tenant.updatedAt,
         };
       })
@@ -1083,7 +1177,12 @@ export class TenantService {
     }
 
     // Get all API keys with filters
-    const apiKeys = await this.apiKeyRepo.findMany(apiKeyQuery, undefined, limit, skip);
+    const apiKeys = await this.apiKeyRepo.findMany(
+      apiKeyQuery,
+      undefined,
+      limit,
+      skip,
+    );
     const total = await this.apiKeyRepo.count(apiKeyQuery);
 
     // Get unique tenant IDs
@@ -1094,12 +1193,12 @@ export class TenantService {
       { tenantId: { _in: tenantIds } },
       undefined,
       tenantIds.length,
-      0
+      0,
     );
 
     // Create tenant lookup map
     const tenantMap = new Map(
-      tenants.map((tenant: any) => [tenant.tenantId, tenant])
+      tenants.map((tenant: any) => [tenant.tenantId, tenant]),
     );
 
     // Combine API key data with tenant info
@@ -1109,9 +1208,9 @@ export class TenantService {
       return {
         keyId: apiKey._id.toString(),
         tenantId: apiKey.tenantId,
-        businessName: tenant?.businessName || 'Unknown',
-        contactEmail: tenant?.contactEmail || 'N/A',
-        tenantStatus: tenant?.status || 'unknown',
+        businessName: tenant?.businessName || "Unknown",
+        contactEmail: tenant?.contactEmail || "N/A",
+        tenantStatus: tenant?.status || "unknown",
         keyName: apiKey.name,
         keyPrefix: apiKey.keyPrefix,
         status: apiKey.status,
@@ -1136,7 +1235,7 @@ export class TenantService {
     const prefix = businessName
       .substring(0, 3)
       .toUpperCase()
-      .replace(/[^A-Z]/g, '');
+      .replace(/[^A-Z]/g, "");
     const tinSuffix = tin.substring(tin.length - 4);
     const random = generateRandomString(4).substring(0, 4).toUpperCase();
     return `${prefix}-${tinSuffix}-${random}`;
