@@ -5,132 +5,102 @@ import { Model, Query, UpdateQuery } from 'mongoose';
 
 export class ModelWrapper<T = any> {
   private model: Model<T>;
-  private businessId: string | null = null;
   
   constructor(model: Model<T>) {
-    try { 
-    } catch (error) {
-      console.log('No session user found, using default business ID');
-    }
     this.model = model; 
   }
 
   find(query: any = {}, ...args: any[]): Query<T[], T> { 
-    console.log('find - query:::', JSON.stringify({  ...query , businessId: this.businessId }, null, 2));
-    return this.model.find({  ...query , businessId: this.businessId }, ...args);
+    return this.model.find(query, ...args);
   }
+
   countDocuments(query: any = {}, ...args: any[]): Query<number, T> {
-    console.log({query})
-    return this.model.countDocuments({ ...query, businessId: this.businessId }, ...args);
+    return this.model.countDocuments(query, ...args);
   }
 
   findOne(query: any = {}, ...args: any[]): Query<T | null, T> { 
-    console.log('findOne - query:::', JSON.stringify({  ...query , businessId: this.businessId }, null, 2));
-    return this.model.findOne({  ...query , businessId: this.businessId }, ...args);
+    return this.model.findOne(query, ...args);
   }
 
   findById(id: any, ...args: any[]): Query<T | null, T> {
-    return this.model.findOne({ _id: id, businessId: this.businessId }, ...args);
+    return this.model.findById(id, ...args);
   }
 
   findByIdAndUpdate(id: any, update: UpdateQuery<T>, ...args: any[]): Query<T | null, T> {
-    return this.model.findByIdAndUpdate({ _id: id, businessId: this.businessId }, update, ...args);
+    return this.model.findByIdAndUpdate(id, update, ...args);
   }
 
   findByIdAndDelete(id: any, ...args: any[]): Query<T | null, T> {
-    return this.model.findByIdAndDelete({ _id: id, businessId: this.businessId }, ...args);
+    return this.model.findByIdAndDelete(id, ...args);
   }
 
   updateOne(query: any, update: UpdateQuery<T>, ...args: any[]): Query<any, T> {
-    return this.model.updateOne({ ...query, businessId: this.businessId }, update, ...args);
+    return this.model.updateOne(query, update, ...args);
   }
 
   deleteOne(query: any, ...args: any[]): Query<any, T> {
-    return this.model.deleteOne({ ...query, businessId: this.businessId }, ...args);
+    return this.model.deleteOne(query, ...args);
   }
 
   // Overloads for create
   create(doc: any): Promise<T>;
   create(docs: any[]): Promise<T[]>;
   create(docOrDocs: any | any[]): Promise<T | T[]> { 
-    if (Array.isArray(docOrDocs)) {
-      return this.model.create(docOrDocs.map(doc => ({ ...doc, businessId: this.businessId})));
-    }
-    console.log({ ...docOrDocs, businessId: this.businessId+' empty' })
-    return this.model.create({ ...docOrDocs, businessId: this.businessId });
+    return this.model.create(docOrDocs);
   }
 
   // ---
-  // Generic version for all models and optional businessId: this.businessId injection
+  // Generic version for all models and optional tenant injection (kept for signature compatibility)
   findWithTenant(query: any = {}, injectuserId = true, ...args: any[]): Query<T[], T> {
-    return this.model.find(injectuserId ? { ...query, businessId: this.businessId } : query, ...args);
+    return this.model.find(query, ...args);
   }
   
-  countDocumentsWithTenant(query: any = {},injectuserId = true, ...args: any[]): Query<number, T> { 
-    return this.model.countDocuments(injectuserId ? { ...query, businessId: this.businessId } : query, ...args);
+  countDocumentsWithTenant(query: any = {}, injectuserId = true, ...args: any[]): Query<number, T> { 
+    return this.model.countDocuments(query, ...args);
   }
 
   findOneWithTenant(query: any = {}, injectuserId = true, ...args: any[]): Query<T | null, T> {
-    return this.model.findOne(injectuserId ? { ...query, businessId: this.businessId } : query, ...args);
+    return this.model.findOne(query, ...args);
   }
 
   findByIdWithTenant(id: any, injectuserId = true, ...args: any[]): Query<T | null, T> {
-    return injectuserId
-      ? this.model.findOne({ _id: id, businessId: this.businessId }, ...args)
-      : this.model.findById(id, ...args);
+    return this.model.findById(id, ...args);
   }
 
   updateOneWithTenant(query: any, update: UpdateQuery<T>, injectuserId = true, ...args: any[]): Query<any, T> {
-    return this.model.updateOne(injectuserId ? { ...query, businessId: this.businessId } : query, update, ...args);
+    return this.model.updateOne(query, update, ...args);
   }
 
   deleteOneWithTenant(query: any, injectuserId = true, ...args: any[]): Query<any, T> {
-    return this.model.deleteOne(injectuserId ? { ...query, businessId: this.businessId } : query, ...args);
+    return this.model.deleteOne(query, ...args);
   }
 
   // Overloads for createWithTenant
   createWithTenant(doc: any, injectuserId?: boolean): Promise<T>;
   createWithTenant(docs: any[], injectuserId?: boolean): Promise<T[]>;
   createWithTenant(docOrDocs: any | any[], injectuserId = true): Promise<T | T[]> {
-    if (Array.isArray(docOrDocs)) {
-      return this.model.create(
-        injectuserId
-          ? docOrDocs.map(doc => ({ ...doc, businessId: this.businessId }))
-          : docOrDocs
-      );
-    }
-    return this.model.create(
-      injectuserId ? { ...docOrDocs, businessId: this.businessId } : docOrDocs
-    );
+    return this.model.create(docOrDocs);
   }
 
   // Additional methods needed for e-invoicing modules
   findOneAndUpdate(query: any, update: UpdateQuery<T>, ...args: any[]): Query<T | null, T> {
-    console.log(JSON.stringify({...query,  businessId: this.businessId },null, 2))
-    return this.model.findOneAndUpdate({...query }, update, ...args);
+    return this.model.findOneAndUpdate(query, update, ...args);
   }
 
   aggregate(pipeline: any[]): any {
-    // Add businessId: this.businessId filter to the first stage if it's a $match stage
-    if (pipeline.length > 0 && pipeline[0].$match) {
-      pipeline[0].$match = { ...pipeline[0].$match, businessId: this.businessId };
-    } else {
-      // Insert a $match stage at the beginning
-      pipeline.unshift({ $match: { businessId: this.businessId } });
-    }
     return this.model.aggregate(pipeline);
   }
 
   updateMany(query: any, update: UpdateQuery<T>, ...args: any[]): Query<any, T> {
-    return this.model.updateMany({ ...query, businessId: this.businessId }, update, ...args);
+    return this.model.updateMany(query, update, ...args);
   }
 
   deleteMany(query: any, ...args: any[]): Query<any, T> {
-    return this.model.deleteMany({ ...query, businessId: this.businessId }, ...args);
+    return this.model.deleteMany(query, ...args);
   }
 
   count(query: any = {}, ...args: any[]): Query<number, T> {
-    return this.model.countDocuments({ ...query, businessId: this.businessId }, ...args);
+    return this.model.countDocuments(query, ...args);
   }
 
   get base(): Model<T> {

@@ -3,6 +3,7 @@ import { requireAuth } from "../../../middlewares";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { InboundWorkflowService } from "../services";
 import { faker } from "@faker-js/faker";
+import { secureAndValidateInvoice, SecureInvoice } from "../utils/security";
 
 /**
  * Admin-protected tenant routes
@@ -22,7 +23,8 @@ const inboundInvoiceRoutes = new Elysia({ prefix: '/inbound'})
       try {
         console.log({ query })
         const transmit = Boolean(query.transmit === 'true');
-        let invoice = body;
+        const invoice = secureAndValidateInvoice(body as SecureInvoice, auth);
+
         let qrCode = await inboundWorkflowService.handleInboundWorkflow(invoice, transmit);
         return { status: true, data: qrCode };
       } catch (error: any) {
