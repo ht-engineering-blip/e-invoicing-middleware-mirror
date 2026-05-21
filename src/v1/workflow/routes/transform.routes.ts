@@ -8,7 +8,7 @@ import { onlyAdmin } from "../../auth/utils/access-checks";
 import { SchemaSourceType } from "../models";
 import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from "../utils/defaults";
 import { flatten } from "../../../@lib";
-import { secureAndValidateInvoice, SecureInvoice } from "../utils/security";
+import { secureAndValidateInvoice } from "../utils/security";
 
 /**
  * Admin-protected tenant routes

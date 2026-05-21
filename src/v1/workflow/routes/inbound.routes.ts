@@ -3,7 +3,7 @@ import { requireAuth } from "../../../middlewares";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { InboundWorkflowService } from "../services";
 import { faker } from "@faker-js/faker";
-import { secureAndValidateInvoice, SecureInvoice } from "../utils/security";
+import { secureAndValidateInvoice } from "../utils/security";
 
 /**
  * Admin-protected tenant routes

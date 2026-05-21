@@ -539,7 +539,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         await outboundRepo.updateStatus(params.irn, OutboundInvoiceStatus.VALIDATED);
 
         // Trigger workflow
-        const result = await outboundService.handleOutboundWorkflow(invoice.metadata, true);
+        const result = await outboundService.handleOutboundWorkflow(invoice.metadata as any, true);
 
         return {
           success: true,

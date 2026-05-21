@@ -39,3 +39,10 @@ interface SearchResponse {
   };
   attributes: any;
 }
+
+interface SecureInvoice {
+  tenant_id: string;
+  business_id: string;
+  irn: string;
+  [key: string]: unknown;
+}

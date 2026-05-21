@@ -87,8 +87,8 @@ const authRoutes = new Elysia()
         }
 
         // Verify password
-        const passwordHash = hashString(body.password);
-        const storedPasswordHash = (tenant as any)?.password;
+        const passwordHash = await hashString(body.password);
+        const storedPasswordHash = tenant?.password;
 
         if (!storedPasswordHash || passwordHash !== storedPasswordHash) {
           throw new UnauthorizedError("Invalid credentials");

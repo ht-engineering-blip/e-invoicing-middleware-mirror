@@ -2,7 +2,6 @@ import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
-import { SecureInvoice } from "../../utils/security";
 
 export class OutboundWorkflowService {
   private tenantService: TenantService;
