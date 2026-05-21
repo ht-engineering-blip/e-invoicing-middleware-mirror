@@ -2,14 +2,11 @@ import { BadRequestError } from "../../../@lib/errors";
 import { AuthContext } from "../../../middlewares";
 
 export interface SecureInvoice {
-  tenant_id?: string;
-  tenantId?: string;
-  business_id?: string;
-  businessId?: string;
-  supplier_tin?: string;
-  supplierTin?: string;
+  tenant_id: string;
+  business_id: string;
+  supplier_tin: string;
   agent_tin?: string;
-  agentTin?: string;
+  irn: string;
   [key: string]: unknown;
 }
 
@@ -20,7 +17,7 @@ export interface SecureInvoice {
  * @throws {BadRequestError} if there is a mismatch between client-supplied tenant ID and authenticated tenant ID
  */
 export function secureAndValidateInvoice(invoice: SecureInvoice, auth?: AuthContext): SecureInvoice {
-  // 4.2 Security check: Validate client-supplied tenant_id if present
+
   const bodyTenantId = invoice.tenant_id || invoice.tenantId;
   if (bodyTenantId && auth && auth.tenantId && bodyTenantId !== auth.tenantId) {
     throw new BadRequestError('Tenant ID mismatch');

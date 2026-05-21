@@ -2,6 +2,7 @@ import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { SecureInvoice } from "../../utils/security";
 
 
 interface OkayResponse { code: number, data: { ok: boolean } }
@@ -79,7 +80,7 @@ export class OutboundWorkflowService {
         return { message, code }
     }
 
-    async handleOutboundWorkflow(invoice: any, transmit: boolean = false) {
+    async handleOutboundWorkflow(invoice: SecureInvoice, transmit: boolean = false) {
         const firsService = new FIRSService();
 
         // Load persisted workflow state so we can resume from the last success point
@@ -145,7 +146,7 @@ export class OutboundWorkflowService {
             }
 
             // Step 4: Generate QR code
-            const firsCredentials = await this.tenantService.getFIRSCredentials(invoice.tenant_id);
+            const firsCredentials = await this.tenantService.getFIRSCredentials(invoice?.tenant_id);
             const encryptedData = await firsService.generateQRCodeV2(
                 invoice.irn,
                 firsCredentials.certificate,

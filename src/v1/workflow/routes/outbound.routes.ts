@@ -23,7 +23,7 @@ const outboundInvoiceRoutes = new Elysia({ prefix: '/outbound'})
     '/',
     async ({ auth, body, query, tenantService, outboundWorkflowService }) => {
       try {
-          console.log({ query })
+        console.log({ query })
         const transmit = Boolean(query.transmit === 'true');
         const invoice = secureAndValidateInvoice(body as SecureInvoice, auth);
 
