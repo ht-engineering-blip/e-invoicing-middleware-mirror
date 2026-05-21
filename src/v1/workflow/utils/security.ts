@@ -10,14 +10,6 @@ export interface SecureInvoice {
   supplierTin?: string;
   agent_tin?: string;
   agentTin?: string;
-  accounting_supplier_party?: {
-    tin?: string;
-    party_tax_scheme?: {
-      company_id?: string;
-      [key: string]: unknown;
-    };
-    [key: string]: unknown;
-  };
   [key: string]: unknown;
 }
 
@@ -45,12 +37,6 @@ export function secureAndValidateInvoice(invoice: SecureInvoice, auth?: AuthCont
       invoice.businessId = auth.businessId;
     }
     if (auth.businessTIN) {
-      if (invoice.accounting_supplier_party) {
-        invoice.accounting_supplier_party.tin = auth.businessTIN;
-        if (invoice.accounting_supplier_party.party_tax_scheme) {
-          invoice.accounting_supplier_party.party_tax_scheme.company_id = auth.businessTIN;
-        }
-      }
       invoice.supplier_tin = auth.businessTIN;
       invoice.supplierTin = auth.businessTIN;
       invoice.agent_tin = auth.businessTIN;
