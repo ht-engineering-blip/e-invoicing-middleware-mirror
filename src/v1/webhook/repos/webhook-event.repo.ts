@@ -1,18 +1,20 @@
-import { AppError } from '../../../@lib';
-import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
+import { AppError } from "../../../@lib";
+import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   WebhookEventDocument,
   WebhookEventModel,
   WebhookEventType,
   WebhookDeliveryStatus,
   IJobError,
-} from '../models/webhook-event.model';
+} from "../models/webhook-event.model";
 
 export class WebhookEventRepository {
   private webhookEventModel: ModelWrapper<WebhookEventDocument>;
 
   constructor() {
-    this.webhookEventModel = new ModelWrapper<WebhookEventDocument>(WebhookEventModel);
+    this.webhookEventModel = new ModelWrapper<WebhookEventDocument>(
+      WebhookEventModel,
+    );
   }
 
   /**
@@ -37,8 +39,10 @@ export class WebhookEventRepository {
     if (where.eventType?._in) query.eventType = { $in: where.eventType._in };
 
     // Date range
-    if (where.createdAt?._gte) query.createdAt = { ...query.createdAt, $gte: where.createdAt._gte };
-    if (where.createdAt?._lte) query.createdAt = { ...query.createdAt, $lte: where.createdAt._lte };
+    if (where.createdAt?._gte)
+      query.createdAt = { ...query.createdAt, $gte: where.createdAt._gte };
+    if (where.createdAt?._lte)
+      query.createdAt = { ...query.createdAt, $lte: where.createdAt._lte };
 
     // Next retry check
     if (where.nextRetryAt?._lte) {
@@ -70,7 +74,7 @@ export class WebhookEventRepository {
     where?: any,
     select?: any,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
   ): Promise<WebhookEventDocument[]> {
     try {
       const query = this.buildWebhookEventQuery(where);
@@ -85,32 +89,39 @@ export class WebhookEventRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error finding webhook events:', error);
-      throw new AppError(500, 'Failed to fetch webhook events');
+      console.error("Error finding webhook events:", error);
+      throw new AppError(500, "Failed to fetch webhook events");
     }
   }
 
   /**
    * Find one webhook event
    */
-  async findOne(where: any, select?: any): Promise<WebhookEventDocument | null> {
+  async findOne(
+    where: any,
+    select?: any,
+  ): Promise<WebhookEventDocument | null> {
     try {
       const query = this.buildWebhookEventQuery(where);
       const projection = this.buildWebhookEventProjection(select);
 
-      const doc = await this.webhookEventModel.base.findOne(query, projection).exec();
+      const doc = await this.webhookEventModel
+        .findOne(query, projection)
+        .exec();
 
       return doc;
     } catch (error) {
-      console.error('Error finding webhook event:', error);
-      throw new AppError(500, 'Failed to fetch webhook event');
+      console.error("Error finding webhook event:", error);
+      throw new AppError(500, "Failed to fetch webhook event");
     }
   }
 
   /**
    * Create a new webhook event
    */
-  async create(data: Partial<WebhookEventDocument>): Promise<WebhookEventDocument> {
+  async create(
+    data: Partial<WebhookEventDocument>,
+  ): Promise<WebhookEventDocument> {
     try {
       const doc = await this.webhookEventModel.create({
         ...data,
@@ -121,14 +132,17 @@ export class WebhookEventRepository {
 
       return doc;
     } catch (error: any) {
-      console.error('Error creating webhook event:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error creating webhook event:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
       if (error.code === 11000) {
-        throw new AppError(409, 'Webhook event with this eventId already exists');
+        throw new AppError(
+          409,
+          "Webhook event with this eventId already exists",
+        );
       }
-      throw new AppError(500, 'Failed to create webhook event');
+      throw new AppError(500, "Failed to create webhook event");
     }
   }
 
@@ -137,7 +151,7 @@ export class WebhookEventRepository {
    */
   async update(
     eventId: string,
-    data: Partial<WebhookEventDocument>
+    data: Partial<WebhookEventDocument>,
   ): Promise<WebhookEventDocument> {
     try {
       // Remove undefined values
@@ -149,24 +163,28 @@ export class WebhookEventRepository {
         return acc;
       }, {} as any);
 
-      const doc = await this.webhookEventModel.base
-        .findOneAndUpdate({ eventId }, { $set: updateData }, { new: true, runValidators: true })
+      const doc = await this.webhookEventModel
+        .findOneAndUpdate(
+          { eventId },
+          { $set: updateData },
+          { new: true, runValidators: true },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Webhook event not found');
+        throw new AppError(404, "Webhook event not found");
       }
 
       return doc;
     } catch (error: any) {
-      console.error('Error updating webhook event:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error updating webhook event:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update webhook event');
+      throw new AppError(500, "Failed to update webhook event");
     }
   }
 
@@ -175,12 +193,14 @@ export class WebhookEventRepository {
    */
   async delete(eventId: string): Promise<boolean> {
     try {
-      const result = await this.webhookEventModel.base.findOneAndDelete({ eventId }).exec();
+      const result = await this.webhookEventModel
+        .findOneAndDelete({ eventId })
+        .exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error deleting webhook event:', error);
-      throw new AppError(500, 'Failed to delete webhook event');
+      console.error("Error deleting webhook event:", error);
+      throw new AppError(500, "Failed to delete webhook event");
     }
   }
 
@@ -193,8 +213,8 @@ export class WebhookEventRepository {
       const count = await this.webhookEventModel.countDocuments(query).exec();
       return count;
     } catch (error) {
-      console.error('Error counting webhook events:', error);
-      throw new AppError(500, 'Failed to count webhook events');
+      console.error("Error counting webhook events:", error);
+      throw new AppError(500, "Failed to count webhook events");
     }
   }
 
@@ -204,14 +224,14 @@ export class WebhookEventRepository {
   async findByTenantId(
     tenantId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: WebhookEventDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { tenantId };
 
       const [docs, total] = await Promise.all([
-        this.webhookEventModel.base
+        this.webhookEventModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -232,8 +252,8 @@ export class WebhookEventRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching webhook events:', error);
-      throw new AppError(500, 'Failed to fetch webhook events');
+      console.error("Error fetching webhook events:", error);
+      throw new AppError(500, "Failed to fetch webhook events");
     }
   }
 
@@ -242,16 +262,16 @@ export class WebhookEventRepository {
    */
   async findByIdempotencyKey(
     tenantId: string,
-    idempotencyKey: string
+    idempotencyKey: string,
   ): Promise<WebhookEventDocument | null> {
     try {
-      const doc = await this.webhookEventModel.base
-        .findOne({ tenantId, 'metadata.idempotencyKey': idempotencyKey })
+      const doc = await this.webhookEventModel
+        .findOne({ tenantId, "metadata.idempotencyKey": idempotencyKey })
         .exec();
       return doc;
     } catch (error) {
-      console.error('Error finding webhook event by idempotency key:', error);
-      throw new AppError(500, 'Failed to fetch webhook event');
+      console.error("Error finding webhook event by idempotency key:", error);
+      throw new AppError(500, "Failed to fetch webhook event");
     }
   }
 
@@ -260,11 +280,11 @@ export class WebhookEventRepository {
    */
   async findByEventId(eventId: string): Promise<WebhookEventDocument | null> {
     try {
-      const doc = await this.webhookEventModel.base.findOne({ eventId }).exec();
+      const doc = await this.webhookEventModel.findOne({ eventId }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching webhook event:', error);
-      throw new AppError(500, 'Failed to fetch webhook event');
+      console.error("Error fetching webhook event:", error);
+      throw new AppError(500, "Failed to fetch webhook event");
     }
   }
 
@@ -274,23 +294,27 @@ export class WebhookEventRepository {
   async findById(id: string): Promise<WebhookEventDocument | null> {
     try {
       // Try finding by eventId first, then by _id
-      let doc = await this.webhookEventModel.base.findOne({ eventId: id }).exec();
+      let doc = await this.webhookEventModel.findOne({ eventId: id }).exec();
       if (!doc) {
-        doc = await this.webhookEventModel.base.findById(id).exec();
+        doc = await this.webhookEventModel.findById(id).exec();
       }
       return doc;
     } catch (error) {
-      console.error('Error fetching webhook event by id:', error);
-      throw new AppError(500, 'Failed to fetch webhook event');
+      console.error("Error fetching webhook event by id:", error);
+      throw new AppError(500, "Failed to fetch webhook event");
     }
   }
 
   /**
    * Generic find with query object
    */
-  async find(query: any, skip: number = 0, limit: number = 20): Promise<WebhookEventDocument[]> {
+  async find(
+    query: any,
+    skip: number = 0,
+    limit: number = 20,
+  ): Promise<WebhookEventDocument[]> {
     try {
-      const docs = await this.webhookEventModel.base
+      const docs = await this.webhookEventModel
         .find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -298,27 +322,26 @@ export class WebhookEventRepository {
         .exec();
       return docs;
     } catch (error) {
-      console.error('Error finding webhook events:', error);
-      throw new AppError(500, 'Failed to fetch webhook events');
+      console.error("Error finding webhook events:", error);
+      throw new AppError(500, "Failed to fetch webhook events");
     }
   }
 
   /**
    * Update status of a webhook event
    */
-  async updateStatus(eventId: string, status: WebhookDeliveryStatus): Promise<WebhookEventDocument | null> {
+  async updateStatus(
+    eventId: string,
+    status: WebhookDeliveryStatus,
+  ): Promise<WebhookEventDocument | null> {
     try {
-      const doc = await this.webhookEventModel.base
-        .findOneAndUpdate(
-          { eventId },
-          { $set: { status } },
-          { new: true }
-        )
+      const doc = await this.webhookEventModel
+        .findOneAndUpdate({ eventId }, { $set: { status } }, { new: true })
         .exec();
       return doc;
     } catch (error) {
-      console.error('Error updating webhook status:', error);
-      throw new AppError(500, 'Failed to update webhook status');
+      console.error("Error updating webhook status:", error);
+      throw new AppError(500, "Failed to update webhook status");
     }
   }
 
@@ -328,14 +351,14 @@ export class WebhookEventRepository {
   async findByResourceId(
     resourceId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: WebhookEventDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { resourceId };
 
       const [docs, total] = await Promise.all([
-        this.webhookEventModel.base
+        this.webhookEventModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -356,8 +379,8 @@ export class WebhookEventRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching webhook events:', error);
-      throw new AppError(500, 'Failed to fetch webhook events');
+      console.error("Error fetching webhook events:", error);
+      throw new AppError(500, "Failed to fetch webhook events");
     }
   }
 
@@ -373,10 +396,10 @@ export class WebhookEventRepository {
       responseBody?: any;
       error?: string;
       duration: number;
-    }
+    },
   ): Promise<WebhookEventDocument> {
     try {
-      const doc = await this.webhookEventModel.base
+      const doc = await this.webhookEventModel
         .findOneAndUpdate(
           { eventId },
           {
@@ -384,21 +407,21 @@ export class WebhookEventRepository {
               deliveryAttempts: attempt,
             },
           },
-          { new: true }
+          { new: true },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Webhook event not found');
+        throw new AppError(404, "Webhook event not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error adding delivery attempt:', error);
+      console.error("Error adding delivery attempt:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to add delivery attempt');
+      throw new AppError(500, "Failed to add delivery attempt");
     }
   }
 
@@ -408,10 +431,10 @@ export class WebhookEventRepository {
   async markAsDelivered(
     eventId: string,
     httpStatus: number,
-    responseBody: any
+    responseBody: any,
   ): Promise<WebhookEventDocument> {
     try {
-      const doc = await this.webhookEventModel.base
+      const doc = await this.webhookEventModel
         .findOneAndUpdate(
           { eventId },
           {
@@ -423,21 +446,21 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { new: true }
+          { new: true },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Webhook event not found');
+        throw new AppError(404, "Webhook event not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error marking webhook as delivered:', error);
+      console.error("Error marking webhook as delivered:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to mark webhook as delivered');
+      throw new AppError(500, "Failed to mark webhook as delivered");
     }
   }
 
@@ -448,10 +471,10 @@ export class WebhookEventRepository {
     eventId: string,
     failureReason: string,
     httpStatus?: number,
-    responseBody?: any
+    responseBody?: any,
   ): Promise<WebhookEventDocument> {
     try {
-      const doc = await this.webhookEventModel.base
+      const doc = await this.webhookEventModel
         .findOneAndUpdate(
           { eventId },
           {
@@ -464,21 +487,21 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { new: true }
+          { new: true },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Webhook event not found');
+        throw new AppError(404, "Webhook event not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error marking webhook as failed:', error);
+      console.error("Error marking webhook as failed:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to mark webhook as failed');
+      throw new AppError(500, "Failed to mark webhook as failed");
     }
   }
 
@@ -487,7 +510,7 @@ export class WebhookEventRepository {
    */
   async addJobId(eventId: string, agendaJobId: string): Promise<void> {
     try {
-      await this.webhookEventModel.base
+      await this.webhookEventModel
         .updateOne({ eventId }, { $addToSet: { jobIds: agendaJobId } })
         .exec();
     } catch {
@@ -500,11 +523,8 @@ export class WebhookEventRepository {
    */
   async appendJobError(eventId: string, jobError: IJobError): Promise<void> {
     try {
-      await this.webhookEventModel.base
-        .updateOne(
-          { eventId },
-          { $push: { jobErrors: jobError } }
-        )
+      await this.webhookEventModel
+        .updateOne({ eventId }, { $push: { jobErrors: jobError } })
         .exec();
     } catch {
       // Non-critical — do not propagate
@@ -514,9 +534,12 @@ export class WebhookEventRepository {
   /**
    * Schedule retry
    */
-  async scheduleRetry(eventId: string, nextRetryAt: Date): Promise<WebhookEventDocument> {
+  async scheduleRetry(
+    eventId: string,
+    nextRetryAt: Date,
+  ): Promise<WebhookEventDocument> {
     try {
-      const doc = await this.webhookEventModel.base
+      const doc = await this.webhookEventModel
         .findOneAndUpdate(
           { eventId },
           {
@@ -525,21 +548,21 @@ export class WebhookEventRepository {
               nextRetryAt,
             },
           },
-          { new: true }
+          { new: true },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Webhook event not found');
+        throw new AppError(404, "Webhook event not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error scheduling webhook retry:', error);
+      console.error("Error scheduling webhook retry:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to schedule webhook retry');
+      throw new AppError(500, "Failed to schedule webhook retry");
     }
   }
 
@@ -548,7 +571,7 @@ export class WebhookEventRepository {
    */
   async findPendingRetries(): Promise<WebhookEventDocument[]> {
     try {
-      const docs = await this.webhookEventModel.base
+      const docs = await this.webhookEventModel
         .find({
           status: WebhookDeliveryStatus.RETRY,
           nextRetryAt: { $lte: new Date() },
@@ -559,8 +582,8 @@ export class WebhookEventRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error fetching pending retries:', error);
-      throw new AppError(500, 'Failed to fetch pending retries');
+      console.error("Error fetching pending retries:", error);
+      throw new AppError(500, "Failed to fetch pending retries");
     }
   }
 
@@ -570,14 +593,14 @@ export class WebhookEventRepository {
   async findFailed(
     tenantId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: WebhookEventDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { tenantId, status: WebhookDeliveryStatus.FAILED };
 
       const [docs, total] = await Promise.all([
-        this.webhookEventModel.base
+        this.webhookEventModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -598,8 +621,8 @@ export class WebhookEventRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching failed webhooks:', error);
-      throw new AppError(500, 'Failed to fetch failed webhooks');
+      console.error("Error fetching failed webhooks:", error);
+      throw new AppError(500, "Failed to fetch failed webhooks");
     }
   }
 
@@ -607,7 +630,7 @@ export class WebhookEventRepository {
    * Bulk update webhook events
    */
   async bulkUpdate(
-    updates: Array<{ eventId: string; data: Partial<WebhookEventDocument> }>
+    updates: Array<{ eventId: string; data: Partial<WebhookEventDocument> }>,
   ): Promise<boolean> {
     try {
       const bulkOps = updates.map((update) => ({
@@ -617,11 +640,11 @@ export class WebhookEventRepository {
         },
       }));
 
-      const result = await this.webhookEventModel.base.bulkWrite(bulkOps);
+      const result = await this.webhookEventModel.bulkWrite(bulkOps);
       return result.modifiedCount > 0;
     } catch (error) {
-      console.error('Error bulk updating webhook events:', error);
-      throw new AppError(500, 'Failed to bulk update webhook events');
+      console.error("Error bulk updating webhook events:", error);
+      throw new AppError(500, "Failed to bulk update webhook events");
     }
   }
 }

@@ -104,7 +104,7 @@ export class InboundInvoiceRepository {
       const query = this.buildInboundInvoiceQuery(where);
       const projection = this.buildInboundInvoiceProjection(select);
 
-      const doc = await this.inboundInvoiceModel.base.findOne(query, projection).exec();
+      const doc = await this.inboundInvoiceModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
@@ -162,7 +162,7 @@ export class InboundInvoiceRepository {
         return acc;
       }, {} as any);
 
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: updateData }, { new: true, runValidators: true })
         .exec();
 
@@ -188,7 +188,7 @@ export class InboundInvoiceRepository {
    */
   async delete(irn: string): Promise<boolean> {
     try {
-      const result = await this.inboundInvoiceModel.base.findOneAndDelete({ irn }).exec();
+      const result = await this.inboundInvoiceModel.findOneAndDelete({ irn }).exec();
 
       return result !== null;
     } catch (error) {
@@ -224,7 +224,7 @@ export class InboundInvoiceRepository {
       const query: any = { businessId };
 
       const [docs, total] = await Promise.all([
-        this.inboundInvoiceModel.base
+        this.inboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -255,7 +255,7 @@ export class InboundInvoiceRepository {
    */
   async findByIRN(irn: string): Promise<InboundInvoiceDocument | null> {
     try {
-      const doc = await this.inboundInvoiceModel.base.findOne({ irn }).exec();
+      const doc = await this.inboundInvoiceModel.findOne({ irn }).exec();
       return doc;
     } catch (error) {
       console.error('Error fetching inbound invoice:', error);
@@ -271,7 +271,7 @@ export class InboundInvoiceRepository {
     invoiceNumber: string
   ): Promise<InboundInvoiceDocument | null> {
     try {
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOne({ businessId, invoiceNumber })
         .exec();
       return doc;
@@ -289,7 +289,7 @@ export class InboundInvoiceRepository {
     status: InboundInvoiceStatus
   ): Promise<InboundInvoiceDocument> {
     try {
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: { status } }, { new: true })
         .exec();
 
@@ -326,7 +326,7 @@ export class InboundInvoiceRepository {
         updateFields[`workflowState.${key}`] = workflowState[key as keyof typeof workflowState];
       });
 
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: updateFields }, { new: true })
         .exec();
 
@@ -364,7 +364,7 @@ export class InboundInvoiceRepository {
         updateData.paymentDetails = paymentDetails;
       }
 
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: updateData }, { new: true })
         .exec();
 
@@ -391,7 +391,7 @@ export class InboundInvoiceRepository {
     rejectedBy: string
   ): Promise<InboundInvoiceDocument> {
     try {
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate(
           { irn },
           {
@@ -434,7 +434,7 @@ export class InboundInvoiceRepository {
     }
   ): Promise<InboundInvoiceDocument> {
     try {
-      const doc = await this.inboundInvoiceModel.base
+      const doc = await this.inboundInvoiceModel
         .findOneAndUpdate(
           { irn },
           {
@@ -483,7 +483,7 @@ export class InboundInvoiceRepository {
       };
 
       const [docs, total] = await Promise.all([
-        this.inboundInvoiceModel.base
+        this.inboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -523,7 +523,7 @@ export class InboundInvoiceRepository {
       const query: any = { businessId, status };
 
       const [docs, total] = await Promise.all([
-        this.inboundInvoiceModel.base
+        this.inboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -563,7 +563,7 @@ export class InboundInvoiceRepository {
       const query: any = { businessId, paymentStatus };
 
       const [docs, total] = await Promise.all([
-        this.inboundInvoiceModel.base
+        this.inboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -606,7 +606,7 @@ export class InboundInvoiceRepository {
       };
 
       const [docs, total] = await Promise.all([
-        this.inboundInvoiceModel.base
+        this.inboundInvoiceModel
           .find(query)
           .sort({ dueDate: 1 })
           .limit(limit)
@@ -646,7 +646,7 @@ export class InboundInvoiceRepository {
         },
       }));
 
-      const result = await this.inboundInvoiceModel.base.bulkWrite(bulkOps);
+      const result = await this.inboundInvoiceModel.bulkWrite(bulkOps);
       return result.modifiedCount > 0;
     } catch (error) {
       console.error('Error bulk updating inbound invoices:', error);

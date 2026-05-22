@@ -123,7 +123,7 @@ export class TeamMemberService {
       }
 
       // Hash password
-      const passwordHash = hashString(password);
+      const passwordHash = await hashString(password);
 
       // Update member
       const updatedMember = await this.teamMemberRepo.update(member.userId, {
@@ -201,7 +201,7 @@ export class TeamMemberService {
         throw new ValidationError('Password not set. Please reset your password.');
       }
 
-      const passwordHash = hashString(password);
+      const passwordHash = await hashString(password);
       if (passwordHash !== member.password) {
         throw new ValidationError('Invalid email or password');
       }

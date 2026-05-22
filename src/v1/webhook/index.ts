@@ -148,11 +148,11 @@ export const webhookRoutes = new Elysia({
       }
 
       // 3. Verify signature if provided
-      const webhookKey = hashString(headers['x-webhook-key']!);
+      const webhookKey = await hashString(headers['x-webhook-key']!);
       const webhookKeyHash = tenant.metadata?.webhookSecretHash;
       /*    const signature = headers['x-webhook-key'];
          const webhookSecretHash = tenant.metadata?.webhookSecretHash; */
-      const passwordHash = hashString(webhookKey!);
+      const passwordHash = await hashString(webhookKey!);
       const storedPasswordHash = (tenant as any)?.password;
 
       if (webhookKeyHash && !webhookKey) {

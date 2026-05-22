@@ -3,6 +3,7 @@
 export * from './validation';
 export * from './encryption';
 export * from './json';
+export * from './ssrf';
 
 import { appConfig } from '../../@config';
 
