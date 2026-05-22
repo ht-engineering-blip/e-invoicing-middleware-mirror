@@ -4,7 +4,7 @@ import { requireAuth } from "../../middlewares/auth";
 import { logger } from "../../@lib";
 import { TenantService } from "../tenants/services/tenant.service";
 import { TeamMemberService } from "../tenants/services/team-member.service";
-import { hashString } from "../../@lib/utils/encryption";
+import { hashString, verifyHash } from "../../@lib/utils/encryption";
 import {
   AppError,
   InternalServerError,
@@ -87,10 +87,12 @@ const authRoutes = new Elysia()
         }
 
         // Verify password
-        const passwordHash = await hashString(body.password);
-        const storedPasswordHash = tenant?.password;
+        const isPasswordValid = await verifyHash(
+          body.password,
+          tenant?.password,
+        );
 
-        if (!storedPasswordHash || passwordHash !== storedPasswordHash) {
+        if (!isPasswordValid) {
           throw new UnauthorizedError("Invalid credentials");
         }
 

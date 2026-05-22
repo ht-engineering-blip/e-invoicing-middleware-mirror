@@ -1,18 +1,28 @@
-import * as crypto from 'crypto';
-import { logger } from '../../../@lib';
-import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../@lib/errors';
-import { TeamMemberRepository } from '../repos/team-member.repo';
-import { TenantRepository } from '../repos/tenant.repo';
+import * as crypto from "crypto";
+import { logger } from "../../../@lib";
+import {
+  AppError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../../../@lib/errors";
+import { TeamMemberRepository } from "../repos/team-member.repo";
+import { TenantRepository } from "../repos/tenant.repo";
 import {
   TeamMemberDocument,
   TeamMemberRole,
   TeamMemberStatus,
-} from '../models/team-member.model';
-import { hashString } from '../../../@lib/utils/encryption';
-import { MailContent, NodeMailerClient, withTemplate } from '../../../@lib/messaging';
-import { appConfig, jwtConfig } from '../../../@config';
-import * as jwt from 'jsonwebtoken';
-import { AuthService } from '../../auth/services';
+} from "../models/team-member.model";
+import { hashString } from "../../../@lib/utils/encryption";
+import {
+  MailContent,
+  NodeMailerClient,
+  withTemplate,
+} from "../../../@lib/messaging";
+import { appConfig, jwtConfig } from "../../../@config";
+import * as jwt from "jsonwebtoken";
+import { AuthService } from "../../auth/services";
 
 export interface InviteTeamMemberInput {
   email: string;
@@ -45,29 +55,34 @@ export class TeamMemberService {
   async inviteTeamMember(
     tenantId: string,
     input: InviteTeamMemberInput,
-    invitedBy: string
+    invitedBy: string,
   ): Promise<TeamMemberDocument> {
     try {
       // Check if tenant exists
       const tenant = await this.tenantRepo.findByTenantId(tenantId);
       if (!tenant) {
-        throw new NotFoundError('Tenant not found');
+        throw new NotFoundError("Tenant not found");
       }
 
       // Check if email already exists in this tenant
-      const existing = await this.teamMemberRepo.findByTenantAndEmail(tenantId, input.email);
+      const existing = await this.teamMemberRepo.findByTenantAndEmail(
+        tenantId,
+        input.email,
+      );
       if (existing) {
-        throw new ConflictError('A team member with this email already exists');
+        throw new ConflictError("A team member with this email already exists");
       }
 
       // Cannot invite as owner
       if (input.role === TeamMemberRole.OWNER) {
-        throw new ValidationError('Cannot invite as owner. Use transfer ownership instead.');
+        throw new ValidationError(
+          "Cannot invite as owner. Use transfer ownership instead.",
+        );
       }
 
       // Generate user ID and invitation token
-      const userId = `usr_${crypto.randomBytes(12).toString('hex')}`;
-      const invitationToken = crypto.randomBytes(32).toString('hex');
+      const userId = `usr_${crypto.randomBytes(12).toString("hex")}`;
+      const invitationToken = crypto.randomBytes(32).toString("hex");
 
       // Create team member
       const teamMember = await this.teamMemberRepo.create({
@@ -85,9 +100,13 @@ export class TeamMemberService {
       });
 
       // Send invitation email
-      await this.sendInvitationEmail(teamMember, tenant.businessName, invitationToken);
+      await this.sendInvitationEmail(
+        teamMember,
+        tenant.businessName,
+        invitationToken,
+      );
 
-      logger.info('Team member invited', {
+      logger.info("Team member invited", {
         tenantId,
         userId,
         email: input.email,
@@ -96,7 +115,7 @@ export class TeamMemberService {
 
       return teamMember;
     } catch (error: any) {
-      logger.error('Failed to invite team member', { error: error.message });
+      logger.error("Failed to invite team member", { error: error.message });
       if (
         error instanceof NotFoundError ||
         error instanceof ConflictError ||
@@ -104,7 +123,7 @@ export class TeamMemberService {
       ) {
         throw error;
       }
-      throw new AppError(500, 'Failed to invite team member');
+      throw new AppError(500, "Failed to invite team member");
     }
   }
 
@@ -113,13 +132,13 @@ export class TeamMemberService {
    */
   async acceptInvitation(
     token: string,
-    password: string
+    password: string,
   ): Promise<{ member: TeamMemberDocument; authToken: string }> {
     try {
       // Find member by invitation token
       const member = await this.teamMemberRepo.findByInvitationToken(token);
       if (!member) {
-        throw new ValidationError('Invalid or expired invitation');
+        throw new ValidationError("Invalid or expired invitation");
       }
 
       // Hash password
@@ -134,21 +153,21 @@ export class TeamMemberService {
       });
 
       if (!updatedMember) {
-        throw new AppError(500, 'Failed to accept invitation');
+        throw new AppError(500, "Failed to accept invitation");
       }
 
       // Generate auth token
-       // Generate JWT token
-       let _tmpTenant: any =   {
-          tenantId: member.tenantId,
-          userId: member.userId,
-          email: member.email,
-          role: member.role,
-          type: 'team_member',
-        }
-        let authToken = await new AuthService().createAuthToken(_tmpTenant,)
+      // Generate JWT token
+      let _tmpTenant: any = {
+        tenantId: member.tenantId,
+        userId: member.userId,
+        email: member.email,
+        role: member.role,
+        type: "team_member",
+      };
+      let authToken = await new AuthService().createAuthToken(_tmpTenant);
       //const jwtSecret = jwtConfig?.secret as string;
-     /*  const authToken = jwt.sign(
+      /*  const authToken = jwt.sign(
         {
           tenantId: member.tenantId,
           userId: member.userId,
@@ -160,16 +179,16 @@ export class TeamMemberService {
         { expiresIn: jwtConfig?.expiry || '24h' }
       );
  */
-      logger.info('Team member invitation accepted', {
+      logger.info("Team member invitation accepted", {
         tenantId: member.tenantId,
         userId: member.userId,
       });
 
       return { member: updatedMember, authToken };
     } catch (error: any) {
-      logger.error('Failed to accept invitation', { error: error.message });
+      logger.error("Failed to accept invitation", { error: error.message });
       if (error instanceof ValidationError) throw error;
-      throw new AppError(500, 'Failed to accept invitation');
+      throw new AppError(500, "Failed to accept invitation");
     }
   }
 
@@ -178,38 +197,40 @@ export class TeamMemberService {
    */
   async loginTeamMember(
     email: string,
-    password: string
+    password: string,
   ): Promise<{ member: TeamMemberDocument; authToken: string }> {
     try {
       // Find team member by email
       const member = await this.teamMemberRepo.findByEmail(email.toLowerCase());
 
       if (!member) {
-        throw new ValidationError('Invalid email or password');
+        throw new ValidationError("Invalid email or password");
       }
 
       // Check if member is active
       if (member.status !== TeamMemberStatus.ACTIVE) {
         if (member.status === TeamMemberStatus.INVITED) {
-          throw new ValidationError('Please accept your invitation first');
+          throw new ValidationError("Please accept your invitation first");
         }
         throw new ValidationError(`Account is ${member.status}`);
       }
 
       // Verify password
       if (!member.password) {
-        throw new ValidationError('Password not set. Please reset your password.');
+        throw new ValidationError(
+          "Password not set. Please reset your password.",
+        );
       }
 
       const passwordHash = await hashString(password);
       if (passwordHash !== member.password) {
-        throw new ValidationError('Invalid email or password');
+        throw new ValidationError("Invalid email or password");
       }
 
       // Get tenant for additional context
       const tenant = await this.tenantRepo.findByTenantId(member.tenantId);
       if (!tenant) {
-        throw new ValidationError('Tenant not found');
+        throw new ValidationError("Tenant not found");
       }
 
       // Generate auth token
@@ -218,7 +239,7 @@ export class TeamMemberService {
         userId: member.userId,
         email: member.email,
         role: member.role,
-        type: 'team_member',
+        type: "team_member",
       };
       const authToken = await new AuthService().createAuthToken(_tmpTenant);
 
@@ -227,7 +248,7 @@ export class TeamMemberService {
         lastLoginAt: new Date(),
       });
 
-      logger.info('Team member logged in', {
+      logger.info("Team member logged in", {
         tenantId: member.tenantId,
         userId: member.userId,
         email: member.email,
@@ -235,9 +256,9 @@ export class TeamMemberService {
 
       return { member, authToken };
     } catch (error: any) {
-      logger.error('Team member login failed', { email, error: error.message });
+      logger.error("Team member login failed", { email, error: error.message });
       if (error instanceof ValidationError) throw error;
-      throw new AppError(500, 'Login failed');
+      throw new AppError(500, "Login failed");
     }
   }
 
@@ -251,7 +272,7 @@ export class TeamMemberService {
       role?: TeamMemberRole;
       page?: number;
       limit?: number;
-    } = {}
+    } = {},
   ): Promise<{ data: TeamMemberDocument[]; pagination: any }> {
     try {
       const page = options.page || 1;
@@ -275,27 +296,30 @@ export class TeamMemberService {
         },
       };
     } catch (error: any) {
-      logger.error('Failed to list team members', { error: error.message });
-      throw new AppError(500, 'Failed to list team members');
+      logger.error("Failed to list team members", { error: error.message });
+      throw new AppError(500, "Failed to list team members");
     }
   }
 
   /**
    * Get a single team member
    */
-  async getTeamMember(tenantId: string, userId: string): Promise<TeamMemberDocument> {
+  async getTeamMember(
+    tenantId: string,
+    userId: string,
+  ): Promise<TeamMemberDocument> {
     try {
       const member = await this.teamMemberRepo.findByUserId(userId);
 
       if (!member || member.tenantId !== tenantId) {
-        throw new NotFoundError('Team member not found');
+        throw new NotFoundError("Team member not found");
       }
 
       return member;
     } catch (error: any) {
       if (error instanceof NotFoundError) throw error;
-      logger.error('Failed to get team member', { error: error.message });
-      throw new AppError(500, 'Failed to get team member');
+      logger.error("Failed to get team member", { error: error.message });
+      throw new AppError(500, "Failed to get team member");
     }
   }
 
@@ -306,24 +330,32 @@ export class TeamMemberService {
     tenantId: string,
     userId: string,
     input: UpdateTeamMemberInput,
-    updatedBy: string
+    updatedBy: string,
   ): Promise<TeamMemberDocument> {
     try {
       const member = await this.getTeamMember(tenantId, userId);
 
       // Cannot change owner's role
-      if (member.role === TeamMemberRole.OWNER && input.role && input.role !== TeamMemberRole.OWNER) {
-        throw new ForbiddenError('Cannot change owner role. Transfer ownership first.');
+      if (
+        member.role === TeamMemberRole.OWNER &&
+        input.role &&
+        input.role !== TeamMemberRole.OWNER
+      ) {
+        throw new ForbiddenError(
+          "Cannot change owner role. Transfer ownership first.",
+        );
       }
 
       // Cannot promote to owner
       if (input.role === TeamMemberRole.OWNER) {
-        throw new ForbiddenError('Cannot promote to owner. Use transfer ownership.');
+        throw new ForbiddenError(
+          "Cannot promote to owner. Use transfer ownership.",
+        );
       }
 
       // Cannot demote yourself
       if (userId === updatedBy && input.role && member.role !== input.role) {
-        throw new ForbiddenError('Cannot change your own role');
+        throw new ForbiddenError("Cannot change your own role");
       }
 
       const updatedMember = await this.teamMemberRepo.update(userId, {
@@ -335,43 +367,49 @@ export class TeamMemberService {
       });
 
       if (!updatedMember) {
-        throw new AppError(500, 'Failed to update team member');
+        throw new AppError(500, "Failed to update team member");
       }
 
-      logger.info('Team member updated', { tenantId, userId, updatedBy });
+      logger.info("Team member updated", { tenantId, userId, updatedBy });
 
       return updatedMember;
     } catch (error: any) {
-      if (error instanceof NotFoundError || error instanceof ForbiddenError) throw error;
-      logger.error('Failed to update team member', { error: error.message });
-      throw new AppError(500, 'Failed to update team member');
+      if (error instanceof NotFoundError || error instanceof ForbiddenError)
+        throw error;
+      logger.error("Failed to update team member", { error: error.message });
+      throw new AppError(500, "Failed to update team member");
     }
   }
 
   /**
    * Remove a team member
    */
-  async removeTeamMember(tenantId: string, userId: string, removedBy: string): Promise<void> {
+  async removeTeamMember(
+    tenantId: string,
+    userId: string,
+    removedBy: string,
+  ): Promise<void> {
     try {
       const member = await this.getTeamMember(tenantId, userId);
 
       // Cannot remove owner
       if (member.role === TeamMemberRole.OWNER) {
-        throw new ForbiddenError('Cannot remove the tenant owner');
+        throw new ForbiddenError("Cannot remove the tenant owner");
       }
 
       // Cannot remove yourself
       if (userId === removedBy) {
-        throw new ForbiddenError('Cannot remove yourself');
+        throw new ForbiddenError("Cannot remove yourself");
       }
 
       await this.teamMemberRepo.delete(userId);
 
-      logger.info('Team member removed', { tenantId, userId, removedBy });
+      logger.info("Team member removed", { tenantId, userId, removedBy });
     } catch (error: any) {
-      if (error instanceof NotFoundError || error instanceof ForbiddenError) throw error;
-      logger.error('Failed to remove team member', { error: error.message });
-      throw new AppError(500, 'Failed to remove team member');
+      if (error instanceof NotFoundError || error instanceof ForbiddenError)
+        throw error;
+      logger.error("Failed to remove team member", { error: error.message });
+      throw new AppError(500, "Failed to remove team member");
     }
   }
 
@@ -383,11 +421,11 @@ export class TeamMemberService {
       const member = await this.getTeamMember(tenantId, userId);
 
       if (member.status !== TeamMemberStatus.INVITED) {
-        throw new ValidationError('Member has already accepted the invitation');
+        throw new ValidationError("Member has already accepted the invitation");
       }
 
       // Generate new token
-      const invitationToken = crypto.randomBytes(32).toString('hex');
+      const invitationToken = crypto.randomBytes(32).toString("hex");
 
       await this.teamMemberRepo.update(userId, {
         invitationToken,
@@ -398,13 +436,18 @@ export class TeamMemberService {
       const tenant = await this.tenantRepo.findByTenantId(tenantId);
 
       // Send invitation email
-      await this.sendInvitationEmail(member, tenant?.businessName || 'E-Invoicing Platform', invitationToken);
+      await this.sendInvitationEmail(
+        member,
+        tenant?.businessName || "E-Invoicing Platform",
+        invitationToken,
+      );
 
-      logger.info('Invitation resent', { tenantId, userId });
+      logger.info("Invitation resent", { tenantId, userId });
     } catch (error: any) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) throw error;
-      logger.error('Failed to resend invitation', { error: error.message });
-      throw new AppError(500, 'Failed to resend invitation');
+      if (error instanceof NotFoundError || error instanceof ValidationError)
+        throw error;
+      logger.error("Failed to resend invitation", { error: error.message });
+      throw new AppError(500, "Failed to resend invitation");
     }
   }
 
@@ -414,11 +457,11 @@ export class TeamMemberService {
   private async sendInvitationEmail(
     member: TeamMemberDocument,
     businessName: string,
-    token: string
+    token: string,
   ): Promise<void> {
     try {
       const mailClient = new NodeMailerClient();
-      const webAppUrl = appConfig?.webAppURL || 'http://localhost:3000';
+      const webAppUrl = appConfig?.webAppURL || "http://localhost:3000";
       const invitationUrl = `${webAppUrl}/auth/accept-invite?token=${token}`;
 
       const mailContent: MailContent = {
@@ -437,9 +480,9 @@ export class TeamMemberService {
       };
 
       await mailClient.send(mailContent);
-      logger.info('Invitation email sent', { email: member.email });
+      logger.info("Invitation email sent", { email: member.email });
     } catch (error: any) {
-      logger.error('Failed to send invitation email', { error: error.message });
+      logger.error("Failed to send invitation email", { error: error.message });
       // Don't throw - invitation is still created
     }
   }

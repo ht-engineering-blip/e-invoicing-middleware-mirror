@@ -8,6 +8,13 @@ export const hashString = async (str: string): Promise<string> => {
   });
 };
 
+export const verifyHash = async (
+  str: string,
+  hash: string,
+): Promise<boolean> => {
+  return await Bun.password.verify(str, hash);
+};
+
 export const generateRandomString = (length: number = 32): string => {
   return randomBytes(length).toString("hex");
 };
