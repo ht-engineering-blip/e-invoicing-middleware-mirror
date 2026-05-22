@@ -102,7 +102,7 @@ export class OutboundInvoiceRepository {
       const query = this.buildOutboundInvoiceQuery(where);
       const projection = this.buildOutboundInvoiceProjection(select);
 
-      const doc = await this.outboundInvoiceModel.base.findOne(query, projection).exec();
+      const doc = await this.outboundInvoiceModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
@@ -205,7 +205,7 @@ export class OutboundInvoiceRepository {
         return acc;
       }, {} as any);
 
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: updateData }, { new: true, runValidators: true })
         .exec();
 
@@ -231,7 +231,7 @@ export class OutboundInvoiceRepository {
    */
   async delete(irn: string): Promise<boolean> {
     try {
-      const result = await this.outboundInvoiceModel.base.findOneAndDelete({ irn }).exec();
+      const result = await this.outboundInvoiceModel.findOneAndDelete({ irn }).exec();
 
       return result !== null;
     } catch (error) {
@@ -267,7 +267,7 @@ export class OutboundInvoiceRepository {
       const query: any = { businessId };
 
       const [docs, total] = await Promise.all([
-        this.outboundInvoiceModel.base
+        this.outboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -298,7 +298,7 @@ export class OutboundInvoiceRepository {
    */
   async findByIrn(irn: string): Promise<OutboundInvoiceDocument | null> {
     try {
-      const doc = await this.outboundInvoiceModel.base.findOne({ irn }).exec();
+      const doc = await this.outboundInvoiceModel.findOne({ irn }).exec();
       return doc;
     } catch (error) {
       console.error('Error fetching outbound invoice:', error);
@@ -314,7 +314,7 @@ export class OutboundInvoiceRepository {
     invoiceNumber: string
   ): Promise<OutboundInvoiceDocument | null> {
     try {
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOne({ businessId, invoiceNumber })
         .exec();
       return doc;
@@ -333,7 +333,7 @@ export class OutboundInvoiceRepository {
     error: string
   ): Promise<void> {
     try {
-      await this.outboundInvoiceModel.base
+      await this.outboundInvoiceModel
         .updateOne(
           { irn },
           { $set: { lastJobError: { action, error, failedAt: new Date() } } }
@@ -352,7 +352,7 @@ export class OutboundInvoiceRepository {
     status: OutboundInvoiceStatus
   ): Promise<OutboundInvoiceDocument> {
     try {
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: { status } }, { new: true })
         .exec();
 
@@ -389,7 +389,7 @@ export class OutboundInvoiceRepository {
         updateFields[`workflowState.${key}`] = workflowState[key as keyof typeof workflowState];
       });
 
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: updateFields }, { new: true })
         .exec();
 
@@ -417,7 +417,7 @@ export class OutboundInvoiceRepository {
     fixed: boolean = false
   ): Promise<OutboundInvoiceDocument> {
     try {
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate(
           { irn },
           {
@@ -453,7 +453,7 @@ export class OutboundInvoiceRepository {
    */
   async addWebhookEvent(irn: string, eventId: string): Promise<OutboundInvoiceDocument> {
     try {
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate(
           { irn },
           { $addToSet: { webhookEvents: eventId } },
@@ -481,7 +481,7 @@ export class OutboundInvoiceRepository {
     erpInvoiceId: string
   ): Promise<OutboundInvoiceDocument | null> {
     try {
-      return await this.outboundInvoiceModel.base.findOne({ tenantId, erpInvoiceId }).exec();
+      return await this.outboundInvoiceModel.findOne({ tenantId, erpInvoiceId }).exec();
     } catch (error) {
       console.error('Error finding invoice by erpInvoiceId:', error);
       throw new AppError(500, 'Failed to fetch outbound invoice');
@@ -498,7 +498,7 @@ export class OutboundInvoiceRepository {
     defaults: Partial<OutboundInvoiceDocument>
   ): Promise<{ doc: OutboundInvoiceDocument; created: boolean }> {
     try {
-      const existing = await this.outboundInvoiceModel.base
+      const existing = await this.outboundInvoiceModel
         .findOne({ tenantId, erpInvoiceId })
         .exec();
 
@@ -511,7 +511,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       // Race condition — another request created it between our find and create
       if (error.code === 11000) {
-        const existing = await this.outboundInvoiceModel.base
+        const existing = await this.outboundInvoiceModel
           .findOne({ tenantId, erpInvoiceId })
           .exec();
         if (existing) return { doc: existing, created: false };
@@ -534,7 +534,7 @@ export class OutboundInvoiceRepository {
       const update: any = { paymentStatus };
       if (paymentDetails) update.paymentDetails = paymentDetails;
 
-      const doc = await this.outboundInvoiceModel.base
+      const doc = await this.outboundInvoiceModel
         .findOneAndUpdate({ irn }, { $set: update }, { new: true })
         .exec();
 
@@ -555,7 +555,7 @@ export class OutboundInvoiceRepository {
     irn: string
   ): Promise<{ invoice: OutboundInvoiceDocument; webhookEvents: any[] } | null> {
     try {
-      const invoice = await this.outboundInvoiceModel.base.findOne({ irn }).exec();
+      const invoice = await this.outboundInvoiceModel.findOne({ irn }).exec();
       if (!invoice) return null;
 
       const eventIds: string[] = invoice.webhookEvents ?? [];
@@ -596,7 +596,7 @@ export class OutboundInvoiceRepository {
       };
 
       const [docs, total] = await Promise.all([
-        this.outboundInvoiceModel.base
+        this.outboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -636,7 +636,7 @@ export class OutboundInvoiceRepository {
       const query: any = { businessId, status };
 
       const [docs, total] = await Promise.all([
-        this.outboundInvoiceModel.base
+        this.outboundInvoiceModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -687,7 +687,7 @@ export class OutboundInvoiceRepository {
         },
       }));
 
-      const result = await this.outboundInvoiceModel.base.bulkWrite(bulkOps);
+      const result = await this.outboundInvoiceModel.bulkWrite(bulkOps);
       return result.modifiedCount > 0;
     } catch (error) {
       console.error('Error bulk updating outbound invoices:', error);

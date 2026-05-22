@@ -8,6 +8,7 @@ import { onlyAdmin } from "../../auth/utils/access-checks";
 import { SchemaSourceType } from "../models";
 import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from "../utils/defaults";
 import { flatten } from "../../../@lib";
+import { secureAndValidateInvoice } from "../utils/security";
 
 /**
  * Admin-protected tenant routes
@@ -28,10 +29,9 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
     '/',
     async ({ auth, body, query, tenantService, transformWorkflowService }) => {
       try {
-        let { invoice, source_type }: any = body
-        if (auth && auth.tenantId) {
-          invoice.business_id = auth.businessId
-        }
+        const { invoice: rawInvoice, source_type }: any = body;
+        const invoice = secureAndValidateInvoice(rawInvoice as SecureInvoice, auth);
+
         let transformedPayload = await transformWorkflowService.transformInvoiceV2(
           invoice,
           auth,
@@ -73,10 +73,8 @@ transformInvoiceRoutes
     async ({ auth, body, query, llmService, transformWorkflowService }) => {
       try {
         onlyAdmin(auth!)
-        let { erp, invoice, metadata }: any = body
-        if (auth && auth.tenantId) {
-          invoice.business_id = auth.businessId
-        }
+        const { erp, invoice: rawInvoice, metadata }: any = body;
+        const invoice = secureAndValidateInvoice(rawInvoice as SecureInvoice, auth);
 
         // Flatten the invoice for field extraction
         let flatInvoice = jsonSpread(invoice)[0]

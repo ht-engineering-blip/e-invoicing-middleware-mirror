@@ -150,7 +150,7 @@ export class AuthService {
             }
 
             // Hash and save new password
-            const passwordHash = hashString(newPassword);
+            const passwordHash = await hashString(newPassword);
             await this.tenantRepo.update(tenant.tenantId, { password: passwordHash });
 
             // Mark token as used
