@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Model, Query, UpdateQuery } from "mongoose";
+import { Model, Query, QueryFilter, UpdateQuery } from "mongoose";
 
 export class ModelWrapper<T = any> {
   private model: Model<T>;
@@ -10,44 +10,48 @@ export class ModelWrapper<T = any> {
     this.model = model;
   }
 
-  find(query: any = {}, ...args: any[]): Query<T[], T> {
+  find(query: QueryFilter<T> = {}, ...args: any[]): Query<T[], T> {
     return this.model.find(query, ...args);
   }
 
-  countDocuments(query: any = {}, ...args: any[]): Query<number, T> {
+  countDocuments(query: QueryFilter<T> = {}, ...args: any[]): Query<number, T> {
     return this.model.countDocuments(query, ...args);
   }
 
-  findOne(query: any = {}, ...args: any[]): Query<T | null, T> {
+  findOne(query: QueryFilter<T> = {}, ...args: any[]): Query<T | null, T> {
     return this.model.findOne(query, ...args);
   }
 
-  findById(id: any, ...args: any[]): Query<T | null, T> {
+  findById(id: string, ...args: any[]): Query<T | null, T> {
     return this.model.findById(id, ...args);
   }
 
   findByIdAndUpdate(
-    id: any,
+    id: string,
     update: UpdateQuery<T>,
     ...args: any[]
   ): Query<T | null, T> {
     return this.model.findByIdAndUpdate(id, update, ...args);
   }
 
-  findByIdAndDelete(id: any, ...args: any[]): Query<T | null, T> {
+  findByIdAndDelete(id: string, ...args: any[]): Query<T | null, T> {
     return this.model.findByIdAndDelete(id, ...args);
   }
 
-  findOneAndDelete(query: any, ...args: any[]): Query<T | null, T> {
-    console.log('findOneAndDelete - query:::', JSON.stringify(query, null, 2));
+  findOneAndDelete(query: QueryFilter<T>, ...args: any[]): Query<T | null, T> {
+    console.log("findOneAndDelete - query:::", JSON.stringify(query, null, 2));
     return this.model.findOneAndDelete(query, ...args);
   }
 
-  updateOne(query: any, update: UpdateQuery<T>, ...args: any[]): Query<any, T> {
+  updateOne(
+    query: QueryFilter<T>,
+    update: UpdateQuery<T>,
+    ...args: any[]
+  ): Query<any, T> {
     return this.model.updateOne(query, update, ...args);
   }
 
-  deleteOne(query: any, ...args: any[]): Query<any, T> {
+  deleteOne(query: QueryFilter<T>, ...args: any[]): Query<any, T> {
     return this.model.deleteOne(query, ...args);
   }
 
@@ -61,7 +65,7 @@ export class ModelWrapper<T = any> {
   // ---
   // Generic version for all models and optional tenant injection (kept for signature compatibility)
   findWithTenant(
-    query: any = {},
+    query: QueryFilter<T> = {},
     injectuserId = true,
     ...args: any[]
   ): Query<T[], T> {
@@ -69,7 +73,7 @@ export class ModelWrapper<T = any> {
   }
 
   countDocumentsWithTenant(
-    query: any = {},
+    query: QueryFilter<T> = {},
     injectuserId = true,
     ...args: any[]
   ): Query<number, T> {
@@ -77,7 +81,7 @@ export class ModelWrapper<T = any> {
   }
 
   findOneWithTenant(
-    query: any = {},
+    query: QueryFilter<T> = {},
     injectuserId = true,
     ...args: any[]
   ): Query<T | null, T> {
@@ -85,7 +89,7 @@ export class ModelWrapper<T = any> {
   }
 
   findByIdWithTenant(
-    id: any,
+    id: string,
     injectuserId = true,
     ...args: any[]
   ): Query<T | null, T> {
@@ -93,7 +97,7 @@ export class ModelWrapper<T = any> {
   }
 
   updateOneWithTenant(
-    query: any,
+    query: QueryFilter<T>,
     update: UpdateQuery<T>,
     injectuserId = true,
     ...args: any[]
@@ -102,7 +106,7 @@ export class ModelWrapper<T = any> {
   }
 
   deleteOneWithTenant(
-    query: any,
+    query: QueryFilter<T>,
     injectuserId = true,
     ...args: any[]
   ): Query<any, T> {
@@ -121,7 +125,7 @@ export class ModelWrapper<T = any> {
 
   // Additional methods needed for e-invoicing modules
   findOneAndUpdate(
-    query: any,
+    query: QueryFilter<T>,
     update: UpdateQuery<T>,
     ...args: any[]
   ): Query<T | null, T> {
@@ -133,23 +137,23 @@ export class ModelWrapper<T = any> {
   }
 
   bulkWrite(ops: any[], ...args: any[]): Promise<any> {
-    console.log('bulkWrite - ops count:::', ops.length);
+    console.log("bulkWrite - ops count:::", ops.length);
     return this.model.bulkWrite(ops, ...args);
   }
 
   updateMany(
-    query: any,
+    query: QueryFilter<T>,
     update: UpdateQuery<T>,
     ...args: any[]
   ): Query<any, T> {
     return this.model.updateMany(query, update, ...args);
   }
 
-  deleteMany(query: any, ...args: any[]): Query<any, T> {
+  deleteMany(query: QueryFilter<T>, ...args: any[]): Query<any, T> {
     return this.model.deleteMany(query, ...args);
   }
 
-  count(query: any = {}, ...args: any[]): Query<number, T> {
+  count(query: QueryFilter<T> = {}, ...args: any[]): Query<number, T> {
     return this.model.countDocuments(query, ...args);
   }
 
