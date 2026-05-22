@@ -1,25 +1,24 @@
 // Webhook module routes
-import { Elysia, sse, t } from 'elysia';
-import crypto from 'crypto';
-import { EventEmitter } from 'events';
-import { TenantRepository } from '../tenants/repos/tenant.repo';
-import { WebhookEventRepository } from './repos/webhook-event.repo';
-import { EventRoutingRepository } from '../admin/repos/event-routing.repo';
-import { OutboundInvoiceRepository } from '../workflow/repos/outbound-invoice.repo';
-import { scheduleJobChain } from '../workflow/jobs/orchestrator';
-import { WebhookDeliveryStatus, WebhookEventType } from './models';
-import { OutboundInvoiceSource } from '../workflow/models/outbound-invoice.model';
-import { hashString, logger, UnauthorizedError, getNestedValue, generateRandomString } from '../../@lib';
-import { generateIRN } from '../workflow/utils/transformer/utils';
-import {
-  cors
-} from '@elysiajs/cors'
-import { sleep } from 'bun';
+import { cors } from "@elysiajs/cors";
+import crypto from "crypto";
+import { Elysia, sse, t } from "elysia";
+import { EventEmitter } from "events";
+import { generateRandomString, getNestedValue, logger } from "../../@lib";
+import { EventRoutingRepository } from "../admin/repos/event-routing.repo";
+import { TenantRepository } from "../tenants/repos/tenant.repo";
+import { scheduleJobChain } from "../workflow/jobs/orchestrator";
+import { OutboundInvoiceSource } from "../workflow/models/outbound-invoice.model";
+import { OutboundInvoiceRepository } from "../workflow/repos/outbound-invoice.repo";
+import { generateIRN } from "../workflow/utils/transformer/utils";
+import { WebhookDeliveryStatus, WebhookEventType } from "./models";
+import { WebhookEventRepository } from "./repos/webhook-event.repo";
+import { WebhookNonceRepository } from "./repos/webhook-nonce.repo";
 
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
 const eventRoutingRepo = new EventRoutingRepository();
 const outboundRepo = new OutboundInvoiceRepository();
+const webhookNonceRepo = new WebhookNonceRepository();
 
 /**
  * In-memory event bus for real-time SSE streaming per webhook path.
@@ -27,8 +26,128 @@ const outboundRepo = new OutboundInvoiceRepository();
 const webhookBus = new EventEmitter();
 webhookBus.setMaxListeners(0);
 
+/**
+ * Signs the webhook payload using the HMAC-SHA256 scheme.
+ */
+export function signWebhookPayload(
+  secret: string,
+  timestamp: string | number,
+  payload: string,
+): string {
+  const dataToSign = `${timestamp}.${payload}`;
+  return crypto.createHmac("sha256", secret).update(dataToSign).digest("hex");
+}
+
+/**
+ * Verifies the inbound webhook signature.
+ * Returns an object indicating success or failure.
+ */
+export async function verifyWebhookSignature({
+  headers,
+  rawBody,
+  tenant,
+}: {
+  headers: Record<string, string | undefined>;
+  rawBody: string;
+  tenant: { tenantId: string; config?: { webhookAuth?: string } };
+}): Promise<
+  { success: true } | { success: false; status: number; error: string }
+> {
+  const signatureHeader = headers["x-signature"];
+
+  if (!signatureHeader) {
+    return {
+      success: false,
+      status: 401,
+      error: "Missing X-Signature header",
+    };
+  }
+
+  const parts = signatureHeader.split(",");
+  let tStr = "";
+  let v1 = "";
+  for (const part of parts) {
+    const [key, val] = part.split("=");
+    if (key === "t") tStr = val;
+    if (key === "v1") v1 = val;
+  }
+
+  if (!tStr || !v1) {
+    return {
+      success: false,
+      status: 401,
+      error: "Invalid X-Signature header format",
+    };
+  }
+
+  // Check timestamp: reject if |now - t| > 300 seconds
+  const t = parseInt(tStr, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (isNaN(t) || Math.abs(now - t) > 300) {
+    return {
+      success: false,
+      status: 401,
+      error: "Webhook request expired or timestamp invalid",
+    };
+  }
+
+  // Check for replay (nonce deduplication)
+  const isReplay = await webhookNonceRepo.findOne({
+    tenantId: tenant.tenantId,
+    t,
+    v1,
+  });
+  if (isReplay) {
+    return {
+      success: false,
+      status: 401,
+      error: "Duplicate webhook request detected (replay prevention)",
+    };
+  }
+
+  // Compute HMAC-SHA256 signature using the helper function
+  const secret = tenant.config?.webhookAuth;
+  if (!secret) {
+    return {
+      success: false,
+      status: 401,
+      error: "Webhook secret not configured for this tenant",
+    };
+  }
+
+  const expectedSignature = signWebhookPayload(secret, tStr, rawBody);
+
+  // Timing-safe comparison
+  let signatureMatches = false;
+  try {
+    signatureMatches = crypto.timingSafeEqual(
+      Buffer.from(v1, "hex"),
+      Buffer.from(expectedSignature, "hex"),
+    );
+  } catch {
+    signatureMatches = false;
+  }
+
+  if (!signatureMatches) {
+    return {
+      success: false,
+      status: 401,
+      error: "Invalid webhook signature",
+    };
+  }
+
+  // Persist the nonce to prevent replays
+  await webhookNonceRepo.create({
+    tenantId: tenant.tenantId,
+    t,
+    v1,
+  });
+
+  return { success: true };
+}
+
 export const webhookRoutes = new Elysia({
-  prefix: '/webhook',
+  prefix: "/webhook",
 })
   .use(cors())
 
@@ -38,10 +157,10 @@ export const webhookRoutes = new Elysia({
    * Clients connect here to listen for data as it arrives on the webhook.
    */
   .all(
-    '/listen/:webhookPath',
+    "/listen/:webhookPath",
     async function* ({ request, params, set }) {
       if (request.method == "OPTIONS") {
-        return {}
+        return {};
       }
       const { webhookPath } = params;
 
@@ -57,7 +176,7 @@ export const webhookRoutes = new Elysia({
       let resolve: (() => void) | null = null;
 
       const handler = (data: any) => {
-        console.log({ data })
+        console.log({ data });
         queue.push(data);
         if (resolve) {
           resolve();
@@ -69,12 +188,12 @@ export const webhookRoutes = new Elysia({
 
       // Send initial connection event
       yield sse({
-        event: 'connected',
+        event: "connected",
         data: {
           tenantId: tenant.tenantId,
           webhookPath,
           connectedAt: new Date().toISOString(),
-          message: 'Listening for inbound webhook events',
+          message: "Listening for inbound webhook events",
         },
       });
 
@@ -95,10 +214,10 @@ export const webhookRoutes = new Elysia({
           }
         }
       } catch (e) {
-        console.log({ e })
+        console.log({ e });
       } finally {
         webhookBus.off(channel, handler);
-        logger.info('SSE client disconnected', {
+        logger.info("SSE client disconnected", {
           webhookPath,
           tenantId: tenant.tenantId,
         });
@@ -109,12 +228,12 @@ export const webhookRoutes = new Elysia({
         webhookPath: t.String(),
       }),
       detail: {
-        tags: ['Webhook - Inbound'],
-        summary: 'Listen for inbound webhook events',
+        tags: ["Webhook - Inbound"],
+        summary: "Listen for inbound webhook events",
         description:
-          'Connect to receive real-time (SSE) inbound webhook data as it arrives for this tenant.',
+          "Connect to receive real-time (SSE) inbound webhook data as it arrives for this tenant.",
       },
-    }
+    },
   )
 
   /**
@@ -123,18 +242,19 @@ export const webhookRoutes = new Elysia({
    * No auth middleware - verified via webhookPath + signature
    */
   .post(
-    '/inbound/:webhookPath',
-    async ({ params, body, headers, set }) => {
+    "/inbound/:webhookPath",
+    async ({ params, body: rawBody, headers, set }) => {
       const { webhookPath } = params;
-      //      (body as any)?.data || (body as any)?.invoice ||
-      const originalPayload = body
+      let body: any;
+      let originalPayload: any;
+
       // 1. Look up tenant by webhook path
       const tenant = await tenantRepo.findByWebhookPath(webhookPath);
       if (!tenant) {
         set.status = 404;
         return {
           success: false,
-          error: 'Invalid webhook path',
+          error: "Invalid webhook path",
         };
       }
 
@@ -143,54 +263,58 @@ export const webhookRoutes = new Elysia({
         set.status = 403;
         return {
           success: false,
-          error: 'Webhook is not enabled for this tenant',
+          error: "Webhook is not enabled for this tenant",
         };
       }
 
-      // 3. Verify signature if provided
-      const webhookKey = await hashString(headers['x-webhook-key']!);
-      const webhookKeyHash = tenant.metadata?.webhookSecretHash;
-      /*    const signature = headers['x-webhook-key'];
-         const webhookSecretHash = tenant.metadata?.webhookSecretHash; */
-      const passwordHash = await hashString(webhookKey!);
-      const storedPasswordHash = (tenant as any)?.password;
+      // 3. Verify signature via helper function
+      const verificationResult = await verifyWebhookSignature({
+        headers,
+        rawBody: String(rawBody || ""),
+        tenant,
+      });
 
-      if (webhookKeyHash && !webhookKey) {
-        set.status = 401;
+      if (!verificationResult.success) {
+        set.status = verificationResult.status;
         return {
           success: false,
-          error: 'Missing X-Webhook-Key header',
+          error: verificationResult.error,
         };
       }
 
-      if (!webhookKeyHash || webhookKey !== webhookKeyHash) {
-        throw new UnauthorizedError('Invalid webhook key');
+      // Parse JSON body now that signature is verified
+      try {
+        body = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+      } catch (err) {
+        set.status = 400;
+        return {
+          success: false,
+          error: "Invalid JSON payload",
+        };
       }
-
-
-
+      originalPayload = body;
 
       // 4. Determine event type from payload or headers
       const eventType =
-        headers['x-event-type'] ||
-        (body as any)?.event ||
-        (body as any)?.eventType ||
+        headers["x-event-type"] ||
+        body?.event ||
+        body?.eventType ||
         WebhookEventType.INVOICE_RECEIVED;
 
       // 5. Resolve idempotency key
       //    Prefer X-Idempotency-Key header; fall back to a content hash so
       //    identical payloads sent without a key are also de-duplicated.
       const idempotencyKey =
-        headers['x-idempotency-key'] ||
+        headers["x-idempotency-key"] ||
         crypto
-          .createHash('sha256')
+          .createHash("sha256")
           .update(`${tenant.tenantId}:${eventType}:${JSON.stringify(body)}`)
-          .digest('hex');
+          .digest("hex");
 
       // 6. Check for an existing event with this idempotency key
       const existing = await webhookEventRepo.findByIdempotencyKey(
         tenant.tenantId,
-        idempotencyKey
+        idempotencyKey,
       );
 
       if (existing) {
@@ -199,7 +323,7 @@ export const webhookRoutes = new Elysia({
           set.status = 200;
           return {
             success: true,
-            message: 'Webhook already received',
+            message: "Webhook already received",
             data: {
               eventId: existing.eventId,
               tenantId: existing.tenantId,
@@ -211,7 +335,7 @@ export const webhookRoutes = new Elysia({
           };
         }
         // Status is FAILED — fall through to reprocess
-        logger.info('Reprocessing failed webhook event', {
+        logger.info("Reprocessing failed webhook event", {
           tenantId: tenant.tenantId,
           existingEventId: existing.eventId,
           idempotencyKey,
@@ -221,51 +345,60 @@ export const webhookRoutes = new Elysia({
       // 6. Resolve event routing — find actions mapped for this event type
       const matchedRoutes = await eventRoutingRepo.getRoutesForEvent(
         tenant.tenantId,
-        eventType
+        eventType,
       );
       const routedActions = matchedRoutes.flatMap((r) => r.actions);
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
-      const invoiceIdKey = tenant.config?.invoiceIdKey ?? 'invoiceId';
+      const invoiceIdKey = tenant.config?.invoiceIdKey ?? "invoiceId";
       const erpInvoiceId: string =
-        String(getNestedValue(originalPayload, invoiceIdKey) ?? '').trim() || generateRandomString(10);
+        String(getNestedValue(originalPayload, invoiceIdKey) ?? "").trim() ||
+        generateRandomString(10);
 
-      console.log({ erpInvoiceId })
+      console.log({ erpInvoiceId });
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
-        const invoiceRef = `${erpInvoiceId}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        const invoiceRef = `${erpInvoiceId}${Math.floor(Math.random() * 1000)
+          .toString()
+          .padStart(3, "0")}`;
         const generatedIrn = generateIRN(
           invoiceRef,
           tenant.config?.firsCredentials?.serviceId,
-          new Date()
+          new Date(),
         );
 
-        const { doc: invoice, created } = await outboundRepo.findOrCreateByErpInvoiceId(
-          tenant.tenantId,
-          erpInvoiceId,
-          {
-            irn: generatedIrn ?? `IRN-${tenant.tenantId.slice(0, 6).toUpperCase()}-${Date.now()}`,
-            erpSystem: tenant.config?.erpSystem ?? 'UNKNOWN',
-            source: OutboundInvoiceSource.WEBHOOK,
-            createdBy: tenant.tenantId,
-            metadata: {},
-          }
-        );
+        const { doc: invoice, created } =
+          await outboundRepo.findOrCreateByErpInvoiceId(
+            tenant.tenantId,
+            erpInvoiceId,
+            {
+              irn:
+                generatedIrn ??
+                `IRN-${tenant.tenantId.slice(0, 6).toUpperCase()}-${Date.now()}`,
+              erpSystem: tenant.config?.erpSystem ?? "UNKNOWN",
+              source: OutboundInvoiceSource.WEBHOOK,
+              createdBy: tenant.tenantId,
+              metadata: {},
+            },
+          );
 
         irn = invoice.irn;
-        logger.info(`[Webhook] Invoice ${created ? 'created' : 'found'} for erpInvoiceId`, {
-          tenantId: tenant.tenantId,
-          erpInvoiceId,
-          irn,
-          created,
-        });
+        logger.info(
+          `[Webhook] Invoice ${created ? "created" : "found"} for erpInvoiceId`,
+          {
+            tenantId: tenant.tenantId,
+            erpInvoiceId,
+            irn,
+            created,
+          },
+        );
       } else {
         //TODO:: Return Invoice ID Key Error
       }
 
       // 9. Store the webhook event
-      const eventId = `wh_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+      const eventId = `wh_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 
       try {
         await webhookEventRepo.create({
@@ -273,9 +406,10 @@ export const webhookRoutes = new Elysia({
           eventId,
           eventType,
           payload: body,
-          resourceId: irn ?? (body as any)?.irn ?? (body as any)?.resourceId ?? eventId,
-          resourceType: (body as any)?.resourceType || 'invoice',
-          webhookUrl: tenant.metadata?.webhookUrl || '',
+          resourceId:
+            irn ?? (body as any)?.irn ?? (body as any)?.resourceId ?? eventId,
+          resourceType: (body as any)?.resourceType || "invoice",
+          webhookUrl: tenant.metadata?.webhookUrl || "",
           status: WebhookDeliveryStatus.DELIVERED,
           deliveryAttempts: [
             {
@@ -289,7 +423,7 @@ export const webhookRoutes = new Elysia({
           deliveredAt: new Date(),
           jobErrors: [],
           metadata: {
-            source: 'inbound',
+            source: "inbound",
             matchedRoutes,
             webhookPath,
             idempotencyKey,
@@ -297,9 +431,9 @@ export const webhookRoutes = new Elysia({
             erpInvoiceId,
             receivedAt: new Date().toISOString(),
             headers: {
-              'content-type': headers['content-type'],
-              'x-event-type': headers['x-event-type'],
-              'user-agent': headers['user-agent'],
+              "content-type": headers["content-type"],
+              "x-event-type": headers["x-event-type"],
+              "user-agent": headers["user-agent"],
             },
           },
         } as any);
@@ -309,15 +443,13 @@ export const webhookRoutes = new Elysia({
           await outboundRepo.addWebhookEvent(irn, eventId);
         }
 
-        logger.info('Inbound webhook received', {
+        logger.info("Inbound webhook received", {
           tenantId: tenant.tenantId,
           eventId,
           eventType,
           erpInvoiceId,
           irn,
         });
-
-
 
         // 11. Schedule background job chain (fire-and-forget)
         let jobChainId: string | undefined;
@@ -332,13 +464,15 @@ export const webhookRoutes = new Elysia({
             erpInvoiceId,
             irn,
           })
-            .then((id) => { jobChainId = id; })
+            .then((id) => {
+              jobChainId = id;
+            })
             .catch((err) =>
-              logger.error('Failed to schedule job chain', {
+              logger.error("Failed to schedule job chain", {
                 eventId,
                 tenantId: tenant.tenantId,
                 error: err.message,
-              })
+              }),
             );
         }
 
@@ -359,7 +493,7 @@ export const webhookRoutes = new Elysia({
 
         return {
           success: true,
-          message: 'Webhook received successfully',
+          message: "Webhook received successfully",
           data: {
             eventId,
             tenantId: tenant.tenantId,
@@ -375,26 +509,26 @@ export const webhookRoutes = new Elysia({
           },
         };
       } catch (error: any) {
-        logger.error('Failed to process inbound webhook', {
+        logger.error("Failed to process inbound webhook", {
           webhookPath,
           error: error.message,
         });
         set.status = 500;
         return {
           success: false,
-          error: 'Failed to process webhook',
+          error: "Failed to process webhook",
         };
       }
     },
     {
+      parse: "text",
       params: t.Object({
         webhookPath: t.String(),
       }),
       detail: {
-        tags: ['Webhook - Inbound'],
-        summary: 'Receive inbound webhook',
-        description:
-          'Endpoint for tenants to send data to the platform.',
+        tags: ["Webhook - Inbound"],
+        summary: "Receive inbound webhook",
+        description: "Endpoint for tenants to send data to the platform.",
       },
-    }
+    },
   );

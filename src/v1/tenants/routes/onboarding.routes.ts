@@ -9,6 +9,7 @@ import axios from 'axios';
 import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
+import { signWebhookPayload } from '../../webhook';
 import app from '../../..';
 import {
   updateCredentialsExample,
@@ -386,6 +387,15 @@ export const protectedOnboardingRoutes = new Elysia()
           };
         }
 
+        const secret = tenant.config?.webhookAuth;
+        if (!secret) {
+          return {
+            success: false,
+            error: 'Webhook secret not configured for this tenant. Generate one first.',
+            statusCode: 400,
+          };
+        }
+
         // Create test payload
         const testPayload = body?.testPayload || {
           event: 'webhook.test',
@@ -397,13 +407,10 @@ export const protectedOnboardingRoutes = new Elysia()
           },
         };
 
-        // Generate signature for the payload
-        const webhookSecretHash = tenant.metadata?.webhookSecretHash;
+        // Generate signature for the payload using the new X-Signature format using the common helper function
+        const now = Math.floor(Date.now() / 1000);
         const payloadString = JSON.stringify(testPayload);
-        const signature = crypto
-          .createHmac('sha256', webhookSecretHash || 'test')
-          .update(payloadString)
-          .digest('hex');
+        const signature = signWebhookPayload(secret, now, payloadString);
 
         // Send test webhook
         let testResult: any = {
@@ -419,7 +426,7 @@ export const protectedOnboardingRoutes = new Elysia()
           const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'X-Webhook-Key': signature,
+              'X-Signature': `t=${now},v1=${signature}`,
               'X-Webhook-Event': 'webhook.test',
             },
             timeout: 10000, // 10 second timeout
