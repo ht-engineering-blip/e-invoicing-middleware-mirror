@@ -1,6 +1,6 @@
 // Encryption utilities
 
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 
 export const hashString = async (str: string): Promise<string> => {
   return await Bun.password.hash(str, {
