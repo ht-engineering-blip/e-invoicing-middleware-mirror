@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, spyOn, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, spyOn, beforeAll } from "bun:test";
 import { webhookRoutes } from "../src/v1/webhook";
 import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
 import { WebhookEventRepository } from "../src/v1/webhook/repos/webhook-event.repo";
@@ -8,16 +8,19 @@ import { WebhookNonceRepository } from "../src/v1/webhook/repos/webhook-nonce.re
 import crypto from "crypto";
 
 describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () => {
+  const mockSecret = "super-secret-webhook-key-min-32-chars-length";
+  const mockSecretHash = crypto.createHash("sha256").update(mockSecret).digest("hex");
+
   const mockTenant = {
     tenantId: "tenant-123",
     status: "active",
     config: {
       webhookEnabled: true,
-      webhookAuth: "super-secret-webhook-key-min-32-chars-length",
+      webhookAuth: mockSecret,
       erpSystem: "TEST",
     },
     metadata: {
-      webhookSecretHash: "old-secret-hash",
+      webhookSecretHash: mockSecretHash,
     },
   };
 
@@ -32,9 +35,9 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           return {
             ...mockTenant,
             tenantId: "tenant-456",
-            config: {
-              ...mockTenant.config,
-              webhookAuth: undefined,
+            metadata: {
+              ...mockTenant.metadata,
+              webhookSecretHash: undefined,
             },
           } as any;
         }
@@ -80,13 +83,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
       }
       return null;
     });
-
-    spyOn(WebhookNonceRepository.prototype, "create").mockImplementation(async (data: any) => {
-      return data as any;
-    });
+    spyOn(WebhookNonceRepository.prototype, "create").mockImplementation(async (data: any) => data as any);
   });
 
-  it("should reject request with 401 if x-signature header is missing", async () => {
+  // --- Common Missing Header Test ---
+  it("should reject request with 401 if x-webhook-key header is missing", async () => {
     const app = webhookRoutes;
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/valid-path", {
@@ -101,17 +102,18 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(response.status).toBe(401);
     const body = await response.json();
     expect(body.success).toBe(false);
-    expect(body.error).toContain("Missing X-Signature header");
+    expect(body.error).toContain("Missing X-Webhook-Key header");
   });
 
-  it("should reject request with 401 if x-signature header format is invalid", async () => {
+  // --- Secure Signature Flow Tests ---
+  it("should reject request with 401 if x-webhook-key format is invalid in secure mode", async () => {
     const app = webhookRoutes;
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/valid-path", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": "invalid-format-without-equals",
+          "X-Webhook-Key": "t=,v1=",
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -120,10 +122,10 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(response.status).toBe(401);
     const body = await response.json();
     expect(body.success).toBe(false);
-    expect(body.error).toContain("Invalid X-Signature header format");
+    expect(body.error).toContain("Invalid X-Webhook-Key format");
   });
 
-  it("should reject request with 401 if timestamp in x-signature has expired (> 300s)", async () => {
+  it("should reject request with 401 if timestamp in secure signature has expired (> 300s)", async () => {
     const app = webhookRoutes;
     const expiredTimestamp = Math.floor(Date.now() / 1000) - 301;
     const response = await app.handle(
@@ -131,7 +133,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": `t=${expiredTimestamp},v1=somehexsignature`,
+          "X-Webhook-Key": `t=${expiredTimestamp},v1=somehexsignature`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -143,7 +145,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(body.error).toContain("Webhook request expired or timestamp invalid");
   });
 
-  it("should reject request with 401 if nonce has already been used (replay protection)", async () => {
+  it("should reject request with 401 if nonce has already been used in secure mode (replay protection)", async () => {
     const app = webhookRoutes;
     const now = Math.floor(Date.now() / 1000);
     const response = await app.handle(
@@ -151,7 +153,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": `t=${now},v1=replay-nonce`,
+          "X-Webhook-Key": `t=${now},v1=replay-nonce`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -163,27 +165,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(body.error).toContain("Duplicate webhook request detected");
   });
 
-  it("should reject request with 401 if webhook secret is not configured", async () => {
-    const app = webhookRoutes;
-    const now = Math.floor(Date.now() / 1000);
-    const response = await app.handle(
-      new Request("http://localhost/webhook/inbound/no-secret-path", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Signature": `t=${now},v1=somesig`,
-        },
-        body: JSON.stringify({ event: "invoice.received" }),
-      })
-    );
-
-    expect(response.status).toBe(401);
-    const body = await response.json();
-    expect(body.success).toBe(false);
-    expect(body.error).toContain("Webhook secret not configured");
-  });
-
-  it("should reject request with 401 if webhook signature is invalid", async () => {
+  it("should reject request with 401 if secure signature is invalid", async () => {
     const app = webhookRoutes;
     const now = Math.floor(Date.now() / 1000);
     const response = await app.handle(
@@ -191,7 +173,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": `t=${now},v1=abcdef0123456789`,
+          "X-Webhook-Key": `t=${now},v1=abcdef0123456789`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -203,13 +185,13 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(body.error).toContain("Invalid webhook signature");
   });
 
-  it("should accept valid webhook signature, persist nonce, and process event successfully", async () => {
+  it("should accept request with 200 if secure signature is valid", async () => {
     const app = webhookRoutes;
     const now = Math.floor(Date.now() / 1000);
     const rawBody = JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" });
     const dataToSign = `${now}.${rawBody}`;
     const expectedSignature = crypto
-      .createHmac("sha256", mockTenant.config.webhookAuth)
+      .createHmac("sha256", mockSecret)
       .update(dataToSign)
       .digest("hex");
 
@@ -218,7 +200,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": `t=${now},v1=${expectedSignature}`,
+          "X-Webhook-Key": `t=${now},v1=${expectedSignature}`,
         },
         body: rawBody,
       })
@@ -228,5 +210,61 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.message).toContain("Webhook received successfully");
+  });
+
+  // --- Legacy Static Key Fallback Tests ---
+  it("should reject request with 401 if legacy static key is invalid", async () => {
+    const app = webhookRoutes;
+    const response = await app.handle(
+      new Request("http://localhost/webhook/inbound/valid-path", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Key": "wrong-secret-key-value",
+        },
+        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
+      })
+    );
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Invalid webhook key");
+  });
+
+  it("should accept request with 200 if legacy static key is valid", async () => {
+    const app = webhookRoutes;
+    const response = await app.handle(
+      new Request("http://localhost/webhook/inbound/valid-path", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Key": mockSecret,
+        },
+        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.message).toContain("Webhook received successfully");
+  });
+
+  it("should accept request with 200 if webhook secret is not configured on tenant (legacy support)", async () => {
+    const app = webhookRoutes;
+    const response = await app.handle(
+      new Request("http://localhost/webhook/inbound/no-secret-path", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
   });
 });

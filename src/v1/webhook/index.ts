@@ -49,99 +49,141 @@ export async function verifyWebhookSignature({
 }: {
   headers: Record<string, string | undefined>;
   rawBody: string;
-  tenant: { tenantId: string; config?: { webhookAuth?: string } };
+  tenant: {
+    tenantId: string;
+    config?: { webhookAuth?: string };
+    metadata?: { webhookSecretHash?: string };
+  };
 }): Promise<
   { success: true } | { success: false; status: number; error: string }
 > {
-  const signatureHeader = headers["x-signature"];
+  const webhookKey = headers["x-webhook-key"];
+  const webhookKeyHash = tenant.metadata?.webhookSecretHash;
 
-  if (!signatureHeader) {
+  if (webhookKeyHash && !webhookKey) {
     return {
       success: false,
       status: 401,
-      error: "Missing X-Signature header",
+      error: "Missing X-Webhook-Key header",
     };
   }
 
-  const parts = signatureHeader.split(",");
-  let tStr = "";
-  let v1 = "";
-  for (const part of parts) {
-    const [key, val] = part.split("=");
-    if (key === "t") tStr = val;
-    if (key === "v1") v1 = val;
+  if (!webhookKeyHash) {
+    // If no secret hash is configured, allow for legacy/unconfigured support
+    return { success: true };
   }
 
-  if (!tStr || !v1) {
-    return {
-      success: false,
-      status: 401,
-      error: "Invalid X-Signature header format",
-    };
+  // Check if the header is formatted as a secure signature (t=...,v1=...)
+  const isSecureFormat = webhookKey!.includes("t=") && webhookKey!.includes("v1=");
+
+  if (isSecureFormat) {
+    // 1. Secure Signature Flow with Timestamp and Replay Protection
+    const parts = webhookKey!.split(",");
+    let tStr = "";
+    let v1 = "";
+    for (const part of parts) {
+      const [key, val] = part.split("=");
+      if (key === "t") tStr = val;
+      if (key === "v1") v1 = val;
+    }
+
+    if (!tStr || !v1) {
+      return {
+        success: false,
+        status: 401,
+        error: "Invalid X-Webhook-Key format (missing t or v1)",
+      };
+    }
+
+    // Check timestamp window: reject if |now - t| > 300 seconds
+    const t = parseInt(tStr, 10);
+    const now = Math.floor(Date.now() / 1000);
+    if (isNaN(t) || Math.abs(now - t) > 300) {
+      return {
+        success: false,
+        status: 401,
+        error: "Webhook request expired or timestamp invalid",
+      };
+    }
+
+    // Check for replay (nonce deduplication)
+    const isReplay = await webhookNonceRepo.findOne({
+      tenantId: tenant.tenantId,
+      t,
+      v1,
+    });
+    if (isReplay) {
+      return {
+        success: false,
+        status: 401,
+        error: "Duplicate webhook request detected (replay prevention)",
+      };
+    }
+
+    // Retrieve plaintext secret to use as the HMAC signing key
+    const secret = tenant.config?.webhookAuth;
+    if (!secret) {
+      return {
+        success: false,
+        status: 401,
+        error: "Webhook secret not configured for this tenant in config",
+      };
+    }
+
+    // Compute expected HMAC-SHA256 signature
+    const expectedSignature = signWebhookPayload(secret, tStr, rawBody);
+
+    // Timing-safe comparison
+    let signatureMatches = false;
+    try {
+      signatureMatches = crypto.timingSafeEqual(
+        Buffer.from(v1, "hex"),
+        Buffer.from(expectedSignature, "hex"),
+      );
+    } catch {
+      signatureMatches = false;
+    }
+
+    if (!signatureMatches) {
+      return {
+        success: false,
+        status: 401,
+        error: "Invalid webhook signature",
+      };
+    }
+
+    // Persist nonce to prevent replays
+    await webhookNonceRepo.create({
+      tenantId: tenant.tenantId,
+      t,
+      v1,
+    });
+
+  } else {
+    // 2. Legacy Static Secret Flow (Fallback for compatibility with existing clients)
+    const hashedKey = crypto
+      .createHash("sha256")
+      .update(webhookKey!)
+      .digest("hex");
+
+    let matches = false;
+    try {
+      matches = crypto.timingSafeEqual(
+        Buffer.from(hashedKey, "hex"),
+        Buffer.from(webhookKeyHash, "hex"),
+      );
+    } catch {
+      matches = false;
+    }
+
+    if (!matches) {
+      return {
+        success: false,
+        status: 401,
+        error: "Invalid webhook key",
+      };
+    }
   }
-
-  // Check timestamp: reject if |now - t| > 300 seconds
-  const t = parseInt(tStr, 10);
-  const now = Math.floor(Date.now() / 1000);
-  if (isNaN(t) || Math.abs(now - t) > 300) {
-    return {
-      success: false,
-      status: 401,
-      error: "Webhook request expired or timestamp invalid",
-    };
-  }
-
-  // Check for replay (nonce deduplication)
-  const isReplay = await webhookNonceRepo.findOne({
-    tenantId: tenant.tenantId,
-    t,
-    v1,
-  });
-  if (isReplay) {
-    return {
-      success: false,
-      status: 401,
-      error: "Duplicate webhook request detected (replay prevention)",
-    };
-  }
-
-  // Compute HMAC-SHA256 signature using the helper function
-  const secret = tenant.config?.webhookAuth;
-  if (!secret) {
-    return {
-      success: false,
-      status: 401,
-      error: "Webhook secret not configured for this tenant",
-    };
-  }
-
-  const expectedSignature = signWebhookPayload(secret, tStr, rawBody);
-
-  // Timing-safe comparison
-  let signatureMatches = false;
-  try {
-    signatureMatches = crypto.timingSafeEqual(
-      Buffer.from(v1, "hex"),
-      Buffer.from(expectedSignature, "hex"),
-    );
-  } catch {
-    signatureMatches = false;
-  }
-
-  if (!signatureMatches) {
-    return {
-      success: false,
-      status: 401,
-      error: "Invalid webhook signature",
-    };
-  }
-
-  // Persist the nonce to prevent replays
-  await webhookNonceRepo.create({
-    tenantId: tenant.tenantId,
-    t,
-    v1,
-  });
 
   return { success: true };
 }
@@ -297,8 +339,8 @@ export const webhookRoutes = new Elysia({
       // 4. Determine event type from payload or headers
       const eventType =
         headers["x-event-type"] ||
-        body?.event ||
-        body?.eventType ||
+        (body as any)?.event ||
+        (body as any)?.eventType ||
         WebhookEventType.INVOICE_RECEIVED;
 
       // 5. Resolve idempotency key
