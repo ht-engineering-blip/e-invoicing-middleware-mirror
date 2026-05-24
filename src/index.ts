@@ -9,6 +9,7 @@ import { v1Routes } from './v1';
 import { errorHandlerMiddleware } from './middlewares';
 import { logger } from './@lib/logger';
 import { connectMongo } from './@lib/adapters/mongo';
+import { preloadWebhookOrigins } from './v1/webhook/utils/cors-cache';
 import { dts } from 'elysia-remote-dts';
 
 if (!appConfig) {
@@ -21,6 +22,7 @@ const ensureMongoConnection = async () => {
   if (!mongoConnected) {
     try {
       await connectMongo();
+      await preloadWebhookOrigins();
       mongoConnected = true;
       logger.info('MongoDB connected successfully');
     } catch (err) {

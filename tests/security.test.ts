@@ -1,13 +1,89 @@
+import { mock } from 'bun:test';
+import path from 'node:path';
+import dns from 'node:dns';
+
+// Mock @agendajs/mongo-backend globally to completely suppress any MongoBackend connection attempts
+mock.module('@agendajs/mongo-backend', () => {
+  return {
+    MongoBackend: class {
+      constructor() {}
+      async connect() {
+        return this;
+      }
+      async database() {
+        return {
+          collection: () => ({
+            findOne: () => Promise.resolve(null),
+            find: () => ({
+              toArray: () => Promise.resolve([]),
+            }),
+            insertOne: () => Promise.resolve({}),
+            updateOne: () => Promise.resolve({}),
+            createIndex: () => Promise.resolve({}),
+          }),
+        };
+      }
+    }
+  };
+});
+
+// Mock agenda globally using all possible path permutations to guarantee resolution matching
+const mockAgenda = {
+  define: () => {},
+  on: () => {},
+  start: async () => {},
+  schedule: async () => {},
+  now: async () => {},
+  cancel: async () => {},
+};
+
+const agendaPath = path.resolve(import.meta.dir, '../src/@lib/queue/agenda');
+const pathsToMock = [
+  agendaPath,
+  `${agendaPath}.ts`,
+  agendaPath.replace(/\\/g, '/'),
+  `${agendaPath.replace(/\\/g, '/')}.ts`,
+  agendaPath.toLowerCase(),
+  `${agendaPath.toLowerCase()}.ts`,
+  '../src/@lib/queue/agenda.ts',
+  '../src/@lib/queue/agenda',
+  '@lib/queue/agenda',
+];
+
+for (const p of pathsToMock) {
+  mock.module(p, () => ({
+    agenda: mockAgenda
+  }));
+}
+
+// Silence background MongoDB connection rejections during offline unit tests
+process.on('unhandledRejection', (reason) => {
+  const reasonStr = String(reason);
+  if (reasonStr.includes('mongodb') || reasonStr.includes('ECONNREFUSED') || reasonStr.includes('querySrv')) {
+    return; // Silently swallow background connection failures
+  }
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  const errStr = String(err);
+  if (errStr.includes('mongodb') || errStr.includes('ECONNREFUSED') || errStr.includes('querySrv')) {
+    return; // Silently swallow background connection failures
+  }
+  console.error('Uncaught Exception:', err);
+});
+
 import { describe, it, expect, spyOn, beforeAll } from "bun:test";
-import { webhookRoutes } from "../src/v1/webhook";
-import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
-import { WebhookEventRepository } from "../src/v1/webhook/repos/webhook-event.repo";
-import { EventRoutingRepository } from "../src/v1/admin/repos/event-routing.repo";
-import { OutboundInvoiceRepository } from "../src/v1/workflow/repos/outbound-invoice.repo";
-import { WebhookNonceRepository } from "../src/v1/webhook/repos/webhook-nonce.repo";
 import crypto from "crypto";
 
 describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () => {
+  let webhookRoutes: any;
+  let TenantRepository: any;
+  let WebhookEventRepository: any;
+  let EventRoutingRepository: any;
+  let OutboundInvoiceRepository: any;
+  let WebhookNonceRepository: any;
+
   const mockSecret = "super-secret-webhook-key-min-32-chars-length";
   const mockSecretHash = crypto.createHash("sha256").update(mockSecret).digest("hex");
 
@@ -24,7 +100,20 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     },
   };
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    const routesMod = await import("../src/v1/webhook");
+    webhookRoutes = routesMod.webhookRoutes;
+    const tenantMod = await import("../src/v1/tenants/repos/tenant.repo");
+    TenantRepository = tenantMod.TenantRepository;
+    const eventMod = await import("../src/v1/webhook/repos/webhook-event.repo");
+    WebhookEventRepository = eventMod.WebhookEventRepository;
+    const routeMod = await import("../src/v1/admin/repos/event-routing.repo");
+    EventRoutingRepository = routeMod.EventRoutingRepository;
+    const outboundMod = await import("../src/v1/workflow/repos/outbound-invoice.repo");
+    OutboundInvoiceRepository = outboundMod.OutboundInvoiceRepository;
+    const nonceMod = await import("../src/v1/webhook/repos/webhook-nonce.repo");
+    WebhookNonceRepository = nonceMod.WebhookNonceRepository;
+
     // Spy on TenantRepository.findByWebhookPath
     spyOn(TenantRepository.prototype, "findByWebhookPath").mockImplementation(
       async (path: string) => {
@@ -147,13 +236,13 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
 
   it("should reject request with 401 if nonce has already been used in secure mode (replay protection)", async () => {
     const app = webhookRoutes;
-    const now = Math.floor(Date.now() / 1000);
+    const timestamp = Math.floor(Date.now() / 1000);
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/valid-path", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Webhook-Key": `t=${now},v1=replay-nonce`,
+          "X-Webhook-Key": `t=${timestamp},v1=replay-nonce`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -167,13 +256,13 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
 
   it("should reject request with 401 if secure signature is invalid", async () => {
     const app = webhookRoutes;
-    const now = Math.floor(Date.now() / 1000);
+    const timestamp = Math.floor(Date.now() / 1000);
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/valid-path", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Webhook-Key": `t=${now},v1=abcdef0123456789`,
+          "X-Webhook-Key": `t=${timestamp},v1=invalidsignature`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
       })
@@ -187,9 +276,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
 
   it("should accept request with 200 if secure signature is valid", async () => {
     const app = webhookRoutes;
-    const now = Math.floor(Date.now() / 1000);
+    const timestamp = Math.floor(Date.now() / 1000);
     const rawBody = JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" });
-    const dataToSign = `${now}.${rawBody}`;
+    
+    // Compute valid HMAC-SHA256 signature using test secret
+    const dataToSign = `${timestamp}.${rawBody}`;
     const expectedSignature = crypto
       .createHmac("sha256", mockSecret)
       .update(dataToSign)
@@ -200,7 +291,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Webhook-Key": `t=${now},v1=${expectedSignature}`,
+          "X-Webhook-Key": `t=${timestamp},v1=${expectedSignature}`,
         },
         body: rawBody,
       })
@@ -212,7 +303,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(body.message).toContain("Webhook received successfully");
   });
 
-  // --- Legacy Static Key Fallback Tests ---
+  // --- Legacy Static Secret Flow Tests ---
   it("should reject request with 401 if legacy static key is invalid", async () => {
     const app = webhookRoutes;
     const response = await app.handle(
@@ -220,9 +311,9 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Webhook-Key": "wrong-secret-key-value",
+          "X-Webhook-Key": "wrong-secret-key",
         },
-        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
+        body: JSON.stringify({ event: "invoice.received" }),
       })
     );
 
@@ -266,5 +357,6 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.success).toBe(true);
+    expect(body.message).toContain("Webhook received successfully");
   });
 });

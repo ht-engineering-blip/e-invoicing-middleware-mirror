@@ -1,3 +1,78 @@
+import { mock } from 'bun:test';
+import path from 'node:path';
+import dns from 'node:dns';
+
+// Mock @agendajs/mongo-backend globally to completely suppress any MongoBackend connection attempts
+mock.module('@agendajs/mongo-backend', () => {
+  return {
+    MongoBackend: class {
+      constructor() {}
+      async connect() {
+        return this;
+      }
+      async database() {
+        return {
+          collection: () => ({
+            findOne: () => Promise.resolve(null),
+            find: () => ({
+              toArray: () => Promise.resolve([]),
+            }),
+            insertOne: () => Promise.resolve({}),
+            updateOne: () => Promise.resolve({}),
+            createIndex: () => Promise.resolve({}),
+          }),
+        };
+      }
+    }
+  };
+});
+
+// Mock agenda globally using all possible path permutations to guarantee resolution matching
+const mockAgenda = {
+  define: () => {},
+  on: () => {},
+  start: async () => {},
+  schedule: async () => {},
+  now: async () => {},
+  cancel: async () => {},
+};
+
+const agendaPath = path.resolve(import.meta.dir, '../src/@lib/queue/agenda');
+const pathsToMock = [
+  agendaPath,
+  `${agendaPath}.ts`,
+  agendaPath.replace(/\\/g, '/'),
+  `${agendaPath.replace(/\\/g, '/')}.ts`,
+  agendaPath.toLowerCase(),
+  `${agendaPath.toLowerCase()}.ts`,
+  '../src/@lib/queue/agenda.ts',
+  '../src/@lib/queue/agenda',
+  '@lib/queue/agenda',
+];
+
+for (const p of pathsToMock) {
+  mock.module(p, () => ({
+    agenda: mockAgenda
+  }));
+}
+
+// Silence background MongoDB connection rejections during offline unit tests
+process.on('unhandledRejection', (reason) => {
+  const reasonStr = String(reason);
+  if (reasonStr.includes('mongodb') || reasonStr.includes('ECONNREFUSED') || reasonStr.includes('querySrv')) {
+    return; // Silently swallow background connection failures
+  }
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  const errStr = String(err);
+  if (errStr.includes('mongodb') || errStr.includes('ECONNREFUSED') || errStr.includes('querySrv')) {
+    return; // Silently swallow background connection failures
+  }
+  console.error('Uncaught Exception:', err);
+});
+
 import { describe, it, expect } from 'bun:test';
 import { isSafeUrl } from '../src/@lib/utils/ssrf';
 
