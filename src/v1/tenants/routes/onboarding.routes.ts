@@ -40,7 +40,9 @@ export const publicOnboardingRoutes = new Elysia()
         let decoded: any;
 
         try {
-          decoded = jwt.verify(params.token, jwtSecret);
+          decoded = jwt.verify(params.token, jwtSecret, {
+            algorithms: [jwtConfig?.algorithm as jwt.Algorithm || 'HS256']
+          });
         } catch (jwtError: any) {
           logger.warn('Invalid activation token', { error: jwtError.message });
           return {
@@ -81,7 +83,10 @@ export const publicOnboardingRoutes = new Elysia()
             purpose: 'set-password',
           },
           jwtSecret,
-          { expiresIn: '1h' }
+          {
+            expiresIn: '1h',
+            algorithm: (jwtConfig?.algorithm as jwt.Algorithm) || 'HS256'
+          }
         );
 
         // Return redirect info or token

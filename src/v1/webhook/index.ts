@@ -13,7 +13,6 @@ import { generateIRN } from "../workflow/utils/transformer/utils";
 import { WebhookDeliveryStatus, WebhookEventType } from "./models";
 import { WebhookEventRepository } from "./repos/webhook-event.repo";
 import { WebhookNonceRepository } from "./repos/webhook-nonce.repo";
-import { webhookPathToOriginCache, preloadWebhookOrigins } from "./utils/cors-cache";
 
 const tenantRepo = new TenantRepository();
 const webhookEventRepo = new WebhookEventRepository();
@@ -189,34 +188,12 @@ export async function verifyWebhookSignature({
   return { success: true };
 }
 
-let originsPreloaded = false;
-
 export const webhookRoutes = new Elysia({
   prefix: "/webhook",
 })
-  .onBeforeHandle(async () => {
-    if (!originsPreloaded) {
-      await preloadWebhookOrigins().catch(() => {});
-      originsPreloaded = true;
-    }
-  })
   .use(
     cors({
-      origin: (request) => {
-        const origin = request.headers.get("origin");
-        if (!origin) return false;
-
-        const url = new URL(request.url);
-        const match = url.pathname.match(/\/webhook\/(?:listen|inbound)\/([^\/]+)/);
-        if (match) {
-          const webhookPath = match[1];
-          const allowedOrigin = webhookPathToOriginCache.get(webhookPath);
-          if (allowedOrigin && origin === allowedOrigin) {
-            return true;
-          }
-        }
-        return false;
-      },
+      origin: true,
     })
   )
 

@@ -27,12 +27,12 @@ export class AuthService {
     expiresIn?: string,
   ): Promise<string> {
     const tokenPayload = {
-      ...tenant,
       tenantId: tenant.tenantId,
       businessId: (tenant as any).businessId || tenant.tenantId,
+      type: tenant.type || "tenant",
+      role: tenant.role || "owner",
       email: tenant.contactEmail,
       businessName: tenant.businessName,
-      type: tenant.type || "tenant",
     };
 
     const jwtSecret = jwtConfig?.secret as string;
@@ -179,7 +179,10 @@ export class AuthService {
 
       // Hash and save new password
       const passwordHash = await hashString(newPassword);
-      await this.tenantRepo.update(tenant.tenantId, { password: passwordHash });
+      await this.tenantRepo.update(tenant.tenantId, { 
+        password: passwordHash,
+        passwordChangedAt: new Date(),
+      });
 
       // Mark token as used
       await this.passwordResetRepo.markAsUsed(tokenHash);

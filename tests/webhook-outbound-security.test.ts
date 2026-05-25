@@ -78,7 +78,6 @@ import { describe, it, expect, spyOn, beforeAll } from 'bun:test';
 describe('Outbound Webhook Security & CORS Tests', () => {
   let webhookService: any;
   let webhookRoutes: any;
-  let webhookPathToOriginCache: any;
 
   const mockTenant = {
     tenantId: 'tenant-123',
@@ -105,14 +104,9 @@ describe('Outbound Webhook Security & CORS Tests', () => {
     const { AuditLogRepository } = await import('../src/v1/audit/repos/audit-log.repo');
     const routesMod = await import('../src/v1/webhook');
     webhookRoutes = routesMod.webhookRoutes;
-    const cacheMod = await import('../src/v1/webhook/utils/cors-cache');
-    webhookPathToOriginCache = cacheMod.webhookPathToOriginCache;
     const axios = (await import('axios')).default;
 
     webhookService = new WebhookService();
-
-    // Populate CORS cache
-    webhookPathToOriginCache.set('valid-path', 'https://allowed-origin.com');
 
     // Mock Repositories
     spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async (id) => {
@@ -191,35 +185,7 @@ describe('Outbound Webhook Security & CORS Tests', () => {
     });
   });
 
-  describe('CORS Dynamic Origin Guard', () => {
-    it('should allow request from matching tenant-registered origin', async () => {
-      const app = webhookRoutes;
-      const response = await app.handle(
-        new Request('http://localhost/webhook/inbound/valid-path', {
-          method: 'OPTIONS',
-          headers: {
-            Origin: 'https://allowed-origin.com',
-            'Access-Control-Request-Method': 'POST',
-          },
-        })
-      );
-      expect(response.headers.get('access-control-allow-origin')).toBe('https://allowed-origin.com');
-    });
 
-    it('should block request from non-matching origin', async () => {
-      const app = webhookRoutes;
-      const response = await app.handle(
-        new Request('http://localhost/webhook/inbound/valid-path', {
-          method: 'OPTIONS',
-          headers: {
-            Origin: 'https://attacker.com',
-            'Access-Control-Request-Method': 'POST',
-          },
-        })
-      );
-      expect(response.headers.get('access-control-allow-origin')).toBeNull();
-    });
-  });
   describe('ERP Sync Configuration SSRF & Loopback Guard', () => {
     let tenantService: any;
     let TenantRepository: any;

@@ -57,6 +57,7 @@ export interface UpdateTenantInput {
   businessName?: string;
   contactEmail?: string;
   password?: string;
+  passwordChangedAt?: Date;
   erpSystem?: SchemaSourceType | string;
   contactPhone?: string;
   erpWebhookUrl?: string;
@@ -358,6 +359,7 @@ export class TenantService {
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
     if (input.webhookEnabled !== undefined)
       updateData.webhookEnabled = input.webhookEnabled;
+    if (input.passwordChangedAt) updateData.passwordChangedAt = input.passwordChangedAt;
 
     // Encrypt ERP API key if provided
     if (input.erpApiKey) {

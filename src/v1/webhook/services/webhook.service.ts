@@ -13,7 +13,6 @@ import type { ITenantConfig } from '../../tenants/models/tenant.model';
 import axios from 'axios';
 import crypto from 'crypto';
 import { isSafeUrl } from '../../../@lib/utils/ssrf';
-import { webhookPathToOriginCache } from '../utils/cors-cache';
 
 // Concurrency tracking for outbound webhook deliveries
 const concurrentGlobal = { count: 0 };
@@ -339,13 +338,6 @@ export class WebhookService {
     }
 
     await this.tenantRepo.update(tenant.tenantId, { config } as any);
-
-    if (tenant.metadata?.webhookPath && input.webhookUrl) {
-      try {
-        const origin = new URL(input.webhookUrl).origin;
-        webhookPathToOriginCache.set(tenant.metadata.webhookPath, origin);
-      } catch {}
-    }
 
     // Audit log
     await this.createAuditLog(input.tenantId, 'webhook.configured', 'tenant', tenant.tenantId, {
