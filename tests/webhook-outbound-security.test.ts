@@ -220,4 +220,74 @@ describe('Outbound Webhook Security & CORS Tests', () => {
       expect(response.headers.get('access-control-allow-origin')).toBeNull();
     });
   });
+  describe('ERP Sync Configuration SSRF & Loopback Guard', () => {
+    let tenantService: any;
+    let TenantRepository: any;
+
+    it('should block configureERPSync if baseUrl is a loopback URL', async () => {
+      const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
+      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
+      TenantRepository = tenantRepoMod.TenantRepository;
+      tenantService = new TenantService();
+
+      // Spy on TenantRepository.prototype.findOne to prevent Mongoose buffering timeout
+      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
+
+      const configInput = {
+        name: 'My Test ERP',
+        enabled: true,
+        method: 'GET',
+        baseUrl: 'https://localhost/api',
+        endpoint: '/invoices',
+      };
+
+      expect(tenantService.configureERPSync('tenant-123', configInput)).rejects.toThrow(
+        'ERP Sync baseUrl is blocked by SSRF guard'
+      );
+    });
+
+    it('should block configureERPSync if baseUrl is in private RFC1918 space', async () => {
+      const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
+      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
+      TenantRepository = tenantRepoMod.TenantRepository;
+      tenantService = new TenantService();
+
+      // Spy on TenantRepository.prototype.findOne to prevent Mongoose buffering timeout
+      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
+
+      const configInput = {
+        name: 'My Test ERP',
+        enabled: true,
+        method: 'GET',
+        baseUrl: 'https://192.168.1.1/api',
+        endpoint: '/invoices',
+      };
+
+      expect(tenantService.configureERPSync('tenant-123', configInput)).rejects.toThrow(
+        'ERP Sync baseUrl is blocked by SSRF guard'
+      );
+    });
+
+    it('should allow configureERPSync if baseUrl is a valid public URL', async () => {
+      const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
+      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
+      TenantRepository = tenantRepoMod.TenantRepository;
+      tenantService = new TenantService();
+
+      // Spy on TenantRepository.prototype.findOne and update to prevent Mongoose queries
+      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
+      spyOn(TenantRepository.prototype, 'update').mockImplementation(async () => mockTenant as any);
+
+      const configInput = {
+        name: 'My Test ERP',
+        enabled: true,
+        method: 'GET',
+        baseUrl: 'https://google.com/api',
+        endpoint: '/invoices',
+      };
+
+      const result = await tenantService.configureERPSync('tenant-123', configInput);
+      expect(result).toBeDefined();
+    });
+  });
 });

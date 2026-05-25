@@ -31,6 +31,7 @@ import {
   TenantOnboardingDocument,
 } from "../models";
 import { appConfig } from "../../../@config";
+import { isSafeUrl } from "../../../@lib/utils/ssrf";
 import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import {
   MailContent,
@@ -968,6 +969,22 @@ export class TenantService {
     config: ERPSyncConfigInput,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
+
+    // Validate ERP Sync URL endpoints for SSRF and loopback interfaces
+    if (config.baseUrl) {
+      if (!(await isSafeUrl(config.baseUrl))) {
+        throw new ValidationError(
+          `ERP Sync baseUrl is blocked by SSRF guard: ${config.baseUrl}`
+        );
+      }
+    }
+    if (config.endpoint && config.endpoint.startsWith('http')) {
+      if (!(await isSafeUrl(config.endpoint))) {
+        throw new ValidationError(
+          `ERP Sync endpoint is blocked by SSRF guard: ${config.endpoint}`
+        );
+      }
+    }
 
     // Encrypt sensitive authentication data
     const encryptedConfig: any = { ...config };
