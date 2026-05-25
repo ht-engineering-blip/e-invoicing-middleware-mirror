@@ -1,8 +1,15 @@
+import mongoose from 'mongoose';
 import { TenantModel } from '../../tenants/models/tenant.model';
 
 export const webhookPathToOriginCache = new Map<string, string>();
 
 export async function preloadWebhookOrigins() {
+  // Skip preloading if the database is not connected (e.g., during offline unit/integration tests)
+  // to avoid blocking operations and buffering timeouts.
+  if (mongoose.connection.readyState !== 1) {
+    console.info('[CORS Cache] Database not connected. Skipping webhook origin preloading.');
+    return;
+  }
   try {
     const tenants = await TenantModel.find({
       $or: [
