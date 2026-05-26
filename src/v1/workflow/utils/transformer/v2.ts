@@ -637,8 +637,8 @@ Complete the missing fields also generate emails here missing currency should de
             return {};
         }
 
-        // Replace invalid unquoted undefined values with null to keep JSON parsing valid
-        cleaned = cleaned.replace(/:\s*undefined\b/g, ": null");
+        // Replace invalid unquoted undefined values with null to keep JSON parsing valid (only when followed by a delimiter like comma or brace)
+        cleaned = cleaned.replace(/:\s*undefined\s*(?=,|\}|\])/g, ": null");
 
         try {
             return JSON.parse(cleaned);

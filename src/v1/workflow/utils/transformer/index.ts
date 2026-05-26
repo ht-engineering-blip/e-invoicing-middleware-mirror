@@ -209,7 +209,7 @@ export class FIRSInvoiceTransformer {
     if (!content) return {};
     let cleaned = content.replace(/```json/g, "").replace(/```/g, "").trim();
     if (cleaned === "undefined" || !cleaned) return {};
-    cleaned = cleaned.replace(/:\s*undefined\b/g, ": null");
+    cleaned = cleaned.replace(/:\s*undefined\s*(?=,|\}|\])/g, ": null");
 
     try {
       return JSON.parse(cleaned);
