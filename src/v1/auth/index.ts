@@ -119,7 +119,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401
+        set.status = 400
         logger.error("Login failed", {
           email: body.email,
           error: error.message,
@@ -180,7 +180,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401
+        set.status = 400
         logger.error("Team member login failed", {
           email: body.email,
           error: error.message,
@@ -188,7 +188,7 @@ const authRoutes = new Elysia()
         return {
           success: false,
           error: error.message || "Login failed",
-          statusCode: error.statusCode || 401,
+          statusCode: 400,
         };
       }
     },
@@ -700,7 +700,7 @@ const protectedAuthRoutes = new Elysia()
           );
         }
       } catch (error: any) {
-        set.status = 401
+        set.status = 400
         return {
           success: false,
           error: error.message || "Token refresh failed",
@@ -760,7 +760,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401
+        set.status = 400
         return {
           success: false,
           error: error.message || "Token refresh failed",
