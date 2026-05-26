@@ -626,35 +626,13 @@ Complete the missing fields also generate emails here missing currency should de
     ----------------------------------------------------- */
 
     private safeParseLLMJSON(text: string) {
-        if (!text) return {};
 
-        let cleaned = text
+        const cleaned = text
             .replace(/```json/g, "")
             .replace(/```/g, "")
-            .trim();
+            .trim()
 
-        if (cleaned === "undefined" || !cleaned) {
-            return {};
-        }
-
-        // Replace invalid unquoted undefined values with null to keep JSON parsing valid (only when followed by a delimiter like comma or brace)
-        cleaned = cleaned.replace(/:\s*undefined\s*(?=,|\}|\])/g, ": null");
-
-        try {
-            return JSON.parse(cleaned);
-        } catch (e) {
-            try {
-                // Remove trailing commas and sanitize missing properties
-                const formatCleaned = cleaned
-                    .replace(/,\s*([\]}])/g, "$1")
-                    .replace(/"[^"]+"\s*:\s*undefined\s*,?/g, "")
-                    .replace(/,\s*([\]}])/g, "$1");
-                return JSON.parse(formatCleaned);
-            } catch (innerError) {
-                logger.error("JSON Parsing failed completely", { text, cleaned });
-                throw e;
-            }
-        }
+        return JSON.parse(cleaned)
     }
 
     /* -----------------------------------------------------
