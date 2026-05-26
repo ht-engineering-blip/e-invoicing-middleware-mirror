@@ -135,7 +135,7 @@ export class LLMService {
     /**
  * Generate Invoice Dictionary
  */
-    async generateInvoiceDictionary(erp: any, invoice: any, metadata:any={}): Promise<any> {
+    async generateInvoiceDictionary(erp: any, invoice: any, metadata: any = {}): Promise<any> {
         try {
             let payload = {
                 model: aiConfig?.inferenceModel,
@@ -160,10 +160,9 @@ export class LLMService {
             const response: any = await this.client.post(``, payload);
             console.log(response)
             if (!response.choices) {
-
                 throw new Error(`Failed to extract invoice dictionary`);
             }
-            const content = response.choices[0].message.content; 
+            const content = response.choices[0].message.content;
             return JSON.parse(content);
         } catch (error) {
             if (axios.isAxiosError(error)) {

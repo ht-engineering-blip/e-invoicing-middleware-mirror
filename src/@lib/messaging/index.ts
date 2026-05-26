@@ -1,4 +1,4 @@
-import Handlebars from "handlebars";
+import { templateEngine } from "../../templates/engine";
 
 // const twilio = require("twilio"); 
 // import twilio from "twilio";
@@ -122,7 +122,10 @@ export class NodeMailerClient implements MailClient {
 export const sendSMSUsing = async (client: SMSClient, message: Message) => await client.send(message).then(sent_or_not => sent_or_not)
 export const sendMailUsing = async (client: MailClient, message: MailContent) => await client.send(message).then(sent_or_not => sent_or_not)
 export const withTemplate = (content: string) => {
-    let compiledMessage = Handlebars.compile(messagingConfig?.defaultEmailTemplate)
     let logo = LOGO
-    return compiledMessage({ logo, content })
+    return templateEngine.renderInline(
+        'defaultEmailTemplate',
+        messagingConfig?.defaultEmailTemplate || '',
+        { logo, content }
+    );
 }

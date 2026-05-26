@@ -13,6 +13,7 @@ import {
   NodeMailerClient,
   withTemplate,
 } from "../../../@lib/messaging";
+import { templateEngine } from "../../../templates/engine";
 import { hashString, verifyHash } from "../../../@lib/utils/encryption";
 import { AuthService } from "../../auth/services";
 import {
@@ -466,16 +467,14 @@ export class TeamMemberService {
       const mailContent: MailContent = {
         to: member.email,
         subject: `You're invited to join ${businessName} on E-Invoicing Platform`,
-        html: withTemplate(`
-          <h2>Team Invitation</h2>
-          <p>Hello ${member.firstName},</p>
-          <p>You've been invited to join <strong>${businessName}</strong> on the E-Invoicing Platform as a ${member.role}.</p>
-          <p>Click the link below to accept the invitation and set up your account:</p>
-          <a href="${invitationUrl}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">Accept Invitation</a>
-          <p>This invitation will expire in 7 days.</p>
-          <br/>
-          <p>Best regards,<br/>E-Invoicing Platform Team</p>
-        `),
+        html: withTemplate(
+          templateEngine.render("teamInvitation", {
+            firstName: member.firstName,
+            businessName,
+            role: member.role,
+            invitationUrl,
+          }),
+        ),
       };
 
       await mailClient.send(mailContent);

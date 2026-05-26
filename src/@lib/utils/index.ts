@@ -71,3 +71,27 @@ function _traverse(current: any, keys: string[]): any {
   return _traverse(current[head], rest);
 }
 
+/**
+ * Safely escape HTML characters to prevent XSS (Cross-Site Scripting).
+ */
+export function escapeHtml(unsafe: string | undefined | null): string {
+  if (unsafe == null) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Tagged template literal helper that automatically HTML-escapes all interpolated variables.
+ */
+export function html(strings: TemplateStringsArray, ...values: any[]): string {
+  return strings.reduce((result, string, i) => {
+    const value = values[i - 1];
+    const escapedValue = typeof value === 'string' ? escapeHtml(value) : String(value ?? '');
+    return result + escapedValue + string;
+  });
+}
+
