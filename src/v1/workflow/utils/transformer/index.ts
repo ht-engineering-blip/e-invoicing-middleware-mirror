@@ -206,10 +206,23 @@ export class FIRSInvoiceTransformer {
     const content = result.choices[0].message.content;
 
     // Parse the JSON response
+    if (!content) return {};
+    let cleaned = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    if (cleaned === "undefined" || !cleaned) return {};
+    cleaned = cleaned.replace(/:\s*undefined\b/g, ": null");
+
     try {
-      return JSON.parse(content);
+      return JSON.parse(cleaned);
     } catch (error) {
-      throw new Error('Failed to parse LLM response as JSON');
+      try {
+        const formatCleaned = cleaned
+          .replace(/,\s*([\]}])/g, "$1")
+          .replace(/"[^"]+"\s*:\s*undefined\s*,?/g, "")
+          .replace(/,\s*([\]}])/g, "$1");
+        return JSON.parse(formatCleaned);
+      } catch (innerError) {
+        throw new Error('Failed to parse LLM response as JSON');
+      }
     }
   }
 
