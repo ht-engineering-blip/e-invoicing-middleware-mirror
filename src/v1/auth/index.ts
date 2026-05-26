@@ -119,7 +119,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400
+        set.status = 401
         logger.error("Login failed", {
           email: body.email,
           error: error.message,
@@ -700,7 +700,7 @@ const protectedAuthRoutes = new Elysia()
           );
         }
       } catch (error: any) {
-        set.status = 400
+        set.status = 401
         return {
           success: false,
           error: error.message || "Token refresh failed",
@@ -760,7 +760,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400
+        set.status = 401
         return {
           success: false,
           error: error.message || "Token refresh failed",
