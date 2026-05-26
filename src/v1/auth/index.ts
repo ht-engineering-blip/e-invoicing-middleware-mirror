@@ -1,24 +1,17 @@
 // Auth module routes
 import { Elysia, t } from "elysia";
-import { requireAuth } from "../../middlewares/auth";
-import { logger } from "../../@lib";
-import { TenantService } from "../tenants/services/tenant.service";
-import { TeamMemberService } from "../tenants/services/team-member.service";
-import { hashString, verifyHash } from "../../@lib/utils/encryption";
-import {
-  AppError,
-  InternalServerError,
-  UnauthorizedError,
-  ValidationError,
-} from "../../@lib/errors";
-import { jwtConfig } from "../../@config";
 import * as jwt from "jsonwebtoken";
-import axios from "axios";
-import { firsConfig } from "../../@config";
+import { jwtConfig } from "../../@config";
+import { logger } from "../../@lib";
 import {
   FIRSService,
   FIRSUserInfoBusiness,
 } from "../../@lib/adapters/firs/firs.service";
+import { InternalServerError, UnauthorizedError } from "../../@lib/errors";
+import { hashString, verifyHash } from "../../@lib/utils/encryption";
+import { requireAuth } from "../../middlewares/auth";
+import { TeamMemberService } from "../tenants/services/team-member.service";
+import { TenantService } from "../tenants/services/tenant.service";
 import { AuthService } from "./services";
 
 /**
@@ -544,6 +537,7 @@ const protectedAuthRoutes = new Elysia()
                 id: tenant.tenantId,
                 businessName: tenant.businessName,
                 status: tenant.status,
+                erpSystem: tenant.erpSystem,
               },
             },
           };

@@ -1,23 +1,23 @@
 // Tenant module routes
 import { Elysia, t } from 'elysia';
-import {
-  createTenantValidator,
-  updateTenantValidator,
-  tenantIdParamValidator,
-  listTenantsQueryValidator,
-  apiKeyIdParamValidator,
-  revokeApiKeyValidator,
-  updateOnboardingStatusValidator,
-  createApiKeyValidator,
-  erpSyncConfigValidator
-} from '../utils/tenant.validators';
-import { requireAdmin, requireAuth } from '../../../middlewares/auth';
-import { logger, UnauthorizedError } from '../../../@lib';
-import { TenantService } from '../services/tenant.service';
 import { appConfig } from '../../../@config';
+import { logger } from '../../../@lib';
 import { MailContent, withTemplate } from '../../../@lib/messaging';
+import { requireAuth } from '../../../middlewares/auth';
 import { AuthService } from '../../auth/services';
-import { onlyAdmin, onlySelf } from '../../auth/utils/access-checks';
+import { onlyAdmin, onlySelf, onlyTenantAdmin } from '../../auth/utils/access-checks';
+import { TenantService } from '../services/tenant.service';
+import {
+  apiKeyIdParamValidator,
+  createApiKeyValidator,
+  createTenantValidator,
+  erpSyncConfigValidator,
+  listTenantsQueryValidator,
+  revokeApiKeyValidator,
+  tenantIdParamValidator,
+  updateOnboardingStatusValidator,
+  updateTenantValidator
+} from '../utils/tenant.validators';
 
 /**
  * Admin-protected tenant routes
@@ -40,8 +40,9 @@ const adminTenantRoutes = new Elysia({
  */
   .post(
     '/',
-    async ({ body, tenantService, authService }) => {
+    async ({ auth, body, tenantService, authService }) => {
       try {
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
         const tenant = await tenantService.createTenant(body);
 
         /* Notify Tenant to complete onboarding */
@@ -88,8 +89,9 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     '/',
-    async ({ query, tenantService }) => {
+    async ({ auth, query, tenantService }) => {
       try {
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
         console.log({ query })
         const page = query.page || 1;
         const limit = query.limit || 20;
@@ -175,7 +177,7 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, params, body, tenantService }) => {
       try {
         // Verify access
-        onlyAdmin(auth!, params.tenantId)
+        onlyTenantAdmin(auth!, params.tenantId);
         const tenant = await tenantService.updateTenant(params.tenantId, body);
         return {
           success: true,
@@ -315,8 +317,9 @@ const adminTenantRoutes = new Elysia({
    */
   .patch(
     '/:tenantId/onboarding',
-    async ({ params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
         const onboarding = await tenantService.updateOnboarding(params.tenantId, body);
         return {
           success: true,
@@ -355,7 +358,7 @@ const adminTenantRoutes = new Elysia({
     '/:tenantId/api-keys',
     async ({ auth, params, body, tenantService }) => {
       try {
-        onlySelf(auth!, params.tenantId)
+        onlyTenantAdmin(auth!, params.tenantId)
         const result = await tenantService.createApiKey(params.tenantId, body);
         return {
           success: true,
@@ -393,7 +396,7 @@ const adminTenantRoutes = new Elysia({
     '/:tenantId/api-keys',
     async ({ auth, params, tenantService }) => {
       try {
-        onlySelf(auth!, params.tenantId)
+        onlyTenantAdmin(auth!, params.tenantId)
         const apiKeys = await tenantService.listApiKeys(params.tenantId);
         return {
           success: true,
@@ -426,8 +429,8 @@ const adminTenantRoutes = new Elysia({
     '/:tenantId/api-keys/:keyId',
     async ({ auth, params, body, tenantService }) => {
       try {
-        console.log({params})
-        onlySelf(auth!, params.tenantId)
+        console.log({ params })
+        onlyTenantAdmin(auth!, params.tenantId)
         await tenantService.revokeApiKey(params.tenantId, params.keyId, body?.reason);
         return {
           success: true,
@@ -461,7 +464,7 @@ const adminTenantRoutes = new Elysia({
     '/:tenantId/api-keys/:keyId/rotate',
     async ({ auth, params, body, tenantService }) => {
       try {
-        onlySelf(auth!, params.tenantId)
+        onlyTenantAdmin(auth!, params.tenantId)
         const result = await tenantService.rotateApiKey(params.tenantId, params.keyId, {
           sendEmail: body?.sendEmail !== false,
           reason: body?.reason,
@@ -621,14 +624,7 @@ const adminTenantRoutes = new Elysia({
     '/:tenantId/erp-sync',
     async ({ auth, params, body, tenantService }) => {
       try {
-        // Verify the user has access to this tenant
-        if (auth?.tenantId !== params.tenantId && !auth?.isAdmin) {
-          return {
-            success: false,
-            error: 'Forbidden: You do not have access to this tenant',
-            statusCode: 403,
-          };
-        }
+        onlyTenantAdmin(auth!, params.tenantId);
         const _updatedTenant = await tenantService.configureERPSync(params.tenantId, body);
 
         // Automatically update onboarding step - mark FIRS provisioning as complete
@@ -684,8 +680,9 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     '/:tenantId/erp-sync',
-    async ({ params, tenantService }) => {
+    async ({ auth, params, query, tenantService }) => {
       try {
+        onlyTenantAdmin(auth!, params.tenantId);
         const config = await tenantService.getERPSyncConfig(params.tenantId);
         if (!config) {
           return {
@@ -694,9 +691,27 @@ const adminTenantRoutes = new Elysia({
             statusCode: 404,
           };
         }
+        const sanitizedConfig = { ...config };
+        if (sanitizedConfig.authentication) {
+          sanitizedConfig.authentication = { ...sanitizedConfig.authentication };
+          const shouldDecrypt = auth?.isAdmin && (query?.decrypt === undefined || query?.decrypt === 'true');
+
+          if (!shouldDecrypt) {
+            if (sanitizedConfig.authentication.password) {
+              sanitizedConfig.authentication.password = '[REDACTED]';
+            }
+            if (sanitizedConfig.authentication.token) {
+              sanitizedConfig.authentication.token = '[REDACTED]';
+            }
+            if (sanitizedConfig.authentication.apiKeyValue) {
+              sanitizedConfig.authentication.apiKeyValue = '[REDACTED]';
+            }
+          }
+        }
+
         return {
           success: true,
-          data: config,
+          data: sanitizedConfig,
         };
       } catch (error: any) {
         return {
@@ -708,6 +723,9 @@ const adminTenantRoutes = new Elysia({
     },
     {
       params: tenantIdParamValidator,
+      query: t.Object({
+        decrypt: t.Optional(t.String({ default: 'true' })),
+      }),
       detail: {
         tags: ['Admin - ERP Integration', 'Tenant'],
         security: [{ adminKey: [] }],

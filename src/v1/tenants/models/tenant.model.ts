@@ -90,6 +90,7 @@ export interface TenantDocument extends Document {
   businessName: string;
   tin: string;
   status: TenantStatus;
+  passwordChangedAt?: Date;
   config?: ITenantConfig;
   createdAt: Date;
   updatedAt: Date;
@@ -135,6 +136,9 @@ const TenantSchema = new Schema<TenantDocument>(
     tin: {
       type: String,
       required: true,
+    },
+    passwordChangedAt: {
+      type: Date,
     },
     status: {
       type: String,

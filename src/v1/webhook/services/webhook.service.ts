@@ -12,6 +12,14 @@ import { AuditEventType, AuditEventSeverity } from '../../audit/models';
 import type { ITenantConfig } from '../../tenants/models/tenant.model';
 import axios from 'axios';
 import crypto from 'crypto';
+import { isSafeUrl } from '../../../@lib/utils/ssrf';
+
+// Concurrency tracking for outbound webhook deliveries
+const concurrentGlobal = { count: 0 };
+const concurrentTenant = new Map<string, number>();
+
+const MAX_CONCURRENT_GLOBAL = 100;
+const MAX_CONCURRENT_PER_TENANT = 10;
 
 export interface DeliverWebhookInput {
   eventId: string;
@@ -72,6 +80,19 @@ export class WebhookService {
       throw new ValidationError('Webhook not configured or disabled for tenant');
     }
 
+    // SSRF URL Validation
+    if (!(await isSafeUrl(webhookUrl))) {
+      const errorMsg = `Outbound webhook URL is blocked by SSRF guard: ${webhookUrl}`;
+      await this.webhookRepo.markAsFailed(event.eventId, errorMsg, 400);
+      
+      // Audit log
+      await this.createAuditLog(event.tenantId, 'webhook.failed', 'webhook_event', event.eventId, {
+        error: { message: errorMsg },
+      });
+
+      throw new ValidationError(errorMsg);
+    }
+
     // Check if max retries exceeded
     const attempts = event.deliveryAttempts?.length || 0;
     if (attempts >= this.MAX_RETRIES) {
@@ -92,41 +113,67 @@ export class WebhookService {
       // Generate signature
       const signature = this.generateSignature(webhookPayload, webhookSecret);
 
-      // Send webhook request
-      const startTime = Date.now();
-      const response = await axios.post(webhookUrl, webhookPayload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Key': signature,
-          'X-Event-Type': event.eventType,
-        },
-        timeout: 30000, // 30 second timeout
-      });
-      const duration = Date.now() - startTime;
+      // Concurrency limits check
+      if (concurrentGlobal.count >= MAX_CONCURRENT_GLOBAL) {
+        throw new Error('Global concurrent webhook delivery limit exceeded');
+      }
+      const tenantConcurrent = concurrentTenant.get(event.tenantId) || 0;
+      if (tenantConcurrent >= MAX_CONCURRENT_PER_TENANT) {
+        throw new Error(`Concurrent webhook delivery limit exceeded for tenant ${event.tenantId}`);
+      }
 
-      // Add delivery attempt
-      await this.webhookRepo.addDeliveryAttempt(event.eventId, {
-        attemptNumber: attempts + 1,
-        timestamp: new Date(),
-        httpStatus: response.status,
-        responseBody: response.data,
-        duration,
-      });
+      // Increment concurrency counters
+      concurrentGlobal.count++;
+      concurrentTenant.set(event.tenantId, tenantConcurrent + 1);
 
-      // Mark as delivered
-      const updated = await this.webhookRepo.markAsDelivered(
-        event.eventId,
-        response.status,
-        response.data
-      );
+      let response;
+      try {
+        // Send webhook request
+        const startTime = Date.now();
+        response = await axios.post(webhookUrl, webhookPayload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Webhook-Key': signature,
+            'X-Event-Type': event.eventType,
+          },
+          timeout: 30000, // 30 second timeout
+          maxRedirects: 0, // SSRF Guard: do not follow redirects
+        });
+        const duration = Date.now() - startTime;
 
-      // Audit log
-      await this.createAuditLog(event.tenantId, 'webhook.delivered', 'webhook_event', event.eventId, {
-        eventType: event.eventType,
-        statusCode: response.status,
-      });
+        // Add delivery attempt
+        await this.webhookRepo.addDeliveryAttempt(event.eventId, {
+          attemptNumber: attempts + 1,
+          timestamp: new Date(),
+          httpStatus: response.status,
+          responseBody: response.data,
+          duration,
+        });
 
-      return updated!;
+        // Mark as delivered
+        const updated = await this.webhookRepo.markAsDelivered(
+          event.eventId,
+          response.status,
+          response.data
+        );
+
+        // Audit log
+        await this.createAuditLog(event.tenantId, 'webhook.delivered', 'webhook_event', event.eventId, {
+          eventType: event.eventType,
+          statusCode: response.status,
+        });
+
+        return updated!;
+      } finally {
+        // Decrement concurrency counters
+        concurrentGlobal.count = Math.max(0, concurrentGlobal.count - 1);
+        const currentCount = concurrentTenant.get(event.tenantId) || 0;
+        if (currentCount <= 1) {
+          concurrentTenant.delete(event.tenantId);
+        } else {
+          concurrentTenant.set(event.tenantId, currentCount - 1);
+        }
+      }
     } catch (error: any) {
       // Handle delivery failure
       const isAxiosError = error.isAxiosError;

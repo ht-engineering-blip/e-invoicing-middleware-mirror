@@ -4,3 +4,4 @@
  */
 
 export * from './webhook-event.model';
+export * from './webhook-nonce.model';

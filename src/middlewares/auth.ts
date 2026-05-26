@@ -175,6 +175,13 @@ export const requireJwt = (instance: Elysia) => instance.resolve(
         throw new UnauthorizedError(`Tenant account is ${tenant.status}`);
       }
 
+      if (tenant.passwordChangedAt && decoded.iat) {
+        const iatMs = decoded.iat * 1000;
+        if (iatMs < tenant.passwordChangedAt.getTime() - 1000) {
+          throw new UnauthorizedError('Token has been invalidated due to password change');
+        }
+      }
+
       return {
         auth: {
           tenantId: decoded.tenantId,
@@ -306,6 +313,13 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
             throw new UnauthorizedError(`Tenant account is ${tenant?.status || 'inactive'}`);
           }
 
+          if (tenant.passwordChangedAt && decoded.iat) {
+            const iatMs = decoded.iat * 1000;
+            if (iatMs < tenant.passwordChangedAt.getTime() - 1000) {
+              throw new UnauthorizedError('Token has been invalidated due to password change');
+            }
+          }
+
           // Get business ID from tenant config
           let businessId = decoded.businessId;
           if (tenant.config?.firsCredentials?.clientId) {
@@ -329,7 +343,7 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
             },
           };
         }
- 
+
         // Handle set-password token 
         if (decoded?.purpose && decoded?.purpose == 'set-password') {
           decoded.businessId = decoded.tenantId
@@ -345,6 +359,13 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
 
         if (!tenant || (tenant.status !== TenantStatus.ACTIVE && tenant.status !== TenantStatus.ONBOARDING)) {
           throw new UnauthorizedError(`Tenant account is ${tenant?.status || 'inactive'}`);
+        }
+
+        if (tenant.passwordChangedAt && decoded.iat) {
+          const iatMs = decoded.iat * 1000;
+          if (iatMs < tenant.passwordChangedAt.getTime() - 1000) {
+            throw new UnauthorizedError('Token has been invalidated due to password change');
+          }
         }
 
         // Decrypt Business ID

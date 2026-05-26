@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import { appConfig } from "../../../@config";
 import { logger } from "../../../@lib";
 import {
   AppError,
@@ -7,22 +8,20 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../../@lib/errors";
-import { TeamMemberRepository } from "../repos/team-member.repo";
-import { TenantRepository } from "../repos/tenant.repo";
-import {
-  TeamMemberDocument,
-  TeamMemberRole,
-  TeamMemberStatus,
-} from "../models/team-member.model";
-import { hashString } from "../../../@lib/utils/encryption";
 import {
   MailContent,
   NodeMailerClient,
   withTemplate,
 } from "../../../@lib/messaging";
-import { appConfig, jwtConfig } from "../../../@config";
-import * as jwt from "jsonwebtoken";
+import { hashString, verifyHash } from "../../../@lib/utils/encryption";
 import { AuthService } from "../../auth/services";
+import {
+  TeamMemberDocument,
+  TeamMemberRole,
+  TeamMemberStatus,
+} from "../models/team-member.model";
+import { TeamMemberRepository } from "../repos/team-member.repo";
+import { TenantRepository } from "../repos/tenant.repo";
 
 export interface InviteTeamMemberInput {
   email: string;
@@ -222,8 +221,8 @@ export class TeamMemberService {
         );
       }
 
-      const passwordHash = await hashString(password);
-      if (passwordHash !== member.password) {
+      const isPasswordValid = await verifyHash(password, member.password);
+      if (!isPasswordValid) {
         throw new ValidationError("Invalid email or password");
       }
 

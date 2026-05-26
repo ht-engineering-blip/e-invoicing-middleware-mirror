@@ -31,6 +31,7 @@ import {
   TenantOnboardingDocument,
 } from "../models";
 import { appConfig } from "../../../@config";
+import { isSafeUrl } from "../../../@lib/utils/ssrf";
 import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import {
   MailContent,
@@ -56,6 +57,7 @@ export interface UpdateTenantInput {
   businessName?: string;
   contactEmail?: string;
   password?: string;
+  passwordChangedAt?: Date;
   erpSystem?: SchemaSourceType | string;
   contactPhone?: string;
   erpWebhookUrl?: string;
@@ -357,6 +359,7 @@ export class TenantService {
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
     if (input.webhookEnabled !== undefined)
       updateData.webhookEnabled = input.webhookEnabled;
+    if (input.passwordChangedAt) updateData.passwordChangedAt = input.passwordChangedAt;
 
     // Encrypt ERP API key if provided
     if (input.erpApiKey) {
@@ -968,6 +971,22 @@ export class TenantService {
     config: ERPSyncConfigInput,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
+
+    // Validate ERP Sync URL endpoints for SSRF and loopback interfaces
+    if (config.baseUrl) {
+      if (!(await isSafeUrl(config.baseUrl))) {
+        throw new ValidationError(
+          `ERP Sync baseUrl is blocked by SSRF guard: ${config.baseUrl}`
+        );
+      }
+    }
+    if (config.endpoint && config.endpoint.startsWith('http')) {
+      if (!(await isSafeUrl(config.endpoint))) {
+        throw new ValidationError(
+          `ERP Sync endpoint is blocked by SSRF guard: ${config.endpoint}`
+        );
+      }
+    }
 
     // Encrypt sensitive authentication data
     const encryptedConfig: any = { ...config };

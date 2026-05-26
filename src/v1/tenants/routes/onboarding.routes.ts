@@ -9,6 +9,7 @@ import axios from 'axios';
 import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
+import { signWebhookPayload } from '../../webhook';
 import app from '../../..';
 import {
   updateCredentialsExample,
@@ -39,7 +40,9 @@ export const publicOnboardingRoutes = new Elysia()
         let decoded: any;
 
         try {
-          decoded = jwt.verify(params.token, jwtSecret);
+          decoded = jwt.verify(params.token, jwtSecret, {
+            algorithms: [jwtConfig?.algorithm as jwt.Algorithm || 'HS256']
+          });
         } catch (jwtError: any) {
           logger.warn('Invalid activation token', { error: jwtError.message });
           return {
@@ -80,7 +83,10 @@ export const publicOnboardingRoutes = new Elysia()
             purpose: 'set-password',
           },
           jwtSecret,
-          { expiresIn: '1h' }
+          {
+            expiresIn: '1h',
+            algorithm: (jwtConfig?.algorithm as jwt.Algorithm) || 'HS256'
+          }
         );
 
         // Return redirect info or token
@@ -386,6 +392,15 @@ export const protectedOnboardingRoutes = new Elysia()
           };
         }
 
+        const secret = tenant.config?.webhookAuth;
+        if (!secret) {
+          return {
+            success: false,
+            error: 'Webhook secret not configured for this tenant. Generate one first.',
+            statusCode: 400,
+          };
+        }
+
         // Create test payload
         const testPayload = body?.testPayload || {
           event: 'webhook.test',
@@ -397,13 +412,10 @@ export const protectedOnboardingRoutes = new Elysia()
           },
         };
 
-        // Generate signature for the payload
-        const webhookSecretHash = tenant.metadata?.webhookSecretHash;
+        // Generate signature for the payload using the new secure format inside X-Webhook-Key
+        const now = Math.floor(Date.now() / 1000);
         const payloadString = JSON.stringify(testPayload);
-        const signature = crypto
-          .createHmac('sha256', webhookSecretHash || 'test')
-          .update(payloadString)
-          .digest('hex');
+        const signature = signWebhookPayload(secret, now, payloadString);
 
         // Send test webhook
         let testResult: any = {
@@ -419,7 +431,7 @@ export const protectedOnboardingRoutes = new Elysia()
           const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'X-Webhook-Key': signature,
+              'X-Webhook-Key': `t=${now},v1=${signature}`,
               'X-Webhook-Event': 'webhook.test',
             },
             timeout: 10000, // 10 second timeout

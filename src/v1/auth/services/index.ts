@@ -1,15 +1,14 @@
-import { appConfig, jwtConfig, messagingConfig } from "../../../@config";
-import { TeamMemberRole, TenantDocument } from "../../tenants/models";
-import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
-import { PasswordResetRepository } from "../repos/password-reset.repo";
-import { TenantRepository } from "../../tenants/repos/tenant.repo";
-import { hashString } from "../../../@lib/utils/encryption";
-import { AppError, NotFoundError, ValidationError } from "../../../@lib/errors";
+import * as jwt from "jsonwebtoken";
+import { appConfig, jwtConfig } from "../../../@config";
 import { logger } from "../../../@lib";
-import nodemailer from "nodemailer";
+import { AppError, NotFoundError, ValidationError } from "../../../@lib/errors";
 import { MailContent } from "../../../@lib/messaging";
+import { hashString } from "../../../@lib/utils/encryption";
+import { TeamMemberRole, TenantDocument } from "../../tenants/models";
+import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { TenantService } from "../../tenants/services/tenant.service";
+import { PasswordResetRepository } from "../repos/password-reset.repo";
 
 export class AuthService {
   private passwordResetRepo: PasswordResetRepository;
@@ -28,12 +27,12 @@ export class AuthService {
     expiresIn?: string,
   ): Promise<string> {
     const tokenPayload = {
-      ...tenant,
       tenantId: tenant.tenantId,
       businessId: (tenant as any).businessId || tenant.tenantId,
+      type: tenant.type || "tenant",
+      role: tenant.role || "owner",
       email: tenant.contactEmail,
       businessName: tenant.businessName,
-      type: tenant.type || "tenant",
     };
 
     const jwtSecret = jwtConfig?.secret as string;
@@ -128,18 +127,17 @@ export class AuthService {
   ): Promise<{ valid: boolean; email?: string }> {
     try {
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-      const resetRecord =
-        await this.passwordResetRepo.findByTokenHash(tokenHash);
+      const record = await this.passwordResetRepo.findByTokenHash(tokenHash);
 
-      if (!resetRecord) {
+      if (!record) {
         return { valid: false };
       }
 
-      if (resetRecord.expiresAt < new Date()) {
+      if (record.expiresAt < new Date()) {
         return { valid: false };
       }
 
-      return { valid: true, email: resetRecord.email };
+      return { valid: true, email: record.email };
     } catch (error: any) {
       logger.error("Error validating reset token", { error: error.message });
       return { valid: false };
@@ -163,32 +161,34 @@ export class AuthService {
 
       // Find and validate token
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-      const resetRecord =
-        await this.passwordResetRepo.findByTokenHash(tokenHash);
+      const record = await this.passwordResetRepo.findByTokenHash(tokenHash);
 
-      if (!resetRecord) {
+      if (!record) {
         throw new ValidationError("Invalid or expired reset token");
       }
 
-      if (resetRecord.expiresAt < new Date()) {
+      if (record.expiresAt < new Date()) {
         throw new ValidationError("Reset token has expired");
       }
 
       // Find tenant
-      const tenant = await this.tenantRepo.findByTenantId(resetRecord.tenantId);
+      const tenant = await this.tenantRepo.findByTenantId(record.tenantId);
       if (!tenant) {
         throw new NotFoundError("Account not found");
       }
 
       // Hash and save new password
       const passwordHash = await hashString(newPassword);
-      await this.tenantRepo.update(tenant.tenantId, { password: passwordHash });
+      await this.tenantRepo.update(tenant.tenantId, { 
+        password: passwordHash,
+        passwordChangedAt: new Date(),
+      });
 
       // Mark token as used
       await this.passwordResetRepo.markAsUsed(tokenHash);
 
       // Delete all reset tokens for this user (invalidate any other pending resets)
-      await this.passwordResetRepo.deleteByEmail(resetRecord.email);
+      await this.passwordResetRepo.deleteByEmail(record.email);
 
       // Send password changed notification
       await this.sendPasswordChangedEmail(tenant);
@@ -219,6 +219,7 @@ export class AuthService {
   ): Promise<void> {
     try {
       const resetUrl = `${appConfig?.webAppURL || "http://localhost:3000"}/auth/reset-password?token=${token}`;
+
       let emailBody: MailContent = {
         subject: "Password Reset Request - E-Invoicing Platform",
         html: `
