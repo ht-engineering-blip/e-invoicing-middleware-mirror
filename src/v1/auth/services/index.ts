@@ -3,12 +3,13 @@ import * as jwt from "jsonwebtoken";
 import { appConfig, jwtConfig } from "../../../@config";
 import { logger } from "../../../@lib";
 import { AppError, NotFoundError, ValidationError } from "../../../@lib/errors";
-import { MailContent } from "../../../@lib/messaging";
+import { MailContent, withTemplate } from "../../../@lib/messaging";
 import { hashString } from "../../../@lib/utils/encryption";
 import { TeamMemberRole, TenantDocument } from "../../tenants/models";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { PasswordResetRepository } from "../repos/password-reset.repo";
+import { templateEngine } from "../../../templates/engine";
 
 export class AuthService {
   private passwordResetRepo: PasswordResetRepository;
@@ -179,7 +180,7 @@ export class AuthService {
 
       // Hash and save new password
       const passwordHash = await hashString(newPassword);
-      await this.tenantRepo.update(tenant.tenantId, { 
+      await this.tenantRepo.update(tenant.tenantId, {
         password: passwordHash,
         passwordChangedAt: new Date(),
       });
@@ -222,17 +223,7 @@ export class AuthService {
 
       let emailBody: MailContent = {
         subject: "Password Reset Request - E-Invoicing Platform",
-        html: `
-                    <h2>Password Reset Request</h2>
-                    <p>Hello ${businessName},</p>
-                    <p>We received a request to reset your password for your E-Invoicing account.</p>
-                    <p>Click the link below to reset your password:</p>
-                    <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">Reset Password</a>
-                    <p>This link will expire in 1 hour.</p>
-                    <p>If you didn't request this password reset, please ignore this email or contact support if you have concerns.</p>
-                    <br/>
-                    <p>Best regards,<br/>E-Invoicing Platform Team</p>
-                `,
+        html: templateEngine.render("resetPassword", { businessName, resetUrl }),
       };
 
       await new TenantService().notifyTenant(emailBody, tenant);
@@ -256,14 +247,11 @@ export class AuthService {
     try {
       let emailBody: MailContent = {
         subject: "Password Changed - E-Invoicing Platform",
-        html: `
-                    <h2>Password Changed Successfully</h2>
-                    <p>Hello ${tenant.businessName},</p>
-                    <p>Your E-Invoicing account password has been changed successfully.</p>
-                    <p>If you did not make this change, please contact support immediately.</p>
-                    <br/>
-                    <p>Best regards,<br/>E-Invoicing Platform Team</p>
-                `,
+        html: withTemplate(
+          templateEngine.render("passwordChanged", {
+            businessName: tenant.businessName,
+          }),
+        ),
       };
       await new TenantService().notifyTenant(emailBody, tenant);
 

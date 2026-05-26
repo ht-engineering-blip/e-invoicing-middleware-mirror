@@ -27,17 +27,17 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
     '/',
     async ({ configService, transformWorkflowService }) => {
       try {
-       const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
-       
+        const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
+
         if (!firsSchemaDoc) {
+          return {
+            schema: null,
+            version: 0,
+            message: 'FIRS dictionary not configured',
+          };
+        }
+
         return {
-          schema: null,
-          version: 0,
-          message: 'FIRS dictionary not configured',
-        };
-      }
-       
-       return {
           success: true,
           data: firsSchemaDoc,
         };
@@ -66,60 +66,60 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
    */
   .put(
     '/',
-  async ({ auth, body, query, llmService, transformWorkflowService }) => {
-       try {
-         onlyAdmin(auth!)
-         let { invoice, metadata }: any = body
- 
-         // Flatten the invoice and metadata for field extraction
-         let flatInvoice = jsonSpread(invoice)[0]
-         let invoiceKeyTypes: any = {}
+    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+      try {
+        onlyAdmin(auth!)
+        let { invoice, metadata }: any = body
+
+        // Flatten the invoice and metadata for field extraction
+        let flatInvoice = jsonSpread(invoice)[0]
+        let invoiceKeyTypes: any = {}
         /*  Object.keys(invoice).forEach(key => {
            const value = invoice[key];
            invoiceKeyTypes[key] = typeof value
          }); */
-         let flatMetadata = metadata ? jsonSpread(metadata)[0] : {}
-         flatMetadata.dataTypes = invoiceKeyTypes
- 
-         // Generate FIRS invoice dictionary using LLM
-         let generatedFields = await llmService.generateInvoiceDictionary('firs', invoice, flatMetadata)
- 
-         // Upsert the FIRS schema to database
-         const savedSchema = await transformWorkflowService.upsertFIRSSchema(
-           generatedFields,
-           {
-             createdBy: auth?.userId || 'system',
-             metadata: {
-               source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample: flatInvoice,
-               source_metadata_sample: flatMetadata,
-               generated_at: new Date().toISOString(),
-             },
-           }
-         )
- 
-         return {
-           success: true,
-           data: {
-             schema_id: savedSchema.schema_id,
-             name: savedSchema.name,
-             fields_count: generatedFields.length,
-             fields: generatedFields,
-             status: savedSchema.status,
-           },
-         };
-       } catch (error: any) {
-         return {
-           success: false,
-           error: error.message,
-           statusCode: error.statusCode || 500,
-         };
-       }
-     },
-     {
-       body: t.Object({
-         invoice: t.Any({ default: FIRS_INVOICE_SCHEMA }),
-         metadata: t.Optional(t.Any({ default: FIRS_INVOICE_METADATA })),
-       }),
+        let flatMetadata = metadata ? jsonSpread(metadata)[0] : {}
+        flatMetadata.dataTypes = invoiceKeyTypes
+
+        // Generate FIRS invoice dictionary using LLM
+        let generatedFields = await llmService.generateInvoiceDictionary('firs', invoice, flatMetadata)
+
+        // Upsert the FIRS schema to database
+        const savedSchema = await transformWorkflowService.upsertFIRSSchema(
+          generatedFields,
+          {
+            createdBy: auth?.userId || 'system',
+            metadata: {
+              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample : flatInvoice,
+              source_metadata_sample: flatMetadata,
+              generated_at: new Date().toISOString(),
+            },
+          }
+        )
+
+        return {
+          success: true,
+          data: {
+            schema_id: savedSchema.schema_id,
+            name: savedSchema.name,
+            fields_count: generatedFields.length,
+            fields: generatedFields,
+            status: savedSchema.status,
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    {
+      body: t.Object({
+        invoice: t.Any({ default: FIRS_INVOICE_SCHEMA }),
+        metadata: t.Optional(t.Any({ default: FIRS_INVOICE_METADATA })),
+      }),
       detail: {
         tags: ['Admin - System Configuration'],
         security: [{ adminKey: [] }],

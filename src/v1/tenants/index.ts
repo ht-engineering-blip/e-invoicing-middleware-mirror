@@ -41,9 +41,9 @@ const authOnboardingRoutes = new Elysia()
         // Map validator fields to service input
         const credentials = {
           certificate: body.certificate,
-          publicKey: body.publicKey 
+          publicKey: body.publicKey
         };
-        if(auth?.tenantId !== params.tenantId){
+        if (auth?.tenantId !== params.tenantId) {
           throw new UnauthorizedError("Invalid token used for this tenant");
         }
 
@@ -109,7 +109,7 @@ const authOnboardingRoutes = new Elysia()
    */
   .get(
     '/:tenantId/onboarding',
-    async ({ params, auth, tenantService }) => {
+    async ({ params, auth, tenantService, set }) => {
       try {
         logger.info("Auth", auth);
 
@@ -137,9 +137,10 @@ const authOnboardingRoutes = new Elysia()
         }
         return {
           success: true,
-          data: {onboarding, progress: onboardingProgress},
+          data: { onboarding, progress: onboardingProgress },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,

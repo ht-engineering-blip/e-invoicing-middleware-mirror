@@ -412,9 +412,10 @@ export const protectedOnboardingRoutes = new Elysia()
           },
         };
 
-        // Generate signature for the payload using the new secure format inside X-Webhook-Key
-        const now = Math.floor(Date.now() / 1000);
+        // Generate signature for the payload using both formats for backward compatibility
         const payloadString = JSON.stringify(testPayload);
+        const legacySignature = crypto.createHmac("sha256", secret).update(payloadString).digest("hex");
+        const now = Math.floor(Date.now() / 1000);
         const signature = signWebhookPayload(secret, now, payloadString);
 
         // Send test webhook
@@ -431,7 +432,8 @@ export const protectedOnboardingRoutes = new Elysia()
           const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'X-Webhook-Key': `t=${now},v1=${signature}`,
+              'X-Webhook-Key': legacySignature,
+              'X-Webhook-Signature': `t=${now},v1=${signature}`,
               'X-Webhook-Event': 'webhook.test',
             },
             timeout: 10000, // 10 second timeout

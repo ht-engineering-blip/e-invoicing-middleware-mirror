@@ -18,6 +18,7 @@ import {
   updateOnboardingStatusValidator,
   updateTenantValidator
 } from '../utils/tenant.validators';
+import { templateEngine } from '../../../templates/engine';
 
 /**
  * Admin-protected tenant routes
@@ -40,7 +41,7 @@ const adminTenantRoutes = new Elysia({
  */
   .post(
     '/',
-    async ({ auth, body, tenantService, authService }) => {
+    async ({ auth, body, tenantService, authService, set }) => {
       try {
         onlyAdmin(auth!, 'Forbidden: Admin access required');
         const tenant = await tenantService.createTenant(body);
@@ -50,12 +51,7 @@ const adminTenantRoutes = new Elysia({
         let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
         let activationEmail: MailContent = {
           subject: 'Welcome to HT Invoicing',
-          html: withTemplate(`<p>Welcome to HT Invoicing. Your account has been created successfully.</p>
-                            <p>Click the button below to get started</p>
-                            <a href="${activationLink}" class="cta-button">Get Started</a>
-                            <br/>
-                             or copy the link: 
-                            <a href="${activationLink}" style="text-decoration: none;">${activationLink}</a>`),
+          html: withTemplate(templateEngine.render('newTenants', { activationLink })),
         }
         await tenantService.notifyTenant(activationEmail, tenant)
 
@@ -65,6 +61,7 @@ const adminTenantRoutes = new Elysia({
           data: tenant,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,

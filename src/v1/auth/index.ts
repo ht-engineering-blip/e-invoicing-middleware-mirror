@@ -68,7 +68,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/",
-    async ({ body, tenantService, authService }) => {
+    async ({ body, tenantService, authService, set }) => {
       try {
         logger.info("Login attempt", { email: body.email });
 
@@ -119,6 +119,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
+        set.status = 401
         logger.error("Login failed", {
           email: body.email,
           error: error.message,
@@ -146,7 +147,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/team-member",
-    async ({ body, teamMemberService }) => {
+    async ({ body, teamMemberService, set }) => {
       try {
         logger.info("Team member login attempt", { email: body.email });
 
@@ -179,6 +180,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
+        set.status = 401
         logger.error("Team member login failed", {
           email: body.email,
           error: error.message,
@@ -206,7 +208,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/oauth/firs",
-    async ({ body, tenantService, firsService }) => {
+    async ({ body, tenantService, firsService, set }) => {
       try {
         logger.info("FIRS OAuth authentication request", {
           email: body.email,
@@ -246,14 +248,15 @@ const authRoutes = new Elysia()
               data: FIRSUserInfoBusiness;
             };
           } catch (firsError: any) {
+            set.status = 401
             logger.error("FIRS API error", {
               status: firsError.message.response?.data?.code,
               message: firsError.message.response?.data?.data?.message,
             });
             throw new UnauthorizedError(
               firsError.message.response?.data?.data?.message ||
-                firsError.response?.data?.message ||
-                "FIRS authentication failed",
+              firsError.response?.data?.message ||
+              "FIRS authentication failed",
             );
           }
         }
@@ -297,6 +300,7 @@ const authRoutes = new Elysia()
             });
           }
         } else {
+          set.status = 400
           return {
             success: false,
             error: "Your TIN have not been registered on our system.",
@@ -345,6 +349,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error("FIRS OAuth failed", { error: error.message });
         return {
           success: false,
@@ -370,7 +375,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/forgot-password",
-    async ({ body, authService }) => {
+    async ({ body, authService, set }) => {
       try {
         logger.info("Password reset requested", { email: body.email });
 
@@ -381,6 +386,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
+        set.status = 500
         logger.error("Password reset request failed", {
           email: body.email,
           error: error.message,
@@ -408,7 +414,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/reset-password",
-    async ({ body, authService }) => {
+    async ({ body, authService, set }) => {
       try {
         logger.info("Password reset attempt");
 
@@ -422,6 +428,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
+        set.status = 400
         logger.error("Password reset failed", { error: error.message });
         return {
           success: false,
@@ -446,11 +453,12 @@ const authRoutes = new Elysia()
    */
   .get(
     "/validate-reset-token/:token",
-    async ({ params, authService }) => {
+    async ({ params, authService, set }) => {
       try {
         const result = await authService.validateResetToken(params.token);
 
         if (!result.valid) {
+          set.status = 400
           return {
             success: false,
             error: "Invalid or expired reset token",
@@ -466,6 +474,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
+        set.status = 400
         return {
           success: false,
           error: error.message || "Failed to validate token",
@@ -500,7 +509,7 @@ const protectedAuthRoutes = new Elysia()
    */
   .get(
     "/me",
-    async ({ auth, tenantService, teamMemberService }) => {
+    async ({ auth, tenantService, teamMemberService, set }) => {
       try {
         if (!auth || !auth.tenantId) {
           throw new UnauthorizedError("Not authenticated");
@@ -578,36 +587,37 @@ const protectedAuthRoutes = new Elysia()
             type: "tenant",
             id: tenant.tenantId,
             businessName: tenant.businessName,
-            tin: (tenant as any).tin,
+            tin: tenant.tin,
             contactEmail: tenant.contactEmail,
             contactPhone: tenant.contactPhone,
-            erpSystem: (tenant as any).erpSystem,
+            erpSystem: tenant.erpSystem,
             status: tenant.status,
             createdAt: tenant.createdAt,
             config: {
               firs: {
-                serviceId: (tenant as any).config?.firsCredentials?.serviceId,
-                clientId: (tenant as any).config?.firsCredentials?.clientId,
-                publicKey: (tenant as any).config?.firsCredentials?.publicKey,
+                serviceId: tenant.config?.firsCredentials?.serviceId,
+                clientId: tenant.config?.firsCredentials?.clientId,
+                publicKey: tenant.config?.firsCredentials?.publicKey,
               },
-              features: (tenant as any).config?.features,
-              limits: (tenant as any).config?.limits,
-              webhookUrl: (tenant as any).config?.webhookUrl,
-              webhookEnabled: (tenant as any).config?.webhookEnabled,
-              invoiceIdKey: (tenant as any).config?.invoiceIdKey,
+              features: tenant.config?.features,
+              limits: tenant.config?.limits,
+              webhookUrl: tenant.config?.webhookUrl,
+              webhookEnabled: tenant.config?.webhookEnabled,
+              invoiceIdKey: tenant.config?.invoiceIdKey,
             },
             onboarding: onboarding
               ? {
-                  status: onboarding.status,
-                  progress: onboardingProgress,
-                  steps: onboarding.steps,
-                  approvedAt: onboarding.approvedAt,
-                }
+                status: onboarding.status,
+                progress: onboardingProgress,
+                steps: onboarding.steps,
+                approvedAt: onboarding.approvedAt,
+              }
               : null,
             metadata: showMeta,
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error("Failed to fetch user details", {
           tenantId: auth?.tenantId,
           userId: auth?.userId,
@@ -636,7 +646,7 @@ const protectedAuthRoutes = new Elysia()
    */
   .post(
     "/set-password",
-    async ({ auth, body, tenantService, authService }) => {
+    async ({ auth, body, tenantService, authService, set }) => {
       try {
         if (!auth || !auth.tenantId) {
           throw new UnauthorizedError("Not authenticated");
@@ -690,6 +700,7 @@ const protectedAuthRoutes = new Elysia()
           );
         }
       } catch (error: any) {
+        set.status = 401
         return {
           success: false,
           error: error.message || "Token refresh failed",
@@ -713,7 +724,7 @@ const protectedAuthRoutes = new Elysia()
    */
   .post(
     "/refresh",
-    async ({ auth }) => {
+    async ({ auth, set }) => {
       try {
         if (!auth || !auth.tenantId) {
           throw new UnauthorizedError("Not authenticated");
@@ -728,8 +739,7 @@ const protectedAuthRoutes = new Elysia()
           type: "tenant",
         };
 
-        const jwtSecret =
-          jwtConfig?.secret || "default-secret-change-in-production";
+        const jwtSecret = jwtConfig?.secret || '';
         const jwtExpiry = jwtConfig?.expiry || "24h";
         const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
 
@@ -750,6 +760,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
+        set.status = 401
         return {
           success: false,
           error: error.message || "Token refresh failed",

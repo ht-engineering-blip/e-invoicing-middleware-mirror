@@ -38,6 +38,7 @@ import {
   NodeMailerClient,
   withTemplate,
 } from "../../../@lib/messaging";
+import { templateEngine } from "../../../templates/engine";
 import { SchemaSourceType } from "../../workflow/models";
 
 export interface CreateTenantInput {
@@ -723,42 +724,18 @@ export class TenantService {
         const emailContent: MailContent = {
           to: tenant.contactEmail,
           subject: "API Key Rotated - Action Required",
-          html: withTemplate(`
-            <h2>API Key Rotation Notice</h2>
-            <p>Hello <b>${tenant.businessName}</b>,</p>
-            <p>Your API key "<strong>${oldApiKey.name}</strong>" has been rotated.</p>
-
-            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">New API Key:</h3>
-              <code style="background-color: #fff; padding: 10px; display: block; font-family: monospace; word-break: break-all;">
-                ${plainKey}
-              </code>
-            </div>
-
-            <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
-              <strong>⚠️ Important:</strong>
-              <ul style="margin: 10px 0;">
-                <li>This is the only time you'll see this key</li>
-                <li>Store it securely immediately</li>
-                <li>Update your applications with the new key</li>
-                <li>The old key has been revoked and will no longer work</li>
-              </ul>
-            </div>
-
-            <p><strong>Key Details:</strong></p>
-            <ul>
-              <li><strong>Key Name:</strong> ${newApiKey.name}</li>
-              <li><strong>Key Prefix:</strong> ${newApiKey.keyPrefix}</li>
-              <li><strong>Created:</strong> ${new Date().toLocaleString()}</li>
-              ${newApiKey.expiresAt ? `<li><strong>Expires:</strong> ${newApiKey.expiresAt.toLocaleString()}</li>` : ""}
-            </ul>
-
-            ${options?.reason ? `<p><strong>Rotation Reason:</strong> ${options.reason}</p>` : ""}
-
-            <p>If you did not request this rotation, please contact support immediately.</p>
-
-            <br/>
-          `),
+          html: withTemplate(
+            templateEngine.render("apiKeyRotated", {
+              businessName: tenant.businessName,
+              oldKeyName: oldApiKey.name,
+              plainKey,
+              newKeyName: newApiKey.name,
+              newKeyPrefix: newApiKey.keyPrefix,
+              created: new Date().toLocaleString(),
+              expires: newApiKey.expiresAt ? newApiKey.expiresAt.toLocaleString() : undefined,
+              reason: options?.reason,
+            }),
+          ),
         };
 
         await this.notifyTenant(emailContent, tenant);

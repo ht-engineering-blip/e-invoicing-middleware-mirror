@@ -110,8 +110,13 @@ export class WebhookService {
         data: event.payload,
       };
 
-      // Generate signature
-      const signature = this.generateSignature(webhookPayload, webhookSecret);
+      // Generate signature using both formats for complete backward compatibility
+      const legacySignature = this.generateSignature(webhookPayload, webhookSecret);
+      
+      const now = Math.floor(Date.now() / 1000);
+      const payloadString = JSON.stringify(webhookPayload);
+      const hmacVal = crypto.createHmac('sha256', webhookSecret).update(`${now}.${payloadString}`).digest('hex');
+      const secureSignature = `t=${now},v1=${hmacVal}`;
 
       // Concurrency limits check
       if (concurrentGlobal.count >= MAX_CONCURRENT_GLOBAL) {
@@ -133,7 +138,8 @@ export class WebhookService {
         response = await axios.post(webhookUrl, webhookPayload, {
           headers: {
             'Content-Type': 'application/json',
-            'X-Webhook-Key': signature,
+            'X-Webhook-Key': legacySignature,
+            'X-Webhook-Signature': secureSignature,
             'X-Event-Type': event.eventType,
           },
           timeout: 30000, // 30 second timeout
