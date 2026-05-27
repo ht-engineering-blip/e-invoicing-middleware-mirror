@@ -3,153 +3,59 @@
  * Business logic for tenant lifecycle management
  */
 
-import { TenantRepository } from "../repos/tenant.repo";
-import { ApiKeyRepository } from "../repos/api-key.repo";
-import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
-import { AuditLogRepository } from "../../audit/repos/audit-log.repo";
+import { appConfig } from "../../../@config";
+import { BaseService, logger } from "../../../@lib";
 import {
-  encryptSensitiveData,
   decryptSensitiveData,
+  encryptSensitiveData,
 } from "../../../@lib/crypto";
 import {
-  hashString,
-  generateRandomString,
-} from "../../../@lib/utils/encryption";
-import {
-  AppError,
-  NotFoundError,
-  ValidationError,
   ConflictError,
+  NotFoundError,
+  ValidationError
 } from "../../../@lib/errors";
-import { logger } from "../../../@lib";
-import {
-  type TenantDocument,
-  TenantStatus,
-  OnboardingStatus,
-  ApiKeyDocument,
-  ApiKeyStatus,
-  TenantOnboardingDocument,
-} from "../models";
-import { appConfig } from "../../../@config";
-import { isSafeUrl } from "../../../@lib/utils/ssrf";
-import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import {
   MailContent,
-  NodeMailerClient,
-  withTemplate,
+  withTemplate
 } from "../../../@lib/messaging";
 import { templateEngine } from "../../../templates/engine";
-import { SchemaSourceType } from "../../workflow/models";
+import { AuditEventSeverity, AuditEventType } from "../../audit/models";
+import {
+  ApiKeyDocument,
+  ApiKeyStatus,
+  OnboardingStatus,
+  type TenantDocument,
+  TenantOnboardingDocument,
+  TenantStatus,
+} from "../models";
+import { ApiKeyRepository } from "../repos/api-key.repo";
+import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
+import { TenantRepository } from "../repos/tenant.repo";
 
-export interface CreateTenantInput {
-  businessName: string;
-  tin: string;
-  businessRegistrationNumber: string;
-  contactEmail: string;
-  contactPhone: string;
-  erpSystem: SchemaSourceType | string;
-  expectedVolume?: number;
-  erpWebhookUrl?: string;
-  erpApiKey?: string;
-  webhookUrl?: string;
-}
 
-export interface UpdateTenantInput {
-  businessName?: string;
-  contactEmail?: string;
-  password?: string;
-  passwordChangedAt?: Date;
-  erpSystem?: SchemaSourceType | string;
-  contactPhone?: string;
-  erpWebhookUrl?: string;
-  erpApiKey?: string;
-  webhookUrl?: string;
-  webhookEnabled?: boolean;
-  features?: {
-    autoFix?: boolean;
-    maxRetries?: number;
-    qrCodeGeneration?: boolean;
-  };
-  limits?: {
-    monthlyInvoiceLimit?: number;
-    apiRateLimit?: number;
-  };
-  metadata?: any;
-  config?: any;
-}
 
-export interface FIRSCredentialsInput {
-  clientId?: string;
-  serviceId?: string;
-  certificate?: string;
-  publicKey?: string;
-}
-
-export interface CreateApiKeyInput {
-  name: string;
-  scopes?: string[];
-  expiresInDays?: number;
-}
-
-export interface UpdateOnboardingInput {
-  status?: "pending" | "in_progress" | "testing" | "active" | "rejected";
-  notes?: string;
-  rejectionReason?: string;
-}
-
-export interface ERPSyncConfigInput {
-  name: string;
-  description?: string;
-  enabled: boolean;
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  baseUrl: string;
-  endpoint: string;
-  headers?: Record<string, string>;
-  queryParams?: Record<string, string>;
-  bodyTemplate?: string;
-  authentication?: {
-    type: "none" | "basic" | "bearer" | "api-key" | "oauth2";
-    username?: string;
-    password?: string;
-    token?: string;
-    apiKeyName?: string;
-    apiKeyValue?: string;
-    apiKeyLocation?: "header" | "query";
-  };
-  timeout?: number;
-  retryConfig?: {
-    maxRetries: number;
-    retryDelay: number;
-    retryOn?: number[];
-  };
-  responseMapping?: Record<string, string>;
-  triggerEvents?: string[];
-}
-
-export class TenantService {
+export class TenantService extends BaseService {
   private tenantRepo: TenantRepository;
   private apiKeyRepo: ApiKeyRepository;
   private onboardingRepo: TenantOnboardingRepository;
-  private auditRepo: AuditLogRepository;
 
   constructor() {
+    super();
     this.tenantRepo = new TenantRepository();
     this.apiKeyRepo = new ApiKeyRepository();
     this.onboardingRepo = new TenantOnboardingRepository();
-    this.auditRepo = new AuditLogRepository();
   }
   /*
    *Notify Tenant
    */
   async notifyTenant(mail: MailContent, tenant: TenantDocument): Promise<any> {
-    // Send customer email to activate their account.
-    let mailClient = new NodeMailerClient();
+    // Send customer email to activate their account using BaseService's sendEmail helper.
     let mailContent: MailContent = {
       to: tenant.contactEmail as string,
       subject: mail.subject,
       html: (mail.html || mail.text) as string,
     };
-    await mailClient.send(mailContent);
+    return await this.sendEmail(mailContent);
   }
 
   /**
@@ -193,27 +99,21 @@ export class TenantService {
     });
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       eventType: AuditEventType.TENANT_CREATED,
       description: `Tenant ${tenant.businessName} created`,
       severity: AuditEventSeverity.INFO,
-      actor: {
-        actorType: "system",
-        actorId: "system",
-        actorName: "System",
-      },
-      resource: {
-        resourceType: "tenant",
-        resourceId: tenant.tenantId,
-        resourceName: tenant.businessName,
-      },
+      actorType: "system",
+      actorId: "system",
+      actorName: "System",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
+      resourceName: tenant.businessName,
       metadata: {
         businessName: input.businessName,
         tin: input.tin,
       },
-      timestamp: new Date(),
     });
 
     return tenant;
@@ -274,16 +174,15 @@ export class TenantService {
 
     if (includeOnboarding) {
       try {
-        const onboarding =
-          await this.onboardingRepo.findByTenantId(contactEmail);
-        return { ...tenant.toObject(), onboarding } as any;
+        const onboard = await this.onboardingRepo.findByTenantId(contactEmail);
+        return { ...this.sanitize(tenant), onboarding: onboard } as any;
       } catch (error) {
         // If onboarding not found, return tenant without it
-        return tenant;
+        return this.sanitize(tenant) as any;
       }
     }
 
-    return tenant;
+    return this.sanitize(tenant);
   }
 
   /**
@@ -294,7 +193,7 @@ export class TenantService {
     if (!tenant) {
       throw new NotFoundError("Tenant");
     }
-    return tenant;
+    return this.sanitize(tenant);
   }
 
   /**
@@ -317,8 +216,9 @@ export class TenantService {
     if (filters?.status) query.status._eq = filters.status;
     if (filters?.erpSystem) query.erpSystem._eq = filters.erpSystem;
 
-    const tenants = await this.tenantRepo.findMany(query, skip, limit);
+    let tenants = await this.tenantRepo.findMany(query, skip, limit);
     const total = await this.tenantRepo.count(query);
+    tenants = this.sanitize(tenants);
 
     // Include onboarding status if requested
     if (filters?.includeOnboarding) {
@@ -411,16 +311,16 @@ export class TenantService {
     const updatedTenant = await this.tenantRepo.update(tenantId, updateData);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
-      severity: "info" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      severity: AuditEventSeverity.INFO,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: "Tenant updated",
       metadata: updateData,
-      timestamp: new Date(),
     });
 
     return updatedTenant!;
@@ -439,16 +339,16 @@ export class TenantService {
     const updatedTenant = await this.tenantRepo.activate(tenantId);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_ACTIVATED,
-      severity: "info" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      severity: AuditEventSeverity.INFO,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: "Tenant activated",
       metadata: {},
-      timestamp: new Date(),
     });
 
     return updatedTenant!;
@@ -470,16 +370,16 @@ export class TenantService {
     const updatedTenant = await this.tenantRepo.suspend(tenantId);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_SUSPENDED,
       severity: AuditEventSeverity.WARNING,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: `Tenant suspended${reason ? `: ${reason}` : ""}`,
       metadata: { reason },
-      timestamp: new Date(),
     });
 
     return updatedTenant!;
@@ -497,16 +397,16 @@ export class TenantService {
     await this.tenantRepo.delete(tenantId);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_DELETED,
-      severity: "warning" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
+      severity: AuditEventSeverity.WARNING,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: "Tenant deleted",
       metadata: {},
-      timestamp: new Date(),
     });
   }
 
@@ -545,17 +445,16 @@ export class TenantService {
     );
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
-
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: "FIRS credentials updated",
       metadata: {},
-      timestamp: new Date(),
     });
 
     return updatedTenant!;
@@ -608,7 +507,7 @@ export class TenantService {
 
     // Generate API key
     const plainKey = this.generateApiKey();
-    const keyHash = await hashString(plainKey);
+    const keyHash = await this.hashString(plainKey);
     const keyPrefix = plainKey.substring(0, 8);
 
     // Calculate expiry
@@ -628,16 +527,16 @@ export class TenantService {
     });
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "api_key", resourceId: apiKey._id.toString() },
+      actorType: "system",
+      actorId: "system",
+      resourceType: "api_key",
+      resourceId: apiKey._id.toString(),
       description: `API key created: ${input.name}`,
       metadata: { name: input.name, keyPrefix },
-      timestamp: new Date(),
     });
 
     return { apiKey, plainKey };
@@ -671,16 +570,16 @@ export class TenantService {
     await this.apiKeyRepo.revoke(keyId, "system", reason!);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_REVOKED,
-      severity: "warning" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "api_key", resourceId: keyId },
+      severity: AuditEventSeverity.WARNING,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "api_key",
+      resourceId: keyId,
       description: `API key revoked${reason ? `: ${reason}` : ""}`,
       metadata: { reason },
-      timestamp: new Date(),
     });
   }
 
@@ -712,9 +611,9 @@ export class TenantService {
       scopes: oldApiKey.scopes,
       expiresInDays: oldApiKey.expiresAt
         ? Math.ceil(
-            (oldApiKey.expiresAt.getTime() - Date.now()) /
-              (24 * 60 * 60 * 1000),
-          )
+          (oldApiKey.expiresAt.getTime() - Date.now()) /
+          (24 * 60 * 60 * 1000),
+        )
         : undefined,
     });
 
@@ -750,16 +649,14 @@ export class TenantService {
     }
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: {
-        resourceType: "api_key",
-        resourceId: newApiKey._id.toString(),
-      },
+      actorType: "system",
+      actorId: "system",
+      resourceType: "api_key",
+      resourceId: newApiKey._id.toString(),
       description: `API key rotated: ${newApiKey.name} (old key: ${keyId})`,
       metadata: {
         oldKeyId: keyId,
@@ -767,7 +664,6 @@ export class TenantService {
         reason: options?.reason,
         emailSent: options?.sendEmail !== false,
       },
-      timestamp: new Date(),
     });
 
     return { apiKey: newApiKey, plainKey };
@@ -811,18 +707,17 @@ export class TenantService {
     );
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "onboarding", resourceId: updated.tenantId },
-      action: "onboarding.step_completed",
+      actorType: "system",
+      actorId: "system",
+      resourceType: "onboarding",
+      resourceId: updated.tenantId,
       description: `Onboarding step completed: ${step}`,
-      metadata: { step },
-      timestamp: new Date(),
-    } as any);
+      metadata: { step, action: "onboarding.step_completed" },
+    });
 
     return updated;
   }
@@ -856,21 +751,17 @@ export class TenantService {
     );
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: {
-        resourceType: "onboarding",
-        resourceId: onboarding._id.toString(),
-      },
-      action: "onboarding.status_updated",
+      actorType: "system",
+      actorId: "system",
+      resourceType: "onboarding",
+      resourceId: onboarding._id.toString(),
       description: "Tenant onboarding status updated",
-      metadata: updateData,
-      timestamp: new Date(),
-    } as any);
+      metadata: { ...updateData, action: "onboarding.status_updated" },
+    });
 
     return updated!;
   }
@@ -892,19 +783,16 @@ export class TenantService {
     await this.activateTenant(tenantId);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_ACTIVATED,
-      severity: "info" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: {
-        resourceType: "onboarding",
-        resourceId: onboarding._id.toString(),
-      },
+      severity: AuditEventSeverity.INFO,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "onboarding",
+      resourceId: onboarding._id.toString(),
       description: "Tenant onboarding approved",
       metadata: {},
-      timestamp: new Date(),
     });
   }
 
@@ -924,19 +812,16 @@ export class TenantService {
     await this.onboardingRepo.reject(onboarding._id.toString(), reason);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
-      severity: "warning" as any,
-      actor: { actorType: "system", actorId: "system" },
-      resource: {
-        resourceType: "onboarding",
-        resourceId: onboarding._id.toString(),
-      },
+      severity: AuditEventSeverity.WARNING,
+      actorType: "system",
+      actorId: "system",
+      resourceType: "onboarding",
+      resourceId: onboarding._id.toString(),
       description: `Tenant onboarding rejected: ${reason}`,
       metadata: { reason },
-      timestamp: new Date(),
     });
   }
 
@@ -951,14 +836,14 @@ export class TenantService {
 
     // Validate ERP Sync URL endpoints for SSRF and loopback interfaces
     if (config.baseUrl) {
-      if (!(await isSafeUrl(config.baseUrl))) {
+      if (!(await this.isSafeUrl(config.baseUrl))) {
         throw new ValidationError(
           `ERP Sync baseUrl is blocked by SSRF guard: ${config.baseUrl}`
         );
       }
     }
     if (config.endpoint && config.endpoint.startsWith('http')) {
-      if (!(await isSafeUrl(config.endpoint))) {
+      if (!(await this.isSafeUrl(config.endpoint))) {
         throw new ValidationError(
           `ERP Sync endpoint is blocked by SSRF guard: ${config.endpoint}`
         );
@@ -997,23 +882,23 @@ export class TenantService {
     const updatedTenant = await this.tenantRepo.update(tenantId, updateData);
 
     // Audit log
-    await this.auditRepo.create({
+    await this.createAuditLog({
       tenantId: tenant.tenantId,
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actor: { actorType: "system", actorId: "system" },
-      resource: { resourceType: "tenant", resourceId: tenant.tenantId },
-      action: "tenant.erp_sync_configured",
+      actorType: "system",
+      actorId: "system",
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
       description: `ERP sync configuration updated: ${config.name}`,
       metadata: {
         configName: config.name,
         method: config.method,
         endpoint: config.endpoint,
         enabled: config.enabled,
+        action: "tenant.erp_sync_configured",
       },
-      timestamp: new Date(),
-    } as any);
+    });
 
     return updatedTenant!;
   }
@@ -1111,17 +996,17 @@ export class TenantService {
           erpSystem: config?.erpSystem,
           erpSyncConfig: erpSyncConfig
             ? {
-                name: erpSyncConfig.name,
-                description: erpSyncConfig.description,
-                enabled: erpSyncConfig.enabled,
-                method: erpSyncConfig.method,
-                baseUrl: erpSyncConfig.baseUrl,
-                endpoint: erpSyncConfig.endpoint,
-                authenticationType: erpSyncConfig.authentication?.type,
-                hasAuthentication: !!erpSyncConfig.authentication,
-                timeout: erpSyncConfig.timeout,
-                retryEnabled: erpSyncConfig.retryConfig?.enabled,
-              }
+              name: erpSyncConfig.name,
+              description: erpSyncConfig.description,
+              enabled: erpSyncConfig.enabled,
+              method: erpSyncConfig.method,
+              baseUrl: erpSyncConfig.baseUrl,
+              endpoint: erpSyncConfig.endpoint,
+              authenticationType: erpSyncConfig.authentication?.type,
+              hasAuthentication: !!erpSyncConfig.authentication,
+              timeout: erpSyncConfig.timeout,
+              retryEnabled: erpSyncConfig.retryConfig?.enabled,
+            }
             : null,
           configuredAt: tenant.updatedAt,
         };
@@ -1233,7 +1118,7 @@ export class TenantService {
       .toUpperCase()
       .replace(/[^A-Z]/g, "");
     const tinSuffix = tin.substring(tin.length - 4);
-    const random = generateRandomString(4).substring(0, 4).toUpperCase();
+    const random = this.generateRandomString(4).substring(0, 4).toUpperCase();
     return `${prefix}-${tinSuffix}-${random}`;
   }
 
@@ -1241,6 +1126,6 @@ export class TenantService {
    * Private: Generate API key
    */
   private generateApiKey(): string {
-    return `sk_${generateRandomString(32)}`;
+    return `sk_${this.generateRandomString(32)}`;
   }
 }

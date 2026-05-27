@@ -220,13 +220,18 @@ describe('JWT Security & Session Invalidation Boundary Tests', () => {
 
       const resolveHook = requireJwt(mockElysiaInstance);
       
-      expect(async () => {
+      let errorThrown: any = null;
+      try {
         await resolveHook({
           headers: {
             authorization: `Bearer ${token}`
           }
         });
-      }).toThrow('Token has been invalidated due to password change');
+      } catch (err) {
+        errorThrown = err;
+      }
+      expect(errorThrown).toBeDefined();
+      expect(errorThrown.message).toContain('Token has been invalidated due to password change');
     });
   });
 });

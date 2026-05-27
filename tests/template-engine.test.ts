@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { templateEngine } from '../src/templates/engine';
 import { withTemplate } from '../src/@lib/messaging';
+import { omitKeys } from '../src/@lib';
 
 describe('TemplateEngine & HBS Template Suite', () => {
   describe('File-Based Templates', () => {
@@ -105,6 +106,66 @@ describe('TemplateEngine & HBS Template Suite', () => {
       expect(fullEmail).toContain('data:image/png;base64'); // LOGO
       expect(fullEmail).toContain('Password Changed Successfully'); // Partial content
       expect(fullEmail).toContain('Best regards'); // Footer text
+    });
+  });
+
+  describe('Omit Sensitive Keys Utility Suite', () => {
+    const mockData = {
+      tenantId: 'tenant-123',
+      businessName: 'Acme Corp',
+      password: 'super-secret-password-hash',
+      passwordChangedAt: new Date(),
+      config: {
+        erpSystem: 'FIRS_UBL',
+        webhookAuth: 'secret-token-key',
+        firsCredentials: {
+          clientId: 'client-id-abc',
+          publicKey: 'public-key-xyz'
+        }
+      }
+    };
+
+    it('should omit standard sensitive keys recursively by default', () => {
+      const sanitized = omitKeys(mockData);
+
+      expect(sanitized.password).toBeUndefined();
+      expect(sanitized.passwordChangedAt).toBeUndefined();
+      expect(sanitized.tenantId).toBe('tenant-123');
+      expect(sanitized.businessName).toBe('Acme Corp');
+      expect(sanitized.config.erpSystem).toBe('FIRS_UBL');
+      expect(sanitized.config.webhookAuth).toBe('secret-token-key'); // webhookAuth is not in the default list
+    });
+
+    it('should omit custom keys when requested', () => {
+      const sanitized = omitKeys(mockData, ['webhookAuth', 'clientId']);
+
+      expect(sanitized.config.webhookAuth).toBeUndefined();
+      expect(sanitized.config.firsCredentials.clientId).toBeUndefined();
+      
+      // Kept fields
+      expect(sanitized.password).toBe('super-secret-password-hash');
+      expect(sanitized.config.firsCredentials.publicKey).toBe('public-key-xyz');
+    });
+
+    it('should omit nested dot-notation paths when requested', () => {
+      const sanitized = omitKeys(mockData, ['config.firsCredentials.clientId']);
+
+      expect(sanitized.config.firsCredentials.clientId).toBeUndefined();
+      
+      // Kept fields
+      expect(sanitized.config.firsCredentials.publicKey).toBe('public-key-xyz');
+      expect(sanitized.config.webhookAuth).toBe('secret-token-key');
+      expect(sanitized.tenantId).toBe('tenant-123');
+    });
+
+    it('should sanitize arrays of objects recursively', () => {
+      const arrayData = [mockData, mockData];
+      const sanitizedArray = omitKeys(arrayData);
+
+      expect(sanitizedArray.length).toBe(2);
+      expect(sanitizedArray[0].password).toBeUndefined();
+      expect(sanitizedArray[1].password).toBeUndefined();
+      expect(sanitizedArray[0].tenantId).toBe('tenant-123');
     });
   });
 });

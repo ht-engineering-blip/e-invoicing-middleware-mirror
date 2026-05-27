@@ -1,28 +1,15 @@
 import crypto from 'crypto';
 import { agenda } from '../../../@lib/queue/agenda';
-import { ACTION_TO_JOB, getPriority, type JobChainData } from './types';
 import { TenantRepository } from '../../tenants/repos/tenant.repo';
 import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
 import { logger } from '../../../@lib/logger';
 import { decryptSensitiveData } from '../../../@lib/crypto';
+import { ACTION_TO_JOB, getPriority } from './types';
 
 const webhookEventRepo = new WebhookEventRepository();
 
 const tenantRepo = new TenantRepository();
 
-export interface ScheduleChainInput {
-  webhookEventId: string;
-  tenantId: string;
-  eventType: string;
-  payload: any;
-  actions: string[];
-  routeId?: string;
-  priority?: number;
-  /** ERP invoice identifier extracted from the webhook payload */
-  erpInvoiceId?: string;
-  /** Pre-generated IRN from the webhook handler (avoids duplicate generation) */
-  irn?: string;
-}
 
 /**
  * Builds and enqueues the first job of a processing chain.
@@ -31,7 +18,7 @@ export interface ScheduleChainInput {
  */
 export async function scheduleJobChain(input: ScheduleChainInput): Promise<string> {
   const { webhookEventId, tenantId, eventType, payload, actions, routeId } = input;
-   let decryptedClientID: any;
+  let decryptedClientID: any;
   if (!actions.length) {
     logger.warn('[Orchestrator] No actions to schedule', { webhookEventId, tenantId, eventType });
     return '';
@@ -49,8 +36,8 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
 
   // Decrypt Business ID
   if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
-     decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
-     // (tenant as any).businessId = decryptedClientID
+    decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
+    // (tenant as any).businessId = decryptedClientID
   }
   const authContext: JobChainData['authContext'] = {
     tenantId,
@@ -93,7 +80,7 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
   // Track the first Agenda job ID on the webhook event for chain tracing
   const agendaJobId = job.attrs._id?.toString();
   if (agendaJobId) {
-    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => {});
+    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => { });
   }
 
   logger.info('[Orchestrator] Chain scheduled', {

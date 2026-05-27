@@ -2,7 +2,6 @@ import type { Job } from 'agenda';
 import { agenda } from '../../../../@lib/queue/agenda';
 import { logger } from '../../../../@lib/logger';
 import { chainNext, chainFail } from '../chain';
-import type { JobChainData } from '../types';
 import { generateIRN } from '../../utils/transformer/utils';
 
 // Lazy-import to avoid circular deps at module load
@@ -19,22 +18,22 @@ export function registerGenerateIrnJob(): void {
 
       logger.info('[Job:generate-irn] Starting', { jobChainId, tenantId });
 
-      try { 
+      try {
 
         //Use existing IRN from context
         const existingInvoice = context.irn;
-        console.log({context})
+        console.log({ context })
 
         const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
         console.log(invoiceRef,
-                  authContext?.serviceId,
-                  context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate ) : new Date(),)
+          authContext?.serviceId,
+          context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),)
         const irn = existingInvoice || generateIRN(
-            invoiceRef,
-            authContext?.serviceId,
-            context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),
-          );
+          invoiceRef,
+          authContext?.serviceId,
+          context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),
+        );
 
         logger.info('[Job:generate-irn] IRN Generated', { jobChainId, irn });
 

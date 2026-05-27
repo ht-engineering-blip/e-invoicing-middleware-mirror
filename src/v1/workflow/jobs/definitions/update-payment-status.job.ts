@@ -2,9 +2,8 @@ import type { Job } from 'agenda';
 import { agenda } from '../../../../@lib/queue/agenda';
 import { logger } from '../../../../@lib/logger';
 import { chainNext, chainFail } from '../chain';
-import type { JobChainData } from '../types'; 
 import { FIRSService } from '../../../../@lib/adapters/firs/firs.service';
- 
+
 
 async function getOutboundRepo() {
   const { OutboundInvoiceRepository } = await import('../../repos/outbound-invoice.repo');
@@ -12,7 +11,7 @@ async function getOutboundRepo() {
 }
 
 async function getFirsService() {
-   return new FIRSService();
+  return new FIRSService();
 }
 
 export function registerUpdatePaymentStatusJob(): void {

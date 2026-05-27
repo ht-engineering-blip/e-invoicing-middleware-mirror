@@ -1,52 +1,23 @@
-import * as crypto from "crypto";
-import * as jwt from "jsonwebtoken";
-import { appConfig, jwtConfig } from "../../../@config";
-import { logger } from "../../../@lib";
+import { appConfig } from "../../../@config";
+import { logger, BaseService } from "../../../@lib";
 import { AppError, NotFoundError, ValidationError } from "../../../@lib/errors";
 import { MailContent, withTemplate } from "../../../@lib/messaging";
-import { hashString } from "../../../@lib/utils/encryption";
 import { TeamMemberRole, TenantDocument } from "../../tenants/models";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { PasswordResetRepository } from "../repos/password-reset.repo";
 import { templateEngine } from "../../../templates/engine";
 
-export class AuthService {
+export class AuthService extends BaseService {
   private passwordResetRepo: PasswordResetRepository;
   private tenantRepo: TenantRepository;
 
   constructor() {
+    super();
     this.passwordResetRepo = new PasswordResetRepository();
     this.tenantRepo = new TenantRepository();
   }
 
-  /**
-   * Create Auth Token For Tenant
-   */
-  async createAuthToken(
-    tenant: TenantDocument & { type: string; role: TeamMemberRole },
-    expiresIn?: string,
-  ): Promise<string> {
-    const tokenPayload = {
-      tenantId: tenant.tenantId,
-      businessId: (tenant as any).businessId || tenant.tenantId,
-      type: tenant.type || "tenant",
-      role: tenant.role || "owner",
-      email: tenant.contactEmail,
-      businessName: tenant.businessName,
-    };
-
-    const jwtSecret = jwtConfig?.secret as string;
-    const jwtExpiry = expiresIn || jwtConfig?.expiry;
-    const jwtAlgorithm = jwtConfig?.algorithm as jwt.Algorithm;
-
-    const token = jwt.sign(tokenPayload, jwtSecret, {
-      expiresIn: jwtExpiry as any,
-      algorithm: jwtAlgorithm,
-    });
-
-    return token;
-  }
 
   /**
    * Request Password Reset
@@ -77,11 +48,7 @@ export class AuthService {
       await this.passwordResetRepo.deleteByEmail(email);
 
       // Generate reset token (32 bytes = 64 hex characters)
-      const resetToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto
-        .createHash("sha256")
-        .update(resetToken)
-        .digest("hex");
+      const { token: resetToken, hash: tokenHash } = this.generateToken(32);
 
       // Token expires in 1 hour
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -127,7 +94,7 @@ export class AuthService {
     token: string,
   ): Promise<{ valid: boolean; email?: string }> {
     try {
-      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const tokenHash = this.hashToken(token);
       const record = await this.passwordResetRepo.findByTokenHash(tokenHash);
 
       if (!record) {
@@ -161,7 +128,7 @@ export class AuthService {
       }
 
       // Find and validate token
-      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const tokenHash = this.hashToken(token);
       const record = await this.passwordResetRepo.findByTokenHash(tokenHash);
 
       if (!record) {
@@ -179,7 +146,7 @@ export class AuthService {
       }
 
       // Hash and save new password
-      const passwordHash = await hashString(newPassword);
+      const passwordHash = await this.hashString(newPassword);
       await this.tenantRepo.update(tenant.tenantId, {
         password: passwordHash,
         passwordChangedAt: new Date(),
@@ -222,11 +189,12 @@ export class AuthService {
       const resetUrl = `${appConfig?.webAppURL || "http://localhost:3000"}/auth/reset-password?token=${token}`;
 
       let emailBody: MailContent = {
+        to: tenant.contactEmail as string,
         subject: "Password Reset Request - E-Invoicing Platform",
         html: templateEngine.render("resetPassword", { businessName, resetUrl }),
       };
 
-      await new TenantService().notifyTenant(emailBody, tenant);
+      await this.sendEmail(emailBody);
 
       logger.info("Password reset email sent", { email: tenant.contactEmail });
     } catch (error: any) {
@@ -246,6 +214,7 @@ export class AuthService {
   ): Promise<void> {
     try {
       let emailBody: MailContent = {
+        to: tenant.contactEmail as string,
         subject: "Password Changed - E-Invoicing Platform",
         html: withTemplate(
           templateEngine.render("passwordChanged", {
@@ -253,7 +222,7 @@ export class AuthService {
           }),
         ),
       };
-      await new TenantService().notifyTenant(emailBody, tenant);
+      await this.sendEmail(emailBody);
 
       logger.info("Password changed notification sent", {
         email: tenant.contactEmail,

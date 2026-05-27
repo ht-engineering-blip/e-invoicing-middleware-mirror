@@ -6,6 +6,7 @@ export * from './json';
 export * from './ssrf';
 
 import { appConfig } from '../../@config';
+import { AutocompletePaths } from '../types';
 
 /**
  * Build the public URL for an invoice's QR code image.
@@ -93,5 +94,61 @@ export function html(strings: TemplateStringsArray, ...values: any[]): string {
     const escapedValue = typeof value === 'string' ? escapeHtml(value) : String(value ?? '');
     return result + escapedValue + string;
   });
+}
+
+const DEFAULT_SENSITIVE_KEYS = ['password', 'passwordChange', 'passwordChangedAt', 'privateKey', 'clientSecret', 'certificate'];
+
+/**
+ * Omit keys recursively from an object, Mongoose document, or array of objects.
+ * 
+ * @param data - The object or array of objects to filter
+ * @param keysToOmit - List of keys to exclude (defaults to standard sensitive fields)
+ */
+export function omitKeys<T>(
+  data: T,
+  keysToOmit: AutocompletePaths<T>[] = DEFAULT_SENSITIVE_KEYS as AutocompletePaths<T>[],
+  currentPath: string = ""
+): T {
+  if (data == null) return data;
+
+  if (Array.isArray(data)) {
+    return data.map(item => omitKeys(item, keysToOmit, currentPath)) as T;
+  }
+
+  if (typeof data === 'object') {
+    // Convert Mongoose Document to plain object if toObject method exists
+    let obj: Record<string, unknown>;
+    const target = data as { toObject?: () => Record<string, unknown> };
+    if (typeof target.toObject === 'function') {
+      obj = target.toObject();
+    } else {
+      obj = { ...data as Record<string, unknown> };
+    }
+
+    const result: Record<string, unknown> = {};
+    const omitList = keysToOmit as string[];
+    for (const key of Object.keys(obj)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        continue;
+      }
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+        continue;
+      }
+      const keyPath = currentPath ? `${currentPath}.${key}` : key;
+      if (omitList.includes(key) || omitList.includes(keyPath)) {
+        continue;
+      }
+
+      const val = obj[key];
+      if (val !== null && typeof val === 'object' && !(val instanceof Date) && !(val instanceof RegExp)) {
+        result[key] = omitKeys(val, keysToOmit as AutocompletePaths<unknown>[], keyPath);
+      } else {
+        result[key] = val;
+      }
+    }
+    return result as T;
+  }
+
+  return data;
 }
 

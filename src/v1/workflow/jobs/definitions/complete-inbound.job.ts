@@ -2,7 +2,6 @@ import type { Job } from 'agenda';
 import { agenda } from '../../../../@lib/queue/agenda';
 import { logger } from '../../../../@lib/logger';
 import { chainNext, chainFail } from '../chain';
-import type { JobChainData } from '../types';
 import { InboundWorkflowService } from '../../services';
 
 const inboundService = new InboundWorkflowService();

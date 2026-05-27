@@ -21,26 +21,6 @@ const concurrentTenant = new Map<string, number>();
 const MAX_CONCURRENT_GLOBAL = 100;
 const MAX_CONCURRENT_PER_TENANT = 10;
 
-export interface DeliverWebhookInput {
-  eventId: string;
-}
-
-export interface RetryWebhookInput {
-  eventId: string;
-}
-
-export interface ConfigureWebhookInput {
-  tenantId: string;
-  webhookUrl: string;
-  webhookSecret?: string;
-  enabled: boolean;
-}
-
-export interface TestWebhookInput {
-  tenantId: string;
-  eventType: string;
-  payload?: any;
-}
 
 export class WebhookService {
   private webhookRepo: WebhookEventRepository;
@@ -84,7 +64,7 @@ export class WebhookService {
     if (!(await isSafeUrl(webhookUrl))) {
       const errorMsg = `Outbound webhook URL is blocked by SSRF guard: ${webhookUrl}`;
       await this.webhookRepo.markAsFailed(event.eventId, errorMsg, 400);
-      
+
       // Audit log
       await this.createAuditLog(event.tenantId, 'webhook.failed', 'webhook_event', event.eventId, {
         error: { message: errorMsg },
@@ -105,14 +85,14 @@ export class WebhookService {
       const webhookPayload = {
         eventId: event.eventId,
         eventType: event.eventType,
-        tenantId: event.tenantId, 
+        tenantId: event.tenantId,
         timestamp: new Date().toISOString(),
         data: event.payload,
       };
 
       // Generate signature using both formats for complete backward compatibility
       const legacySignature = this.generateSignature(webhookPayload, webhookSecret);
-      
+
       const now = Math.floor(Date.now() / 1000);
       const payloadString = JSON.stringify(webhookPayload);
       const hmacVal = crypto.createHmac('sha256', webhookSecret).update(`${now}.${payloadString}`).digest('hex');
@@ -185,13 +165,13 @@ export class WebhookService {
       const isAxiosError = error.isAxiosError;
       const errorDetails = isAxiosError
         ? {
-            statusCode: error.response?.status,
-            message: error.message,
-            body: error.response?.data,
-          }
+          statusCode: error.response?.status,
+          message: error.message,
+          body: error.response?.data,
+        }
         : {
-            message: error.message,
-          };
+          message: error.message,
+        };
 
       // Add failed delivery attempt
       await this.webhookRepo.addDeliveryAttempt(event.eventId, {
@@ -374,7 +354,7 @@ export class WebhookService {
     // Create test event
     const testEvent = await this.webhookRepo.create({
       eventId,
-      tenantId: input.tenantId, 
+      tenantId: input.tenantId,
       eventType: (input.eventType || WebhookEventType.TEST_EVENT) as WebhookEventType,
       payload: input.payload || { test: true, timestamp: new Date().toISOString() },
       resourceId: 'test',
