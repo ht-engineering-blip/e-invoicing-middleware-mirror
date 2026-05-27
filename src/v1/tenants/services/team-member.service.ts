@@ -1,6 +1,6 @@
 import * as crypto from "crypto";
 import { appConfig } from "../../../@config";
-import { logger } from "../../../@lib";
+import { logger, BaseService } from "../../../@lib";
 import {
   AppError,
   ConflictError,
@@ -10,12 +10,10 @@ import {
 } from "../../../@lib/errors";
 import {
   MailContent,
-  NodeMailerClient,
   withTemplate,
 } from "../../../@lib/messaging";
 import { templateEngine } from "../../../templates/engine";
-import { hashString, verifyHash } from "../../../@lib/utils/encryption";
-import { AuthService } from "../../auth/services";
+
 import {
   TeamMemberDocument,
   TeamMemberRole,
@@ -40,11 +38,12 @@ export interface UpdateTeamMemberInput {
   status?: TeamMemberStatus;
 }
 
-export class TeamMemberService {
+export class TeamMemberService extends BaseService {
   private teamMemberRepo: TeamMemberRepository;
   private tenantRepo: TenantRepository;
 
   constructor() {
+    super();
     this.teamMemberRepo = new TeamMemberRepository();
     this.tenantRepo = new TenantRepository();
   }
@@ -142,7 +141,7 @@ export class TeamMemberService {
       }
 
       // Hash password
-      const passwordHash = await hashString(password);
+      const passwordHash = await this.hashString(password);
 
       // Update member
       const updatedMember = await this.teamMemberRepo.update(member.userId, {
@@ -165,7 +164,7 @@ export class TeamMemberService {
         role: member.role,
         type: "team_member",
       };
-      let authToken = await new AuthService().createAuthToken(_tmpTenant);
+      let authToken = await this.createAuthToken(_tmpTenant);
       //const jwtSecret = jwtConfig?.secret as string;
       /*  const authToken = jwt.sign(
         {
@@ -222,7 +221,7 @@ export class TeamMemberService {
         );
       }
 
-      const isPasswordValid = await verifyHash(password, member.password);
+      const isPasswordValid = await this.verifyHash(password, member.password);
       if (!isPasswordValid) {
         throw new ValidationError("Invalid email or password");
       }
@@ -241,7 +240,7 @@ export class TeamMemberService {
         role: member.role,
         type: "team_member",
       };
-      const authToken = await new AuthService().createAuthToken(_tmpTenant);
+      const authToken = await this.createAuthToken(_tmpTenant);
 
       // Update last login
       await this.teamMemberRepo.update(member.userId, {
@@ -451,16 +450,12 @@ export class TeamMemberService {
     }
   }
 
-  /**
-   * Send invitation email
-   */
   private async sendInvitationEmail(
     member: TeamMemberDocument,
     businessName: string,
     token: string,
   ): Promise<void> {
     try {
-      const mailClient = new NodeMailerClient();
       const webAppUrl = appConfig?.webAppURL || "http://localhost:3000";
       const invitationUrl = `${webAppUrl}/auth/accept-invite?token=${token}`;
 
@@ -477,7 +472,7 @@ export class TeamMemberService {
         ),
       };
 
-      await mailClient.send(mailContent);
+      await this.sendEmail(mailContent);
       logger.info("Invitation email sent", { email: member.email });
     } catch (error: any) {
       logger.error("Failed to send invitation email", { error: error.message });

@@ -12,25 +12,8 @@ import { OutboundInvoiceStatus, type OutboundInvoiceDocument } from '../../workf
 import { AppError, NotFoundError, ValidationError } from '../../../@lib';
 import { TransformWorkflowService } from '../../workflow/services/workflows/transform.service';
 import { InboundInvoiceStatus } from '../../workflow/models';
-import { AuthContext } from '../../../middlewares'; 
+import { AuthContext } from '../../../middlewares';
 
-/**
- * Invoice Payment Status
- */
-export enum InvoicePaymentStatus {
-  PENDING = 'PENDING',
-  PAID = 'PAID',
-  REJECTED = 'REJECTED',
-}
-
-/**
- * Generate IRN Input
- */
-export interface GenerateIRNInput {
-  businessId: string;
-  invoiceNumber: string;
-  issueDate?: Date;
-}
 
 /**
  * Invoice Workflow Service
@@ -61,7 +44,7 @@ export class InvoiceWorkflowService {
     return { message, code };
   }
 
-  
+
 
   /**
    * Transform Invoice
@@ -102,7 +85,7 @@ export class InvoiceWorkflowService {
       // Ensure business_id is set
       invoice.business_id = businessId;
 
-      console.log(JSON.stringify({invoice}, undefined, 2))
+      console.log(JSON.stringify({ invoice }, undefined, 2))
 
       // Call FIRS validation API
       const validationResult: any = await this.firsService.validateInvoice(invoice);
@@ -141,7 +124,7 @@ export class InvoiceWorkflowService {
    * Signs the invoice using tenant's FIRS credentials
    */
   async signInvoice(authContext: AuthContext, invoice: any): Promise<any> {
-    try { 
+    try {
 
       // Get FIRS credentials for signing
       const credentials = await this.tenantService.getFIRSCredentials(authContext.tenantId);
@@ -151,7 +134,7 @@ export class InvoiceWorkflowService {
         ...invoice,
         business_id: authContext.businessId,
         //certificate: credentials.certificate,
-      }; 
+      };
       // Call FIRS sign API
       const signResult: any = await this.firsService.signInvoice(invoiceWithCert);
 
@@ -190,7 +173,7 @@ export class InvoiceWorkflowService {
    */
   async generateQR(authContext: AuthContext, irn: string): Promise<any> {
     try {
-      
+
       const credentials = await this.tenantService.getFIRSCredentials(authContext.tenantId);
       const { certificate, publicKey } = credentials;
 
@@ -240,7 +223,7 @@ export class InvoiceWorkflowService {
       if (invoice) {
         await this.outboundRepo.update(irn, {
           status: OutboundInvoiceStatus.TRANSMITTED,
-        //  firsResponse: transmitResult?.data,
+          //  firsResponse: transmitResult?.data,
         });
         await this.outboundRepo.updateWorkflowState(irn, { transmitted: true });
       }
@@ -465,5 +448,5 @@ export class InvoiceWorkflowService {
     }
   }
 
-  
+
 }

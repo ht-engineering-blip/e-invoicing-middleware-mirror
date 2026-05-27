@@ -3,7 +3,6 @@ import Handlebars from "handlebars";
 import { agenda } from "../../../../@lib/queue/agenda";
 import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
-import type { JobChainData } from "../types";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import type { IERPSyncConfig } from "../../../tenants/models/tenant.model";
 import { buildQrUrl, isSafeUrl } from "../../../../@lib";

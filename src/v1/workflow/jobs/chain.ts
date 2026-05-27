@@ -1,8 +1,8 @@
 import type { Job } from 'agenda';
 import { agenda } from '../../../@lib/queue/agenda';
-import { ACTION_TO_JOB, type JobChainData } from './types';
 import { logger } from '../../../@lib/logger';
 import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
+import { ACTION_TO_JOB } from './types';
 
 const webhookEventRepo = new WebhookEventRepository();
 
@@ -64,7 +64,7 @@ export async function chainNext(
   // Track the new Agenda job ID on the webhook event for chain tracing
   const nextAgendaJobId = nextJob.attrs._id?.toString();
   if (nextAgendaJobId) {
-    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId).catch(() => {});
+    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId).catch(() => { });
   }
 
   logger.info('[Job] Scheduled next step', {
@@ -88,7 +88,7 @@ export async function chainFail(
   const data = job.attrs.data;
   const action = data.actions[data.stepIndex];
 
-  error.message = error.message.indexOf('undefined -') > -1? "Something went wrong,  Please retry from failed step.": error.message
+  error.message = error.message.indexOf('undefined -') > -1 ? "Something went wrong,  Please retry from failed step." : error.message
 
   logger.error('[Job] Step failed — chain halted', {
     jobChainId: data.jobChainId,
@@ -116,7 +116,7 @@ export async function chainFail(
 
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${action}] failed: ${error.message.indexOf('undefined -') > -1? "": error.message}`,
+    `Step [${action}] failed: ${error.message.indexOf('undefined -') > -1 ? "" : error.message}`,
     500
   );
 }
