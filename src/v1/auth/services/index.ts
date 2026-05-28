@@ -128,7 +128,7 @@ export class AuthService extends BaseService {
       }
 
       // Find and validate token
-      const tokenHash = this.hashToken(token);
+      const tokenHash = await this.hashToken(token);
       const record = await this.passwordResetRepo.findByTokenHash(tokenHash);
 
       if (!record) {

@@ -45,11 +45,14 @@ const authRoutes = new Elysia()
         logger.info("Login attempt", { email: body.email });
 
         // Find tenant by contact email
-        const tenant = await tenantService.getTenantByEmail(body.email);
+        const tenant = await tenantService.getTenantByEmail(body.email, false, true);
 
         if (!tenant) {
           throw new UnauthorizedError("Invalid credentials");
         }
+
+        console.log({ password: body.password, tenant: tenant.password });
+
 
         // Verify password
         const isPasswordValid = await verifyHash(
@@ -275,12 +278,11 @@ const authRoutes = new Elysia()
           type: "tenant",
         };
 
-        const jwtSecret =
-          jwtConfig?.secret || "default-secret-change-in-production";
+        const jwtSecret = jwtConfig?.secret;
         const jwtExpiry = jwtConfig?.expiry || "24h";
-        const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
+        const jwtAlgorithm = jwtConfig?.algorithm || "HS256";
 
-        const token = jwt.sign(tokenPayload, jwtSecret, {
+        const token = jwt.sign(tokenPayload, jwtSecret!, {
           expiresIn: jwtExpiry as any,
           algorithm: jwtAlgorithm,
         });

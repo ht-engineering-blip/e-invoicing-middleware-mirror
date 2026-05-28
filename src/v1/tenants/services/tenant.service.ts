@@ -173,12 +173,17 @@ export class TenantService extends BaseService {
   async getTenantByEmail(
     contactEmail: string,
     includeOnboarding: boolean = false,
+    includeSensitive: boolean = false
   ): Promise<TenantDocument & { onboarding?: any }> {
     const tenant = await this.tenantRepo.findOne({
       contactEmail: { _iexact: contactEmail },
     });
     if (!tenant) {
       throw new NotFoundError("Tenant");
+    }
+
+    if (includeSensitive) {
+      return tenant
     }
 
     if (includeOnboarding) {
