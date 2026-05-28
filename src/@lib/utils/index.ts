@@ -32,9 +32,6 @@ export function getNestedValue(obj: any, path: string): any {
   const keys = path.split('.');
   let current = obj;
   for (const key of keys) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      return undefined;
-    }
     if (current == null) return undefined;
     current = current[key];
   }
@@ -66,12 +63,6 @@ export function _getNestedValue(obj: any, path: string): any {
     .map(k => k.trim())
     .filter(k => k.length > 0);
 
-  for (const key of keys) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      return undefined;
-    }
-  }
-
   if (keys.length === 0) return undefined;
   return _traverse(obj, keys);
 }
@@ -80,9 +71,6 @@ function _traverse(current: any, keys: string[]): any {
   if (keys.length === 0) return current;
   if (current == null) return undefined;
   const [head, ...rest] = keys;
-  if (head === '__proto__' || head === 'constructor' || head === 'prototype') {
-    return undefined;
-  }
   if (head === '*') {
     if (!Array.isArray(current)) return undefined;
     const results = current.map((item: any) => _traverse(item, rest)).filter((v: any) => v !== undefined);

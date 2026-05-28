@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
+import { requireAuth, getActor } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { TenantService } from '../services/tenant.service';
 import { jwtConfig, appConfig } from '../../../@config';
@@ -17,15 +17,6 @@ import {
   updateInvoiceIdKeyValidation,
   testWebhookValidation
 } from '../validations/onboarding.validation';
-
-function getActor(auth: any) {
-  if (!auth) return undefined;
-  return {
-    id: auth.userId || auth.tenantId || 'system',
-    type: auth.isAdmin ? 'system' : (auth.apiKeyId ? 'api_key' : 'user'),
-    name: auth.email || auth.businessName || (auth.isAdmin ? 'Admin' : 'System'),
-  };
-}
 
 /**
  * Public Onboarding Routes (no auth required)

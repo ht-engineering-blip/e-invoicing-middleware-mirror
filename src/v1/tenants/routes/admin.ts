@@ -2,7 +2,7 @@ import { Elysia } from 'elysia';
 import { appConfig } from '../../../@config';
 import { logger } from '../../../@lib';
 import { MailContent, withTemplate } from '../../../@lib/messaging';
-import { requireAuth } from '../../../middlewares/auth';
+import { requireAuth, getActor } from '../../../middlewares/auth';
 import { AuthService } from '../../auth/services';
 import { onlyAdmin, onlySelf, onlyTenantAdmin } from '../../auth/utils/access-checks';
 import { TenantService } from '../services/tenant.service';
@@ -31,14 +31,6 @@ import {
  * All mutation operations require admin key
  */
 /*   prefix: '/admin', */
-function getActor(auth: any) {
-  if (!auth) return undefined;
-  return {
-    id: auth.userId || auth.tenantId || 'system',
-    type: auth.isAdmin ? 'system' : (auth.apiKeyId ? 'api_key' : 'user'),
-    name: auth.email || auth.businessName || (auth.isAdmin ? 'Admin' : 'System'),
-  };
-}
 
 const adminTenantRoutes = new Elysia({
   detail: {

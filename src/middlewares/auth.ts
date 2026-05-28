@@ -66,6 +66,18 @@ export interface AuthContext {
 }
 
 /**
+ * Helper to get audit log actor from AuthContext
+ */
+export function getActor(auth?: AuthContext) {
+  if (!auth) return undefined;
+  return {
+    id: auth.userId || auth.tenantId || 'system',
+    type: auth.isAdmin ? 'system' : (auth.apiKeyId ? 'api_key' : 'user'),
+    name: auth.businessName || (auth.isAdmin ? 'Admin' : 'System'),
+  };
+}
+
+/**
  * Admin authentication middleware
  * Validates admin key for tenant management operations
  */
