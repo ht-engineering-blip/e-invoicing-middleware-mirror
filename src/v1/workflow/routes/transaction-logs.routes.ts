@@ -117,17 +117,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     '/outbound/:irn',
     async ({ params, auth, outboundRepo }) => {
       try {
-        const result = await outboundRepo.findByIrnWithWebhookEvents(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const result = await outboundRepo.findByIrnWithWebhookEvents(params.irn, tenantId);
 
         if (!result) {
           return { success: false, error: 'Invoice not found', statusCode: 404 };
         }
 
         const { invoice, webhookEvents } = result;
-
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized to view this invoice', statusCode: 403 };
-        }
 
         // Fetch all Agenda jobs referenced across all webhook events
         const allJobIds = webhookEvents.flatMap((ev: any) => ev.jobIds ?? []);
@@ -254,11 +251,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     '/outbound/:irn/payment-status',
     async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
       try {
-        const invoice = await outboundRepo.findByIrn(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
         if (!invoice) return { success: false, error: 'Invoice not found', statusCode: 404 };
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized', statusCode: 403 };
-        }
 
         const updated = await outboundRepo.updatePaymentStatus(
           params.irn,
@@ -326,11 +321,11 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     '/outbound/:irn/retry-from-step',
     async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
       try {
-        const invoice = await outboundRepo.findByIrn(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
         if (!invoice) return { success: false, error: 'Invoice not found', statusCode: 404 };
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized', statusCode: 403 };
-        }
+
+
         // Allow all retries, so we can handle duplicated events internally
         /*         if ([ OutboundInvoiceStatus.FAILED, OutboundInvoiceStatus.CREATED, ].includes(invoice.status)) {
                   return { success: false, error: 'Only FAILED invoices can be retried', statusCode: 400 };
@@ -348,8 +343,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
 
         if (existingEventIds.length > 0) {
           // Find the earliest non-retry event (the original trigger for this invoice)
+          const eventFilter: any = { eventId: { $in: existingEventIds }, 'metadata.source': { $ne: 'manual_retry' } };
+          if (tenantId) eventFilter.tenantId = tenantId;
           const priorEvents = await webhookEventRepo.find(
-            { eventId: { $in: existingEventIds }, 'metadata.source': { $ne: 'manual_retry' } },
+            eventFilter,
             0,
             100
           );
@@ -426,6 +423,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           erpInvoiceId: invoice.erpInvoiceId,
         });
 
+
+
         return {
           success: true,
           message: `Retry scheduled from step: ${startAction}`,
@@ -448,22 +447,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     async ({ params, auth, outboundRepo, outboundService }) => {
       try {
         // Find invoice
-        const invoice = await outboundRepo.findByIrn(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
 
         if (!invoice) {
           return {
             success: false,
             error: 'Invoice not found',
             statusCode: 404,
-          };
-        }
-
-        // Check ownership
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return {
-            success: false,
-            error: 'Not authorized',
-            statusCode: 403,
           };
         }
 
@@ -601,27 +592,15 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
     async ({ params, auth, inboundRepo, auditRepo }) => {
       try {
         // Find invoice
-        const invoice = await inboundRepo.findByIRN(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const businessId = auth!.isAdmin ? undefined : auth!.businessId;
+        const invoice = await inboundRepo.findByIRN(params.irn, tenantId, businessId);
 
         if (!invoice) {
           return {
             success: false,
             error: 'Invoice not found',
             statusCode: 404,
-          };
-        }
-
-        // Check ownership
-        const isOwner =
-          invoice.tenantId === auth!.tenantId ||
-          invoice.businessId === auth!.businessId ||
-          auth!.isAdmin;
-
-        if (!isOwner) {
-          return {
-            success: false,
-            error: 'Not authorized to view this invoice',
-            statusCode: 403,
           };
         }
 

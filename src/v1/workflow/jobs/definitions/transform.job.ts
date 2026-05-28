@@ -32,9 +32,9 @@ export function registerTransformJob(): void {
         if (irn) {
           const upsertPayload: Partial<OutboundInvoiceDocument> = {
             irn,
-            tenantId: authContext?.tenantId,
+            tenantId: authContext?.tenantId ?? tenantId,
             erpSystem: authContext?.tenantERP,
-            createdBy: authContext?.tenantId,
+            createdBy: authContext?.tenantId ?? tenantId,
             source: (context.source as OutboundInvoiceSource) ?? OutboundInvoiceSource.API,
             erpInvoiceId: context.erpInvoiceId,
             metadata: { ...(result.metadata ?? {}), transformedInvoice: result },

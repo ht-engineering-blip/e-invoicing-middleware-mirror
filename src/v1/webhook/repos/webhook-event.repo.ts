@@ -134,7 +134,7 @@ export class WebhookEventRepository {
     } catch (error: any) {
       console.error("Error creating webhook event:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, error.message);
+        throw new AppError(400, "Invalid input");
       }
       if (error.code === 11000) {
         throw new AppError(
@@ -179,7 +179,7 @@ export class WebhookEventRepository {
     } catch (error: any) {
       console.error("Error updating webhook event:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, error.message);
+        throw new AppError(400, "Invalid input");
       }
       if (error instanceof AppError) {
         throw error;
@@ -278,9 +278,11 @@ export class WebhookEventRepository {
   /**
    * Find webhook event by event ID
    */
-  async findByEventId(eventId: string): Promise<WebhookEventDocument | null> {
+  async findByEventId(eventId: string, tenantId?: string): Promise<WebhookEventDocument | null> {
     try {
-      const doc = await this.webhookEventModel.findOne({ eventId }).exec();
+      const query: any = { eventId };
+      if (tenantId) query.tenantId = tenantId;
+      const doc = await this.webhookEventModel.findOne(query).exec();
       return doc;
     } catch (error) {
       console.error("Error fetching webhook event:", error);
@@ -291,12 +293,16 @@ export class WebhookEventRepository {
   /**
    * Find webhook event by ID (alias for findByEventId or MongoDB _id)
    */
-  async findById(id: string): Promise<WebhookEventDocument | null> {
+  async findById(id: string, tenantId?: string): Promise<WebhookEventDocument | null> {
     try {
       // Try finding by eventId first, then by _id
-      let doc = await this.webhookEventModel.findOne({ eventId: id }).exec();
+      const query1: any = { eventId: id };
+      if (tenantId) query1.tenantId = tenantId;
+      let doc = await this.webhookEventModel.findOne(query1).exec();
       if (!doc) {
-        doc = await this.webhookEventModel.findById(id).exec();
+        const query2: any = { _id: id };
+        if (tenantId) query2.tenantId = tenantId;
+        doc = await this.webhookEventModel.findOne(query2).exec();
       }
       return doc;
     } catch (error) {

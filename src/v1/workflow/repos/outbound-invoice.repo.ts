@@ -1,4 +1,4 @@
-import { AppError } from '../../../@lib';
+import { AppError, safeSearchRegExp } from '../../../@lib';
 import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
 import {
   OutboundInvoiceDocument,
@@ -43,10 +43,10 @@ export class OutboundInvoiceRepository {
     // Search
     if (where.search) {
       query.$or = [
-        { invoiceNumber: new RegExp(where.search, 'i') },
-        { customerName: new RegExp(where.search, 'i') },
-        { customerTIN: new RegExp(where.search, 'i') },
-        { irn: new RegExp(where.search, 'i') },
+        { invoiceNumber: safeSearchRegExp(where.search) },
+        { customerName: safeSearchRegExp(where.search) },
+        { customerTIN: safeSearchRegExp(where.search) },
+        { irn: safeSearchRegExp(where.search) },
       ];
     }
 
@@ -134,7 +134,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error('Error creating outbound invoice:', error);
       if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+        throw new AppError(400, 'Invalid input');
       }
       if (error.code === 11000) {
         throw new AppError(409, 'Invoice with this IRN already exists');
@@ -152,10 +152,11 @@ export class OutboundInvoiceRepository {
   async upsertByIrn(data: Partial<OutboundInvoiceDocument>): Promise<OutboundInvoiceDocument> {
     const { irn, tenantId, erpInvoiceId, source, ...mutableFields } = data as any;
     if (!irn) throw new AppError(400, 'IRN is required for upsert');
+    if (!tenantId) throw new AppError(400, 'tenantId is required for upsert');
 
     try {
       const doc = await this.outboundInvoiceModel.findOneAndUpdate(
-        { irn },
+        { irn, tenantId },
         {
           // Only mutable fields go in $set — never identity/index fields
           $set: mutableFields,
@@ -183,7 +184,7 @@ export class OutboundInvoiceRepository {
       return doc!;
     } catch (error: any) {
       console.error('Error upserting outbound invoice:', error);
-      if (error.name === 'ValidationError') throw new AppError(400, error.message);
+      if (error.name === 'ValidationError') throw new AppError(400, 'Invalid input');
       throw new AppError(500, 'Failed to upsert outbound invoice');
     }
   }
@@ -193,7 +194,8 @@ export class OutboundInvoiceRepository {
    */
   async update(
     irn: string,
-    data: Partial<OutboundInvoiceDocument>
+    data: Partial<OutboundInvoiceDocument>,
+    tenantId?: string
   ): Promise<OutboundInvoiceDocument> {
     try {
       // Remove undefined values
@@ -205,8 +207,11 @@ export class OutboundInvoiceRepository {
         return acc;
       }, {} as any);
 
+      const query: any = { irn };
+      if (tenantId) query.tenantId = tenantId;
+
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateData }, { new: true, runValidators: true })
+        .findOneAndUpdate(query, { $set: updateData }, { new: true, runValidators: true })
         .exec();
 
       if (!doc) {
@@ -217,7 +222,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error('Error updating outbound invoice:', error);
       if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+        throw new AppError(400, 'Invalid input');
       }
       if (error instanceof AppError) {
         throw error;
@@ -229,9 +234,11 @@ export class OutboundInvoiceRepository {
   /**
    * Delete an outbound invoice
    */
-  async delete(irn: string): Promise<boolean> {
+  async delete(irn: string, tenantId?: string): Promise<boolean> {
     try {
-      const result = await this.outboundInvoiceModel.findOneAndDelete({ irn }).exec();
+      const query: any = { irn };
+      if (tenantId) query.tenantId = tenantId;
+      const result = await this.outboundInvoiceModel.findOneAndDelete(query).exec();
 
       return result !== null;
     } catch (error) {
@@ -296,9 +303,11 @@ export class OutboundInvoiceRepository {
   /**
    * Find outbound invoice by IRN
    */
-  async findByIrn(irn: string): Promise<OutboundInvoiceDocument | null> {
+  async findByIrn(irn: string, tenantId?: string): Promise<OutboundInvoiceDocument | null> {
     try {
-      const doc = await this.outboundInvoiceModel.findOne({ irn }).exec();
+      const query: any = { irn };
+      if (tenantId) query.tenantId = tenantId;
+      const doc = await this.outboundInvoiceModel.findOne(query).exec();
       return doc;
     } catch (error) {
       console.error('Error fetching outbound invoice:', error);
@@ -552,10 +561,13 @@ export class OutboundInvoiceRepository {
    * for each eventId stored in invoice.webhookEvents.
    */
   async findByIrnWithWebhookEvents(
-    irn: string
+    irn: string,
+    tenantId?: string
   ): Promise<{ invoice: OutboundInvoiceDocument; webhookEvents: any[] } | null> {
     try {
-      const invoice = await this.outboundInvoiceModel.findOne({ irn }).exec();
+      const query: any = { irn };
+      if (tenantId) query.tenantId = tenantId;
+      const invoice = await this.outboundInvoiceModel.findOne(query).exec();
       if (!invoice) return null;
 
       const eventIds: string[] = invoice.webhookEvents ?? [];
@@ -588,10 +600,10 @@ export class OutboundInvoiceRepository {
       const query: any = {
         businessId,
         $or: [
-          { invoiceNumber: new RegExp(searchQuery, 'i') },
-          { customerName: new RegExp(searchQuery, 'i') },
-          { customerTIN: new RegExp(searchQuery, 'i') },
-          { irn: new RegExp(searchQuery, 'i') },
+          { invoiceNumber: safeSearchRegExp(searchQuery) },
+          { customerName: safeSearchRegExp(searchQuery) },
+          { customerTIN: safeSearchRegExp(searchQuery) },
+          { irn: safeSearchRegExp(searchQuery) },
         ],
       };
 

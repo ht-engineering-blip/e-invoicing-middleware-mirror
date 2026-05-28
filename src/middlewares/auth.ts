@@ -66,6 +66,18 @@ export interface AuthContext {
 }
 
 /**
+ * Helper to get audit log actor from AuthContext
+ */
+export function getActor(auth?: AuthContext) {
+  if (!auth) return undefined;
+  return {
+    id: auth.userId || auth.tenantId || 'system',
+    type: auth.isAdmin ? 'system' : (auth.apiKeyId ? 'api_key' : 'user'),
+    name: auth.businessName || (auth.isAdmin ? 'Admin' : 'System'),
+  };
+}
+
+/**
  * Admin authentication middleware
  * Validates admin key for tenant management operations
  */
@@ -229,7 +241,7 @@ export const requireJwt = (instance: Elysia) => instance.resolve(
  */
 
 export const requireAuth = async (instance: Elysia) => instance.resolve(
-  async ({ headers }): Promise<{ auth: AuthContext }> => {
+  async ({ headers, request }): Promise<{ auth: AuthContext }> => {
     const apiKey = headers['x-api-key'];
     const authHeader = headers['authorization'];
     const adminKey = headers['x-admin-key'];
@@ -252,45 +264,53 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
       const keyHash = hashApiKey(apiKey);
       const apiKeyRepo = new ApiKeyRepository();
       const apiKeyDoc = await apiKeyRepo.findByKeyHash(keyHash);
-      let decoded: any = {}
-      if (apiKeyDoc && apiKeyDoc.status === 'active') {
-        if (apiKeyDoc.expiresAt && apiKeyDoc.expiresAt < new Date()) {
-          apiKeyRepo.revoke(apiKeyDoc._id.toString(), 'Expired', 'system').catch(() => { });
-          throw new UnauthorizedError('API key has expired');
-        }
 
-        // Verify tenant
-        const tenantRepo = new TenantRepository();
-        const tenant = await tenantRepo.findByTenantId(apiKeyDoc.tenantId);
-
-        if (!tenant || tenant.status !== TenantStatus.ACTIVE && tenant.status !== TenantStatus.ONBOARDING) {
-          throw new UnauthorizedError(`Tenant account is ${tenant?.status || 'inactive'}`);
-        }
-
-        // Update last used
-        apiKeyRepo.updateLastUsed(apiKeyDoc._id.toString()).catch((err) => {
-          console.error('Failed to update API key last used:', err);
-        });
-        // Decrypt Business ID
-        if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
-          let decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
-          decoded.businessId = decryptedClientID
-        }
-
-        return {
-          auth: {
-            tenantId: apiKeyDoc.tenantId,
-            businessId: decoded.businessId,
-            businessName: tenant.businessName,
-            businessTIN: tenant.tin,
-            tenantERP: tenant.config?.erpSystem,
-            serviceId: tenant?.config?.firsCredentials?.serviceId,
-            isAdmin: false,
-            apiKeyId: apiKeyDoc._id.toString(),
-            scopes: apiKeyDoc.scopes || [],
-          },
-        };
+      if (!apiKeyDoc) {
+        throw new UnauthorizedError('Invalid API key');
       }
+
+      if (apiKeyDoc.status !== 'active') {
+        throw new UnauthorizedError(`API key is ${apiKeyDoc.status}`);
+      }
+
+      if (apiKeyDoc.expiresAt && apiKeyDoc.expiresAt < new Date()) {
+        apiKeyRepo.revoke(apiKeyDoc._id.toString(), 'Expired', 'system').catch(() => { });
+        throw new UnauthorizedError('API key has expired');
+      }
+
+      // Verify tenant
+      const tenantRepo = new TenantRepository();
+      const tenant = await tenantRepo.findByTenantId(apiKeyDoc.tenantId);
+
+      if (!tenant || (tenant.status !== TenantStatus.ACTIVE && tenant.status !== TenantStatus.ONBOARDING)) {
+        throw new UnauthorizedError(`Tenant account is ${tenant?.status || 'inactive'}`);
+      }
+
+      // Update last used
+      apiKeyRepo.updateLastUsed(apiKeyDoc._id.toString()).catch((err) => {
+        console.error('Failed to update API key last used:', err);
+      });
+
+      let decoded: any = {};
+      // Decrypt Business ID
+      if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
+        let decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
+        decoded.businessId = decryptedClientID
+      }
+
+      return {
+        auth: {
+          tenantId: apiKeyDoc.tenantId,
+          businessId: decoded.businessId,
+          businessName: tenant.businessName,
+          businessTIN: tenant.tin,
+          tenantERP: tenant.config?.erpSystem,
+          serviceId: tenant?.config?.firsCredentials?.serviceId,
+          isAdmin: false,
+          apiKeyId: apiKeyDoc._id.toString(),
+          scopes: apiKeyDoc.scopes || [],
+        },
+      };
     }
 
     // Try JWT token
@@ -365,6 +385,10 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
 
         // Handle set-password token 
         if (decoded?.purpose && decoded?.purpose == 'set-password') {
+          const pathname = new URL(request.url).pathname;
+          if (pathname !== '/auth/set-password' && pathname !== '/v1/auth/set-password') {
+            throw new UnauthorizedError('set-password token is only authorized for setting password');
+          }
           decoded.businessId = decoded.tenantId
         }
         // Handle regular tenant tokens

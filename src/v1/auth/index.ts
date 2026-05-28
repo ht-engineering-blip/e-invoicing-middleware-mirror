@@ -7,7 +7,7 @@ import {
   FIRSService,
   FIRSUserInfoBusiness,
 } from "../../@lib/adapters/firs/firs.service";
-import { InternalServerError, UnauthorizedError } from "../../@lib/errors";
+import { InternalServerError, UnauthorizedError, ValidationError } from "../../@lib/errors";
 import { hashString, verifyHash } from "../../@lib/utils/encryption";
 import { requireAuth } from "../../middlewares/auth";
 import { TeamMemberService } from "../tenants/services/team-member.service";
@@ -571,11 +571,20 @@ const protectedAuthRoutes = new Elysia()
         if (!auth || !auth.tenantId) {
           throw new UnauthorizedError("Not authenticated");
         }
+
+        const tenant = await tenantService.getTenantById(auth.tenantId);
+        if (tenant.metadata?.activationCompleted) {
+          throw new ValidationError("Account has already been activated. Password cannot be set again.");
+        }
+
         let { password } = body;
         // Store hashed password
         let parsedPassword = await hashString(password);
         let updatedTenant = await tenantService.updateTenant(auth.tenantId, {
           password: parsedPassword,
+          metadata: {
+            activationCompleted: true,
+          },
         });
         if (updatedTenant) {
           let authToken = await authService.createAuthToken(

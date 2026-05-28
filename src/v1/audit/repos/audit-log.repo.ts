@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import { appConfig } from '../../../@config';
 import { AppError } from '../../../@lib';
 import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
 import {
@@ -108,9 +110,44 @@ export class AuditLogRepository {
    */
   async create(data: Partial<AuditLogDocument>): Promise<AuditLogDocument> {
     try {
+      // Retrieve the most recent log to link the previous hash
+      const lastLogs = await this.auditLogModel.find({}).sort({ createdAt: -1 }).limit(1).exec();
+      const lastLog = lastLogs[0] || null;
+      const previousHash = lastLog?.hash || '0'.repeat(64);
+
+      const timestamp = data.timestamp || new Date();
+
+      // Compute HMAC chain hash over critical data
+      const hashContent = JSON.stringify({
+        eventId: data.eventId,
+        tenantId: data.tenantId,
+        eventType: data.eventType,
+        severity: data.severity,
+        actor: {
+          actorType: data.actor?.actorType,
+          actorId: data.actor?.actorId,
+          actorName: data.actor?.actorName,
+        },
+        resource: typeof data.resource === 'object' ? {
+          resourceType: data.resource?.resourceType,
+          resourceId: data.resource?.resourceId,
+          resourceName: data.resource?.resourceName,
+        } : data.resource,
+        description: data.description,
+        timestamp: timestamp.toISOString(),
+        previousHash,
+      });
+
+      const hash = crypto
+        .createHmac('sha256', appConfig?.adminKey || 'audit-secret-key')
+        .update(hashContent)
+        .digest('hex');
+
       const doc = await this.auditLogModel.create({
         ...data,
-        timestamp: data.timestamp || new Date(),
+        timestamp,
+        hash,
+        previousHash,
       });
 
       return doc;

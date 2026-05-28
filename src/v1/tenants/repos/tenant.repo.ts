@@ -1,5 +1,5 @@
 import { logger } from "../../../@lib/logger";
-import { AppError } from "../../../@lib";
+import { AppError, safeSearchRegExp } from "../../../@lib";
 import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   TenantDocument,
@@ -44,10 +44,10 @@ export class TenantRepository {
     // Search conditions
     if (where.search) {
       query.$or = [
-        { contactEmail: new RegExp(where.search, "i") },
-        { businessName: new RegExp(where.search, "i") },
-        { tin: new RegExp(where.search, "i") },
-        { tenantId: new RegExp(where.search, "i") },
+        { contactEmail: safeSearchRegExp(where.search) },
+        { businessName: safeSearchRegExp(where.search) },
+        { tin: safeSearchRegExp(where.search) },
+        { tenantId: safeSearchRegExp(where.search) },
       ];
     }
 
@@ -129,7 +129,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error creating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, error.message);
+        throw new AppError(400, "Invalid input");
       }
       if (error.code === 11000) {
         throw new AppError(
@@ -175,7 +175,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error updating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, error.message);
+        throw new AppError(400, "Invalid input");
       }
       if (error instanceof AppError) {
         throw error;
@@ -303,9 +303,9 @@ export class TenantRepository {
 
       const query: any = {
         $or: [
-          { businessName: new RegExp(searchQuery, "i") },
-          { tin: new RegExp(searchQuery, "i") },
-          { tenantId: new RegExp(searchQuery, "i") },
+          { businessName: safeSearchRegExp(searchQuery) },
+          { tin: safeSearchRegExp(searchQuery) },
+          { tenantId: safeSearchRegExp(searchQuery) },
         ],
       };
 

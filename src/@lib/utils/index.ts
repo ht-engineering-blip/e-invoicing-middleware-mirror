@@ -29,7 +29,13 @@ export function buildQrUrl(irn: string | undefined, hasQrCode: boolean): string 
  */
 export function getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
-  return path.split('.').reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
+  const keys = path.split('.');
+  let current = obj;
+  for (const key of keys) {
+    if (current == null) return undefined;
+    current = current[key];
+  }
+  return current;
 }
 
 
@@ -56,6 +62,7 @@ export function _getNestedValue(obj: any, path: string): any {
     .split('.')
     .map(k => k.trim())
     .filter(k => k.length > 0);
+
   if (keys.length === 0) return undefined;
   return _traverse(obj, keys);
 }

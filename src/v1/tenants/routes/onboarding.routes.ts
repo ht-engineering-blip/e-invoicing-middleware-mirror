@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
+import { requireAuth, getActor } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { TenantService } from '../services/tenant.service';
 import { jwtConfig, appConfig } from '../../../@config';
@@ -63,15 +63,12 @@ export const publicOnboardingRoutes = new Elysia()
         // Get tenant
         const tenant = await tenantService.getTenantById(decoded.tenantId);
 
-        // Check if already activated (has password)
-        if (tenant.password) {
+        // Check if already activated
+        if (tenant.password || tenant.metadata?.activationCompleted) {
           return {
-            success: true,
-            message: 'Account already activated',
-            data: {
-              tenantId: tenant.tenantId,
-              alreadyActivated: true,
-            },
+            success: false,
+            error: 'Account has already been activated',
+            statusCode: 400,
           };
         }
 
@@ -158,13 +155,13 @@ export const protectedOnboardingRoutes = new Elysia()
         const updatedTenant = await tenantService.updateFIRSCredentials(params.tenantId, {
           certificate: body.certificate,
           publicKey: body.publicKey,
-        });
+        }, getActor(auth));
 
         // Update onboarding step if not already completed
         try {
           const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
           if (onboarding && !onboarding.steps?.firsProvisioning?.completed) {
-            await tenantService.completeOnboardingStep(params.tenantId, 'firsProvisioning');
+            await tenantService.completeOnboardingStep(params.tenantId, 'firsProvisioning', getActor(auth));
           }
         } catch (onboardingError) {
           logger.warn('Failed to update onboarding step', { error: onboardingError });
@@ -233,7 +230,7 @@ export const protectedOnboardingRoutes = new Elysia()
             webhookPath,
             webhookSecretHash: crypto.createHash('sha256').update(webhookSecret).digest('hex'),
           },
-        } as any);
+        } as any, getActor(auth));
 
         await webhookService.configureWebhook({ enabled: true, tenantId: params.tenantId, webhookUrl, webhookSecret })
 
@@ -284,7 +281,7 @@ export const protectedOnboardingRoutes = new Elysia()
             ...tenant.config,
             invoiceIdKey,
           }
-        } as any);
+        } as any, getActor(auth));
 
         
         return {
@@ -397,7 +394,7 @@ export const protectedOnboardingRoutes = new Elysia()
           try {
             const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
             if (onboarding && !onboarding.steps?.testing?.completed) {
-              await tenantService.completeOnboardingStep(params.tenantId, 'testing');
+              await tenantService.completeOnboardingStep(params.tenantId, 'testing', getActor(auth));
             }
           } catch (onboardingError) {
             logger.warn('Failed to update onboarding step', { error: onboardingError });
