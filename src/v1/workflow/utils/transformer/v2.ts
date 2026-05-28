@@ -110,6 +110,32 @@ export class FIRSInvoiceTransformerV2 {
             // logger.info("base", base)
             const resolved = this.ensureRequiredFields(base, firsSchema)
             // logger.info("resolved", resolved)
+
+            // Set expected identity fields securely
+            const expectedBusinessId = authContext?.businessId;
+            const expectedSupplierTIN = authContext?.businessTIN;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const invoiceRef = invoice.invoice_reference || `INV${todayStr.replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+            const computedIrn = generateIRN(
+                invoiceRef,
+                authContext?.serviceId,
+                invoice.date || invoice.issue_date || invoice.issueDate ? new Date(invoice.date || invoice.issue_date || invoice.issueDate) : undefined,
+            );
+            const expectedIrn = invoice.irn || computedIrn;
+
+            if (expectedBusinessId) {
+                resolved.business_id = expectedBusinessId;
+            }
+            if (expectedIrn) {
+                resolved.irn = expectedIrn;
+            }
+            if (expectedSupplierTIN) {
+                if (!resolved.accounting_supplier_party) {
+                    resolved.accounting_supplier_party = {};
+                }
+                resolved.accounting_supplier_party.tin = expectedSupplierTIN;
+            }
+
             const missing = this.findMissingFields(resolved, firsSchema)
             //  logger.info("missing", missing)
             let completed = resolved
@@ -128,7 +154,35 @@ export class FIRSInvoiceTransformerV2 {
                 //  logger.info("response", response)
                 const parsed = this.safeParseLLMJSON(response)
                 //  logger.info("parsed", parsed)
+
+                // Validate that LLM did not modify identity fields
+                if (parsed.business_id !== undefined && expectedBusinessId && parsed.business_id !== expectedBusinessId) {
+                    throw new InternalServerError("LLM attempted to modify the business_id identity field");
+                }
+                if (parsed.irn !== undefined && expectedIrn && parsed.irn !== expectedIrn) {
+                    throw new InternalServerError("LLM attempted to modify the irn identity field");
+                }
+                const parsedSupplierTIN = parsed.accounting_supplier_party?.tin;
+                if (parsedSupplierTIN !== undefined && expectedSupplierTIN && parsedSupplierTIN !== expectedSupplierTIN) {
+                    throw new InternalServerError("LLM attempted to modify the supplier TIN identity field");
+                }
+
                 completed = { ...resolved, ...parsed }
+
+                // Force-overwrite identity fields post-merge to prevent bypass
+                if (expectedBusinessId) {
+                    completed.business_id = expectedBusinessId;
+                }
+                if (expectedIrn) {
+                    completed.irn = expectedIrn;
+                }
+                if (expectedSupplierTIN) {
+                    if (!completed.accounting_supplier_party) {
+                        completed.accounting_supplier_party = {};
+                    }
+                    completed.accounting_supplier_party.tin = expectedSupplierTIN;
+                }
+
                 logger.info("completed", completed)
             }
 
@@ -672,6 +726,10 @@ Complete the missing fields also generate emails here missing currency should de
         authContext: AuthContext,
         sourceSchema: ISchemaField[],
     ) {
+        const expectedBusinessId = authContext?.businessId || json.business_id;
+        const expectedSupplierTIN = authContext?.businessTIN || json.accounting_supplier_party?.tin;
+        const expectedIrn = json.irn;
+
         const metaContext: string = `
                 Initial Validation Errors:
                 ${JSON.stringify(errors)} 
@@ -746,8 +804,37 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 
         const response = await this.callLLM(prompt)
 
-        return this.safeParseLLMJSON(response)
+        const parsed = this.safeParseLLMJSON(response)
 
+        // Validate that LLM did not modify identity fields during repair
+        if (parsed.business_id !== undefined && expectedBusinessId && parsed.business_id !== expectedBusinessId) {
+            throw new InternalServerError("LLM in repair attempted to modify the business_id identity field");
+        }
+        if (parsed.irn !== undefined && expectedIrn && parsed.irn !== expectedIrn) {
+            throw new InternalServerError("LLM in repair attempted to modify the irn identity field");
+        }
+        const parsedSupplierTIN = parsed.accounting_supplier_party?.tin;
+        if (parsedSupplierTIN !== undefined && expectedSupplierTIN && parsedSupplierTIN !== expectedSupplierTIN) {
+            throw new InternalServerError("LLM in repair attempted to modify the supplier TIN identity field");
+        }
+
+        const repaired = { ...json, ...parsed };
+
+        // Force-overwrite identity fields post-merge to prevent bypass
+        if (expectedBusinessId) {
+            repaired.business_id = expectedBusinessId;
+        }
+        if (expectedIrn) {
+            repaired.irn = expectedIrn;
+        }
+        if (expectedSupplierTIN) {
+            if (!repaired.accounting_supplier_party) {
+                repaired.accounting_supplier_party = {};
+            }
+            repaired.accounting_supplier_party.tin = expectedSupplierTIN;
+        }
+
+        return repaired;
     }
 
 }

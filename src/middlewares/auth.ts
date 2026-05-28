@@ -27,6 +27,25 @@ function hashApiKey(apiKey: string): string {
 }
 
 /**
+ * Timing-safe comparison helper for sensitive keys
+ */
+function safeCompareKeys(input: any, expected: any): boolean {
+  if (typeof input !== 'string' || typeof expected !== 'string') {
+    return false;
+  }
+  const inputBuffer = Buffer.from(input);
+  const expectedBuffer = Buffer.from(expected);
+
+  if (inputBuffer.length !== expectedBuffer.length) {
+    // Mitigate timing oracle for length differences
+    crypto.timingSafeEqual(expectedBuffer, expectedBuffer);
+    return false;
+  }
+
+  return crypto.timingSafeEqual(inputBuffer, expectedBuffer);
+}
+
+/**
  * Context interface for authenticated requests
  */
 export interface AuthContext {
@@ -58,7 +77,7 @@ export const requireAdmin = (instance: Elysia) => instance.resolve(
       throw new UnauthorizedError('Admin key is required');
     }
 
-    if (adminKey !== appConfig?.adminKey) {
+    if (!safeCompareKeys(adminKey, appConfig?.adminKey)) {
       throw new UnauthorizedError('Invalid admin key');
     }
 
@@ -217,7 +236,7 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
 
     // Try Admin key first
     if (adminKey) {
-      if (adminKey !== appConfig?.adminKey) {
+      if (!safeCompareKeys(adminKey, appConfig?.adminKey)) {
         throw new UnauthorizedError('Invalid admin key');
       }
 

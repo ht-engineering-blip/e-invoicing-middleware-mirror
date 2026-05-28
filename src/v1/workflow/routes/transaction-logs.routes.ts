@@ -1,4 +1,4 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAuth } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { agenda } from '../../../@lib/queue/agenda';
@@ -14,6 +14,15 @@ import {
 } from '../models/outbound-invoice.model';
 import { scheduleJobChain } from '../jobs/orchestrator';
 import { ACTION_TO_JOB } from '../jobs/types';
+import {
+  listOutboundInvoicesValidation,
+  getOutboundInvoiceValidation,
+  updatePaymentStatusValidation,
+  retryInvoiceFromStepValidation,
+  resendFailedInvoiceValidation,
+  listInboundInvoicesValidation,
+  getInboundInvoiceValidation
+} from '../validations/transaction-logs.validation';
 
 /**
  * Transaction Logs Routes
@@ -97,23 +106,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-        source: t.Optional(t.String()),
-        erpInvoiceId: t.Optional(t.String()),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Outbound Invoices',
-        description: 'List outbound invoices with filtering and pagination. Filter by source=webhook|api or erpInvoiceId.',
-      },
-    }
+    listOutboundInvoicesValidation
   )
 
   /**
@@ -250,15 +243,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Outbound Invoice',
-        description: 'Get outbound invoice with populated webhook events, job error timeline, and payment status',
-      },
-    }
+    getOutboundInvoiceValidation
   )
 
   /**
@@ -330,26 +315,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         return { success: false, error: error.message || 'Failed to update payment status', statusCode: error.statusCode || 500 };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      body: t.Object({
-        paymentStatus: t.Union([
-          t.Literal('PAID'), t.Literal('PARTIAL'), t.Literal('OVERDUE'),
-        ]),
-        paymentDetails: t.Optional(t.Object({
-          paymentDate: t.Optional(t.String()),
-          paymentMethod: t.Optional(t.String()),
-          transactionReference: t.Optional(t.String()),
-          amountPaid: t.Optional(t.Number()),
-        })),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Update Payment Status',
-        description: 'Update outbound invoice payment status. Automatically schedules report_vat when status is PAID and invoice is DELIVERED.',
-      },
-    }
+    updatePaymentStatusValidation
   )
 
   /**
@@ -470,20 +436,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         return { success: false, error: error.message || 'Failed to retry invoice', statusCode: error.statusCode || 500 };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      body: t.Object({
-        fromStep: t.String({
-          description: 'Action name to resume from (e.g. "validate", "sign", "transmit")',
-        }),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Retry Invoice From Step',
-        description: 'Resume a failed invoice job chain from a specific workflow step.',
-      },
-    }
+    retryInvoiceFromStepValidation
   )
 
   /**
@@ -559,17 +512,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String(),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Resend Failed Invoice',
-        description: 'Restart workflow for a failed invoice',
-      },
-    }
+    resendFailedInvoiceValidation
   )
 
   // ==================== INBOUND INVOICES ====================
@@ -646,22 +589,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-        paymentStatus: t.Optional(t.String()),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Inbound Invoices',
-        description: 'List inbound invoices with filtering and pagination',
-      },
-    }
+    listInboundInvoicesValidation
   )
 
   /**
@@ -743,15 +671,5 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String(),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Inbound Invoice',
-        description: 'Get inbound invoice with full details and status history',
-      },
-    }
+    getInboundInvoiceValidation
   );

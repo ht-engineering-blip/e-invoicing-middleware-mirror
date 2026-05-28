@@ -1,9 +1,9 @@
-import Elysia, { t } from "elysia";
+import Elysia from "elysia";
 import { requireAuth } from "../../../middlewares";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { InboundWorkflowService } from "../services";
-import { faker } from "@faker-js/faker";
 import { secureAndValidateInvoice } from "../utils/security";
+import { inboundInvoiceValidation } from "../validations/inbound.validation";
 
 /**
  * Admin-protected tenant routes
@@ -39,14 +39,7 @@ const inboundInvoiceRoutes = new Elysia({ prefix: "/inbound" })
         };
       }
     },
-    {
-      body: t.Any({ default: {} }),
-      detail: {
-        summary: "Inbound Invoice",
-        description: "Process inbound workflow and transmit invoice",
-        // hide: true
-      },
-    },
+    inboundInvoiceValidation
   );
 
 export default inboundInvoiceRoutes;

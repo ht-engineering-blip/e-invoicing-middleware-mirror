@@ -1,4 +1,4 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAdmin } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import jsonSpread from "json-spread";
@@ -8,6 +8,11 @@ import { TransformWorkflowService } from '../../workflow/services';
 import { LLMService } from '../../../@lib/adapters/llm/llm.service';
 import { SchemaSourceType } from '../../workflow/models';
 import { onlyAdmin } from '../../auth/utils/access-checks';
+import {
+  listSupportedERPsValidation,
+  getERPDictionaryValidation,
+  addERPDictionaryValidation
+} from '../validations/erp-config.validation';
 
 /**
  * ERP Configuration Routes
@@ -43,33 +48,7 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         };
       }
     },
-    {
-      response: {
-        200: t.Object({
-          success: t.Literal(true),
-          data: t.Array(
-            t.Object({
-              id: t.String(),
-              source_type: t.String(),
-              status: t.String(),
-              last_updated: t.Date(),
-            })
-          ),
-          count: t.Number(),
-        }),
-        500: t.Object({
-          success: t.Literal(false),
-          error: t.String(),
-          statusCode: t.Number(),
-        }),
-      },
-      detail: {
-        tags: ['Admin - System Configuration'],
-        security: [{ adminKey: [] }],
-        summary: 'List Supported ERPs',
-        description: 'Get all configured ERP systems (excludes FIRS_UBL)',
-      },
-    }
+    listSupportedERPsValidation
   )
 
   /**
@@ -105,17 +84,7 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         };
       }
     },
-    {
-      params: t.Object({
-        erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
-      }),
-      detail: {
-        tags: ['Admin - System Configuration'],
-        security: [{ adminKey: [] }],
-        summary: 'Get ERP Dictionary',
-        description: 'Get invoice dictionary for a specific ERP type',
-      },
-    }
+    getERPDictionaryValidation
   )
 
   /**
@@ -175,20 +144,5 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         };
       }
     },
-    {
-      body: t.Object({
-        erp: t.Union([
-          t.Enum(SchemaSourceType, { default: SchemaSourceType.CUSTOM, }),
-          t.String()
-        ]),
-        invoice: t.Any({ default: {} }),
-        metadata: t.Optional(t.Any()),
-      }),
-      detail: {
-        tags: ['Admin - System Configuration'],
-        security: [{ adminKey: [] }],
-        summary: 'Add ERP Dictionary',
-        description: 'Add a new ERP system invoice dictionary',
-      },
-    }
+    addERPDictionaryValidation
   );

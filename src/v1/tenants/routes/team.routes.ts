@@ -1,10 +1,18 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAuth } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { TeamMemberService } from '../services/team-member.service';
 import { TeamMemberRole, TeamMemberStatus } from '../models/team-member.model';
 import { onlySelf } from '../../auth/utils/access-checks';
-import { acceptInviteExample, inviteMemberExample, updateMemberExample } from '../examples/team.examples';
+import {
+  acceptInviteValidation,
+  listTeamMembersValidation,
+  inviteTeamMemberValidation,
+  getTeamMemberValidation,
+  updateTeamMemberValidation,
+  removeTeamMemberValidation,
+  resendInviteValidation
+} from '../validations/team.validation';
 
 /**
  * Public Team Routes (for accepting invitations)
@@ -46,19 +54,7 @@ export const publicTeamRoutes = new Elysia({ prefix: '/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        token: t.String(),
-      }),
-      body: t.Object({
-        password: t.String({ minLength: 8, example: acceptInviteExample.password }),
-      }, { examples: [acceptInviteExample] }),
-      detail: {
-        tags: ['Team Management'],
-        summary: 'Accept Invitation',
-        description: 'Accept team invitation and set password',
-      },
-    }
+    acceptInviteValidation
   );
 
 /**
@@ -111,23 +107,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      query: t.Object({
-        status: t.Optional(t.String()),
-        role: t.Optional(t.String()),
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Team Members',
-        description: 'List all team members for a tenant',
-      },
-    }
+    listTeamMembersValidation
   )
 
   /**
@@ -175,28 +155,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      body: t.Object({
-        email: t.String({ format: 'email', example: inviteMemberExample.email }),
-        firstName: t.String({ minLength: 1, example: inviteMemberExample.firstName }),
-        lastName: t.String({ minLength: 1, example: inviteMemberExample.lastName }),
-        role: t.Enum({
-          admin: 'admin',
-          member: 'member',
-          viewer: 'viewer',
-        }),
-        permissions: t.Optional(t.Array(t.String())),
-      }, { examples: [inviteMemberExample] }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Invite Team Member',
-        description: 'Invite a new team member',
-      },
-    }
+    inviteTeamMemberValidation
   )
 
   /**
@@ -237,18 +196,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-        userId: t.String(),
-      }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Team Member',
-        description: 'Get team member details',
-      },
-    }
+    getTeamMemberValidation
   )
 
   /**
@@ -297,36 +245,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-        userId: t.String(),
-      }),
-      body: t.Object({
-        firstName: t.Optional(t.String({ example: updateMemberExample.firstName })),
-        lastName: t.Optional(t.String({ example: updateMemberExample.lastName })),
-        role: t.Optional(
-          t.Enum({
-            admin: 'admin',
-            member: 'member',
-            viewer: 'viewer',
-          })
-        ),
-        permissions: t.Optional(t.Array(t.String())),
-        status: t.Optional(
-          t.Enum({
-            active: 'active',
-            suspended: 'suspended',
-          })
-        ),
-      }, { examples: [updateMemberExample] }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Update Team Member',
-        description: 'Update team member details',
-      },
-    }
+    updateTeamMemberValidation
   )
 
   /**
@@ -360,18 +279,7 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-        userId: t.String(),
-      }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Remove Team Member',
-        description: 'Remove a team member from the tenant',
-      },
-    }
+    removeTeamMemberValidation
   )
 
   /**
@@ -401,16 +309,5 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-        userId: t.String(),
-      }),
-      detail: {
-        tags: ['Team Management'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Resend Invitation',
-        description: 'Resend invitation email to a team member',
-      },
-    }
+    resendInviteValidation
   );

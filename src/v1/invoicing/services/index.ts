@@ -245,7 +245,7 @@ export class InvoiceWorkflowService {
    * Decrypt Invoice (Inbound)
    * Downloads and decrypts an inbound invoice from FIRS
    */
-  async decryptInvoice(irn: string): Promise<any> {
+  async decryptInvoice(authContext: AuthContext, irn: string): Promise<any> {
     try {
       // Download invoice from FIRS
       const { data: invoiceResponse }: any = await this.firsService.downloadInvoice(irn);
@@ -263,6 +263,15 @@ export class InvoiceWorkflowService {
         api_key: firsConfig?.apiKey,
       });
 
+      // Scope decryption to invoices owned by the authenticated tenant
+      if (
+        decryptedData.business_id !== authContext.businessId &&
+        decryptedData.accounting_supplier_party?.tin !== authContext.businessTIN &&
+        decryptedData.accounting_customer_party?.tin !== authContext.businessTIN
+      ) {
+        throw new ValidationError('Invoice does not belong to this business');
+      }
+
       return {
         success: true,
         irn,
@@ -270,6 +279,9 @@ export class InvoiceWorkflowService {
         data: decryptedData,
       };
     } catch (error: any) {
+      if (error instanceof NotFoundError || error instanceof ValidationError) {
+        throw error;
+      }
       const { message, code } = this.getFIRSError(error);
       throw new AppError(code, `Decryption failed: ${message}`);
     }

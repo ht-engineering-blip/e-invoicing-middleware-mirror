@@ -1,4 +1,4 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAdmin } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import jsonSpread from "json-spread";
@@ -6,9 +6,12 @@ import { SystemConfigService } from '../services/system-config.service';
 import { TenantService } from '../../tenants/services/tenant.service';
 import { TransformWorkflowService } from '../../workflow/services';
 import { LLMService } from '../../../@lib/adapters/llm/llm.service';
-import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from '../../workflow/utils/defaults';
 import { onlyAdmin } from '../../auth/utils/access-checks';
 import { SchemaSourceType } from '../../workflow/models';
+import {
+  getFIRSDictionaryValidation,
+  updateFIRSDictionaryValidation
+} from '../validations/firs-config.validation';
 
 /**
  * FIRS Dictionary Configuration Routes
@@ -50,14 +53,7 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
         };
       }
     },
-    {
-      detail: {
-        tags: ['Admin - System Configuration'],
-        security: [{ adminKey: [] }],
-        summary: 'Get FIRS Dictionary',
-        description: 'Get the current FIRS UBL invoice schema dictionary',
-      },
-    }
+    getFIRSDictionaryValidation
   )
 
   /**
@@ -115,16 +111,5 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
         };
       }
     },
-    {
-      body: t.Object({
-        invoice: t.Any({ default: FIRS_INVOICE_SCHEMA }),
-        metadata: t.Optional(t.Any({ default: FIRS_INVOICE_METADATA })),
-      }),
-      detail: {
-        tags: ['Admin - System Configuration'],
-        security: [{ adminKey: [] }],
-        summary: 'Update FIRS Dictionary',
-        description: 'Update the FIRS UBL invoice schema dictionary',
-      },
-    }
+    updateFIRSDictionaryValidation
   );

@@ -1,5 +1,5 @@
 // Auth module routes
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import * as jwt from "jsonwebtoken";
 import { jwtConfig } from "../../@config";
 import { logger } from "../../@lib";
@@ -13,45 +13,17 @@ import { requireAuth } from "../../middlewares/auth";
 import { TeamMemberService } from "../tenants/services/team-member.service";
 import { TenantService } from "../tenants/services/tenant.service";
 import { AuthService } from "./services";
-
-/**
- * Login Request Validator
- */
-const loginValidator = t.Object({
-  email: t.String({ format: "email" }),
-  password: t.String({ minLength: 6 }),
-});
-
-/**
- * Login Request Validator
- */
-const passwordValidator = t.Object({
-  password: t.String({ minLength: 6 }),
-});
-
-/**
- * FIRS OAuth Request Validator
- */
-const firsOAuthValidator = t.Object({
-  email: t.String({ format: "email" }),
-  password: t.String({ minLength: 1 }),
-  mock: t.Optional(t.Boolean()),
-});
-
-/**
- * Forgot Password Request Validator
- */
-const forgotPasswordValidator = t.Object({
-  email: t.String({ format: "email" }),
-});
-
-/**
- * Reset Password Request Validator
- */
-const resetPasswordValidator = t.Object({
-  token: t.String({ minLength: 1 }),
-  password: t.String({ minLength: 8 }),
-});
+import {
+  loginRouteValidation,
+  teamMemberLoginRouteValidation,
+  firsOAuthRouteValidation,
+  forgotPasswordRouteValidation,
+  resetPasswordRouteValidation,
+  validateResetTokenRouteValidation,
+  meRouteValidation,
+  setPasswordRouteValidation,
+  refreshTokenRouteValidation,
+} from "./validations/auth.validation";
 
 /**
  * Auth Routes (public)
@@ -131,14 +103,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      body: loginValidator,
-      detail: {
-        tags: ["Authentication"],
-        summary: "Login",
-        description: "Login with email and password to receive a JWT token",
-      },
-    },
+    loginRouteValidation
   )
 
   /**
@@ -192,14 +157,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      body: loginValidator,
-      detail: {
-        tags: ["Authentication"],
-        summary: "Team Member Login",
-        description: "Login as a team member with email and password",
-      },
-    },
+    teamMemberLoginRouteValidation
   )
 
   /**
@@ -358,15 +316,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      body: firsOAuthValidator,
-      detail: {
-        tags: ["Authentication"],
-        summary: "FIRS OAuth",
-        description:
-          "Authenticate with FIRS and optionally sync credentials to existing tenant",
-      },
-    },
+    firsOAuthRouteValidation
   )
 
   /**
@@ -398,14 +348,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      body: forgotPasswordValidator,
-      detail: {
-        tags: ["Authentication"],
-        summary: "Forgot Password",
-        description: "Request a password reset email",
-      },
-    },
+    forgotPasswordRouteValidation
   )
 
   /**
@@ -437,14 +380,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      body: resetPasswordValidator,
-      detail: {
-        tags: ["Authentication"],
-        summary: "Reset Password",
-        description: "Reset password using the token received via email",
-      },
-    },
+    resetPasswordRouteValidation
   )
 
   /**
@@ -482,16 +418,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        token: t.String(),
-      }),
-      detail: {
-        tags: ["Authentication"],
-        summary: "Validate Reset Token",
-        description: "Check if a password reset token is still valid",
-      },
-    },
+    validateResetTokenRouteValidation
   );
 
 /**
@@ -630,14 +557,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    {
-      detail: {
-        tags: ["Authentication", "Tenant"],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: "Me",
-        description: "Get authenticated user details (tenant or team member)",
-      },
-    },
+    meRouteValidation
   )
 
   /**
@@ -708,15 +628,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    {
-      body: passwordValidator,
-      detail: {
-        tags: ["Authentication", "Tenant"],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: "Set Password",
-        description: "Set password using temporary auth token",
-      },
-    },
+    setPasswordRouteValidation
   )
   /**
    * POST /auth/refresh
@@ -768,14 +680,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    {
-      detail: {
-        tags: ["Authentication"],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: "Refresh token",
-        description: "Refresh JWT token to extend session",
-      },
-    },
+    refreshTokenRouteValidation
   );
 
 /**

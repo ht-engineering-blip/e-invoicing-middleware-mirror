@@ -1,5 +1,4 @@
-// Tenant module routes
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { appConfig } from '../../../@config';
 import { logger } from '../../../@lib';
 import { MailContent, withTemplate } from '../../../@lib/messaging';
@@ -7,18 +6,25 @@ import { requireAuth } from '../../../middlewares/auth';
 import { AuthService } from '../../auth/services';
 import { onlyAdmin, onlySelf, onlyTenantAdmin } from '../../auth/utils/access-checks';
 import { TenantService } from '../services/tenant.service';
-import {
-  apiKeyIdParamValidator,
-  createApiKeyValidator,
-  createTenantValidator,
-  erpSyncConfigValidator,
-  listTenantsQueryValidator,
-  revokeApiKeyValidator,
-  tenantIdParamValidator,
-  updateOnboardingStatusValidator,
-  updateTenantValidator
-} from '../utils/tenant.validators';
 import { templateEngine } from '../../../templates/engine';
+import {
+  createTenantValidation,
+  listTenantsValidation,
+  getTenantByIdValidation,
+  updateTenantValidation,
+  activateTenantValidation,
+  suspendTenantValidation,
+  deleteTenantValidation,
+  updateOnboardingStatusValidation,
+  createApiKeyValidation,
+  listApiKeysValidation,
+  revokeApiKeyValidation,
+  rotateApiKeyValidation,
+  listAllApiKeysValidation,
+  listAllERPConfigsValidation,
+  configureERPSyncValidation,
+  getERPSyncConfigValidation
+} from '../validations/admin.validation';
 
 /**
  * Admin-protected tenant routes
@@ -69,15 +75,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      body: createTenantValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Create a new tenant',
-        description: 'Create a new tenant with business information and ERP configuration',
-      },
-    }
+    createTenantValidation
   )
 
   /**
@@ -120,15 +118,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      query: listTenantsQueryValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'List all tenants',
-        description: 'Get paginated list of tenants with optional filtering',
-      },
-    }
+    listTenantsValidation
   )
 
   /**
@@ -154,15 +144,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      detail: {
-        tags: ['Admin - Tenants', 'Tenant',],
-        security: [{ adminKey: [] }, { bearerToken: [] }],
-        summary: 'Get tenant by ID',
-        description: 'Retrieve detailed information about a specific tenant',
-      },
-    }
+    getTenantByIdValidation
   )
 
   /**
@@ -189,16 +171,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      body: updateTenantValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Update tenant',
-        description: 'Update tenant information (business details, limits, features)',
-      },
-    }
+    updateTenantValidation
   )
 
   /**
@@ -227,15 +200,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Activate tenant',
-        description: 'Activate a suspended tenant account',
-      },
-    }
+    activateTenantValidation
   )
 
   /**
@@ -263,15 +228,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Suspend tenant',
-        description: 'Suspend a tenant account (reversible)',
-      },
-    }
+    suspendTenantValidation
   )
 
   /**
@@ -298,15 +255,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Delete tenant',
-        description: 'Permanently delete a tenant (use with caution)',
-      },
-    }
+    deleteTenantValidation
   )
   /**
    * PATCH /api/v1/tenants/:tenantId/onboarding
@@ -331,16 +280,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      body: updateOnboardingStatusValidator,
-      detail: {
-        tags: ['Admin - Tenants'],
-        security: [{ adminKey: [] }],
-        summary: 'Update onboarding status',
-        description: 'Update the onboarding progress for a tenant',
-      },
-    }
+    updateOnboardingStatusValidation
   )
 
 
@@ -373,16 +313,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      body: createApiKeyValidator,
-      detail: {
-        tags: ['Admin - API Keys'],
-        security: [{ adminKey: [] }],
-        summary: 'Create API key',
-        description: 'Generate a new API key for tenant authentication',
-      },
-    }
+    createApiKeyValidation
   )
 
   /**
@@ -407,15 +338,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      detail: {
-        tags: ['Admin - API Keys'],
-        security: [{ adminKey: [] }],
-        summary: 'List API keys',
-        description: 'Get all API keys for a tenant',
-      },
-    }
+    listApiKeysValidation
   )
 
   /**
@@ -441,16 +364,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
-      body: revokeApiKeyValidator,
-      detail: {
-        tags: ['Admin - API Keys'],
-        security: [{ adminKey: [] }],
-        summary: 'Revoke API key',
-        description: 'Permanently revoke an API key',
-      },
-    }
+    revokeApiKeyValidation
   )
 
   /**
@@ -484,19 +398,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
-      body: t.Object({
-        reason: t.Optional(t.String()),
-        sendEmail: t.Optional(t.Boolean({ default: true })),
-      }),
-      detail: {
-        tags: ['Admin - API Keys'],
-        security: [{ adminKey: [] }],
-        summary: 'Rotate API key',
-        description: 'Revoke old API key and generate a new one. Tenant receives an email with the new key.',
-      },
-    }
+    rotateApiKeyValidation
   )
 
   /**
@@ -539,20 +441,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.Numeric()),
-        limit: t.Optional(t.Numeric()),
-        status: t.Optional(t.String()),
-        tenantId: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Admin - API Keys'],
-        security: [{ adminKey: [] }],
-        summary: 'List all API keys',
-        description: 'Get a list of all API keys across all tenants with filtering and pagination. Admin only.',
-      },
-    }
+    listAllApiKeysValidation
   )
 
   /* ERP Sync Configuration */
@@ -597,20 +486,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.Numeric()),
-        limit: t.Optional(t.Numeric()),
-        erpSystem: t.Optional(t.String()),
-        enabled: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Admin - ERP Integration'],
-        security: [{ adminKey: [] }],
-        summary: 'List all ERP configurations',
-        description: 'Get a list of all ERP configurations across all tenants with filtering options',
-      },
-    }
+    listAllERPConfigsValidation
   )
 
   /**
@@ -659,16 +535,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      body: erpSyncConfigValidator,
-      detail: {
-        tags: ['Admin - ERP Integration', 'Tenant'],
-        security: [{ adminKey: [] }],
-        summary: 'Configure ERP sync',
-        description: 'Configure dynamic HTTP payload composition for ERP synchronization. Supports template-based request building with authentication, retries, and response mapping.',
-      },
-    }
+    configureERPSyncValidation
   )
 
   /**
@@ -718,18 +585,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    {
-      params: tenantIdParamValidator,
-      query: t.Object({
-        decrypt: t.Optional(t.String({ default: 'true' })),
-      }),
-      detail: {
-        tags: ['Admin - ERP Integration', 'Tenant'],
-        security: [{ adminKey: [] }],
-        summary: 'Get ERP sync configuration',
-        description: 'Retrieve the current ERP sync configuration with decrypted credentials',
-      },
-    }
+    getERPSyncConfigValidation
   )
 
 export default adminTenantRoutes;

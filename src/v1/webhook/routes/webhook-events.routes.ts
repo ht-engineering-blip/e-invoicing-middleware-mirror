@@ -1,7 +1,10 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAuth } from '../../../middlewares/auth';
 import { WebhookEventRepository } from '../repos/webhook-event.repo';
-import { WebhookDeliveryStatus } from '../models/webhook-event.model';
+import {
+  listWebhookEventsValidation,
+  getWebhookEventValidation
+} from '../validations/webhook-events.validation';
 
 export const webhookEventRoutes = new Elysia({ prefix: '/webhook/events' })
   .use(requireAuth)
@@ -70,24 +73,7 @@ export const webhookEventRoutes = new Elysia({ prefix: '/webhook/events' })
         return { success: false, error: error.message || 'Failed to fetch webhook events', statusCode: error.statusCode || 500 };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-        tenantId: t.Optional(t.String()),
-        eventType: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-        irn: t.Optional(t.String()),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Webhook Events'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Webhook Events',
-        description: 'List webhook events for the authenticated tenant. Supports filtering by eventType, status, IRN, and date range.',
-      },
-    }
+    listWebhookEventsValidation
   )
 
   /**
@@ -138,13 +124,5 @@ export const webhookEventRoutes = new Elysia({ prefix: '/webhook/events' })
         return { success: false, error: error.message || 'Failed to fetch webhook event', statusCode: error.statusCode || 500 };
       }
     },
-    {
-      params: t.Object({ eventId: t.String() }),
-      detail: {
-        tags: ['Webhook Events'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Webhook Event',
-        description: 'Get a single webhook event by its eventId. Includes full jobErrors history and delivery attempts.',
-      },
-    }
+    getWebhookEventValidation
   );
