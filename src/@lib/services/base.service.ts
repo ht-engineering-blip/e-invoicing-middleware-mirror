@@ -8,6 +8,7 @@ import { AuditLogRepository } from "../../v1/audit/repos/audit-log.repo";
 import { AuditEventType, AuditEventSeverity } from "../../v1/audit/models";
 import { TenantDocument, TeamMemberRole } from "../../v1/tenants/models";
 import { AutocompletePaths } from "../types";
+import { decryptSensitiveData } from "../crypto";
 
 /**
  * BaseService class providing core shared utilities for all extending services.
@@ -126,16 +127,23 @@ export class BaseService {
    * Create Auth Token For Tenant
    */
   public async createAuthToken(
-    tenant: TenantDocument & { type: string; role: TeamMemberRole },
+    tenant: TenantDocument & { type: string; role: TeamMemberRole, scopes?: string[] },
     expiresIn?: string,
   ): Promise<string> {
+
+    let businessId = '';
+    if (tenant.config?.firsCredentials?.clientId) {
+      businessId = decryptSensitiveData(tenant.config.firsCredentials.clientId);
+    }
+
     const tokenPayload = {
       tenantId: tenant.tenantId,
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
-      scopes: ["*"],
+      scopes: tenant.scopes || ["*"], //tenant admin is a super user
       email: tenant.contactEmail,
       businessName: tenant.businessName,
+      businessId
     };
 
     const jwtSecret = jwtConfig?.secret as string;

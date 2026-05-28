@@ -51,7 +51,7 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError("Invalid credentials");
         }
 
-        console.log({ password: body.password, tenant: tenant.password });
+
 
 
         // Verify password
