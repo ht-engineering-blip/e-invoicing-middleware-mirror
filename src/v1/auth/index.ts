@@ -275,12 +275,11 @@ const authRoutes = new Elysia()
           type: "tenant",
         };
 
-        const jwtSecret =
-          jwtConfig?.secret || "default-secret-change-in-production";
+        const jwtSecret = jwtConfig?.secret;
         const jwtExpiry = jwtConfig?.expiry || "24h";
-        const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
+        const jwtAlgorithm = jwtConfig?.algorithm || "HS256";
 
-        const token = jwt.sign(tokenPayload, jwtSecret, {
+        const token = jwt.sign(tokenPayload, jwtSecret!, {
           expiresIn: jwtExpiry as any,
           algorithm: jwtAlgorithm,
         });
