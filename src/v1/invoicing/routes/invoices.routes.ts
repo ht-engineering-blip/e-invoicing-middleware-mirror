@@ -1,19 +1,24 @@
-import Elysia, { t } from 'elysia';
+import Elysia from 'elysia';
 import { requireAuth } from '../../../middlewares';
 import { TenantService } from '../../tenants/services/tenant.service';
-import { InvoiceWorkflowService, InvoicePaymentStatus } from '../services';
+import { InvoiceWorkflowService } from '../services';
 import { TransformWorkflowService } from '../../workflow/services';
 import { generateIRN } from '../../workflow/utils/transformer/utils';
 import { generateRandomString, logger } from '../../../@lib';
 import { scheduleJobChain } from '../../workflow/jobs/orchestrator';
 import {
-  SAMPLE_INVOICE_BODY,
-  generateIrnExample,
-  irnOnlyExample,
-  acknowledgeExample,
-  statusUpdateExample,
-  vatReportExample,
-} from '../examples/invoices.examples';
+  generateIrnValidation,
+  transformInvoiceValidation,
+  validateInvoiceValidation,
+  signInvoiceValidation,
+  generateQRValidation,
+  transmitInvoiceValidation,
+  decryptInvoiceValidation,
+  acknowledgeInvoiceValidation,
+  updateInvoiceStatusValidation,
+  reportVATValidation,
+  confirmInvoiceStatusValidation,
+} from '../validations/invoices.validation';
 
 /**
  * Invoice workflow routes
@@ -55,19 +60,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        invoiceNumber: t.String({ minLength: 1, example: generateIrnExample.invoiceNumber }),
-        issueDate: t.Optional(t.String({ example: generateIrnExample.issueDate })),
-      }, {
-        examples: [generateIrnExample],
-      }),
-      detail: {
-        summary: 'Generate IRN',
-        description: 'Generate a unique Invoice Reference Number (IRN) for an invoice',
-        tags: ['Invoicing'],
-      },
-    }
+    generateIrnValidation
   )
 
   /**
@@ -81,13 +74,13 @@ const invoiceMgmtRoutes = new Elysia()
         let invoice: any = body;
         if (auth?.businessId) {
           invoice.business_id = auth.businessId;
-        } 
+        }
         if (!invoice.irn) {
           let generatedIRN = generateIRN(generateRandomString(13).substring(2, 8), auth?.serviceId)
           invoice.irn = generatedIRN
         }
 
-        console.log({invoice})
+        console.log({ invoice })
 
         const result = await invoiceWorkflowService.transformInvoice(invoice, auth);
 
@@ -104,14 +97,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-      detail: {
-        summary: 'Transform Invoice',
-        description: 'Transform invoice data to FIRS UBL format',
-        tags: ['Invoicing'],
-      },
-    }
+    transformInvoiceValidation
   )
 
   /**
@@ -142,14 +128,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-      detail: {
-        summary: 'Validate Invoice',
-        description: 'Validate invoice against FIRS requirements',
-        tags: ['Invoicing'],
-      },
-    }
+    validateInvoiceValidation
   )
 
   /**
@@ -160,7 +139,7 @@ const invoiceMgmtRoutes = new Elysia()
     '/sign',
     async ({ auth, body, invoiceWorkflowService }) => {
       try {
-        console.log({body})
+        console.log({ body })
         if (!auth?.businessId) {
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
@@ -181,14 +160,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-      detail: {
-        summary: 'Sign Invoice',
-        description: 'Sign the invoice using tenant FIRS credentials',
-        tags: ['Invoicing'],
-      },
-    }
+    signInvoiceValidation
   )
 
   /**
@@ -216,18 +188,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        irn: t.String({ minLength: 8, example: irnOnlyExample.irn }),
-      }, {
-        examples: [irnOnlyExample],
-      }),
-      detail: {
-        summary: 'Generate QR Code',
-        description: 'Generate QR code for an invoice using tenant credentials',
-        tags: ['Invoicing'],
-      },
-    }
+    generateQRValidation
   )
 
   /**
@@ -255,18 +216,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        irn: t.String({ minLength: 1, example: irnOnlyExample.irn }),
-      }, {
-        examples: [irnOnlyExample],
-      }),
-      detail: {
-        summary: 'Transmit Invoice',
-        description: 'Transmit signed invoice to FIRS',
-        tags: ['Invoicing'],
-      },
-    }
+    transmitInvoiceValidation
   )
 
   /**
@@ -275,9 +225,13 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/decrypt',
-    async ({ body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
-        const result = await invoiceWorkflowService.decryptInvoice(body.irn);
+        if (!auth?.businessId) {
+          set.status = 401
+          return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
+        }
+        const result = await invoiceWorkflowService.decryptInvoice(auth, body.irn);
 
         return {
           success: true,
@@ -291,18 +245,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        irn: t.String({ minLength: 1, example: irnOnlyExample.irn }),
-      }, {
-        examples: [irnOnlyExample],
-      }),
-      detail: {
-        summary: 'Decrypt Invoice',
-        description: 'Download and decrypt an inbound invoice from FIRS',
-        tags: ['Invoicing'],
-      },
-    }
+    decryptInvoiceValidation
   )
 
   /**
@@ -334,19 +277,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        irn: t.String({ minLength: 1, example: acknowledgeExample.irn }),
-        message: t.Optional(t.String({ example: acknowledgeExample.message })),
-      }, {
-        examples: [acknowledgeExample],
-      }),
-      detail: {
-        summary: 'Acknowledge Invoice',
-        description: 'Acknowledge receipt of an inbound invoice',
-        tags: ['Invoicing'],
-      },
-    }
+    acknowledgeInvoiceValidation
   )
 
   /**
@@ -363,7 +294,7 @@ const invoiceMgmtRoutes = new Elysia()
         const result = await invoiceWorkflowService.updateInvoiceStatus(
           auth.businessId,
           params.irn,
-          body.status as InvoicePaymentStatus,
+          body.status as any,
           {
             paymentDate: body.paymentDate ? new Date(body.paymentDate) : undefined,
             paymentAmount: body.paymentAmount,
@@ -373,27 +304,25 @@ const invoiceMgmtRoutes = new Elysia()
         );
 
         // run a job to update invoice status to FIRS
-       // if (body.status === InvoicePaymentStatus.PAID) {
-          scheduleJobChain({
-            webhookEventId: `status_${params.irn}_${Date.now()}`,
-            tenantId: auth.tenantId,
-            eventType: 'invoice.'+ body.status.toLowerCase(),
-            actions: ['update_payment_status'],
-            payload: {
-              irn: params.irn,
-              vatReportData: {
-                payment_status: body.status,
-                reference: body.paymentReference,
-              },
-            },
+        scheduleJobChain({
+          webhookEventId: `status_${params.irn}_${Date.now()}`,
+          tenantId: auth.tenantId,
+          eventType: 'invoice.' + body.status.toLowerCase(),
+          actions: ['update_payment_status'],
+          payload: {
             irn: params.irn,
-          }).catch((err) =>
-            logger.error('[invoices.routes] Failed to schedule update-payment-status job', {
-              irn: params.irn,
-              error: err.message,
-            })
-          );
-       // }
+            vatReportData: {
+              payment_status: body.status,
+              reference: body.paymentReference,
+            },
+          },
+          irn: params.irn,
+        }).catch((err) =>
+          logger.error('[invoices.routes] Failed to schedule update-payment-status job', {
+            irn: params.irn,
+            error: err.message,
+          })
+        );
 
         return {
           success: true,
@@ -407,29 +336,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String({ minLength: 1 }),
-      }),
-      body: t.Object({
-        status: t.Union([
-          t.Literal('PENDING'),
-          t.Literal('PAID'),
-          t.Literal('REJECTED'),
-        ]),
-        paymentDate: t.Optional(t.String({ example: statusUpdateExample.paymentDate })),
-        paymentAmount: t.Optional(t.Number({ example: statusUpdateExample.paymentAmount })),
-        paymentReference: t.Optional(t.String({ example: statusUpdateExample.paymentReference })),
-        rejectionReason: t.Optional(t.String({ example: 'Duplicate invoice' })),
-      }, {
-        examples: [statusUpdateExample],
-      }),
-      detail: {
-        summary: 'Update Invoice Payment Status',
-        description: 'Update the payment status of an invoice (PENDING, PAID, REJECTED)',
-        tags: ['Invoicing'],
-      },
-    }
+    updateInvoiceStatusValidation
   )
 
   /**
@@ -477,34 +384,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      body: t.Object({
-        agent_tin: t.String({ minLength: 1, description: 'Accounting Supplier Party TIN', example: vatReportExample.agent_tin }),
-        base_amount: t.String({ description: 'Line extension amount (amount to be taxed)', example: vatReportExample.base_amount }),
-        beneficiary_tin: t.String({ minLength: 1, description: 'Accounting Buyer Party TIN', example: vatReportExample.beneficiary_tin }),
-        currency: t.String({ default: 'NGN', description: 'Document currency code', example: 'NGN' }),
-        item_description: t.String({ description: 'Item description within the invoice line', example: vatReportExample.item_description }),
-        irn: t.String({ minLength: 1, description: 'Invoice Reference Number', example: vatReportExample.irn }),
-        other_taxes: t.String({ description: 'Summation of tax amount for Tax categories other than VAT', example: '0.00' }),
-        total_amount: t.String({ description: 'Payable amount (amount to be collected)', example: vatReportExample.total_amount }),
-        transaction_date: t.String({ description: 'Issue date (YYYY-MM-DD)', example: vatReportExample.transaction_date }),
-        integrator_service_id: t.Optional(t.String({ description: 'Service ID of Access Point Provider (uses auth.serviceId if not provided)' })),
-        vat_calculated: t.String({ description: 'Tax amount with VAT category (STANDARD_VAT, ZERO_VAT, REDUCED_VAT)', example: vatReportExample.vat_calculated }),
-        vat_rate: t.String({ description: 'Percentage attached to tax category ID (e.g., "7.5")', example: '7.5' }),
-        vat_status: t.Union([
-          t.Literal('STANDARD_VAT'),
-          t.Literal('ZERO_VAT'),
-          t.Literal('REDUCED_VAT'),
-        ], { description: 'Tax (VAT) ID related to VAT type' }),
-      }, {
-        examples: [vatReportExample],
-      }),
-      detail: {
-        summary: 'Report VAT Post-Payment',
-        description: 'Report invoice to FIRS for VAT post-payment reporting (/api/v1/vat/postpayment)',
-        tags: ['Invoicing'],
-      },
-    }
+    reportVATValidation
   )
 
   /**
@@ -535,16 +415,7 @@ const invoiceMgmtRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String({ minLength: 1 }),
-      }),
-      detail: {
-        summary: 'Confirm Invoice Status',
-        description: 'Confirm the status of an invoice on FIRS',
-        tags: ['Invoicing'],
-      },
-    }
+    confirmInvoiceStatusValidation
   );
 
 export default invoiceMgmtRoutes;

@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { generateIRN, SYSTEM_PROMPT } from './utils';
 import { aiConfig } from '../../../../@config';
-import { BadRequestError, InternalServerError } from '../../../../@lib';
-import { AuthContext } from '../../../../middlewares';
+import { InternalServerError } from '../../../../@lib';
 import { generateTransformPrompt } from '../../../../@lib/adapters/llm/prompts';
+import { AuthContext } from '../../../../middlewares';
 import { SchemaSourceType } from '../../models';
+import { generateIRN } from './utils';
 // ============= SCHEMA VALIDATION =============
 
 // Simplified validation schemas for critical fields
@@ -236,9 +236,48 @@ export class FIRSInvoiceTransformer {
    */
   async transformAndValidate(invoiceData: any, authContext?: AuthContext, sourceType?: SchemaSourceType | string): Promise<TransformationResult | undefined> {
     try {
+      // Set expected identity fields securely
+      const expectedBusinessId = authContext?.businessId;
+      const expectedSupplierTIN = authContext?.businessTIN;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const invoiceRef = invoiceData.invoice_reference || `INV${todayStr.replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const computedIrn = generateIRN(
+        invoiceRef,
+        authContext?.serviceId,
+        invoiceData.date || invoiceData.issue_date || invoiceData.issueDate ? new Date(invoiceData.date || invoiceData.issue_date || invoiceData.issueDate) : undefined,
+      );
+      const expectedIrn = invoiceData.irn || computedIrn;
+
       // Step 1: Transform using LLM with schema-based prompts
       console.log('Transforming invoice data...');
       const transformedData = await this.transformWithLLM(invoiceData, authContext, sourceType);
+
+      // Validate that LLM did not modify identity fields
+      if (transformedData.business_id !== undefined && expectedBusinessId && transformedData.business_id !== expectedBusinessId) {
+        throw new InternalServerError("LLM attempted to modify the business_id identity field");
+      }
+      if (transformedData.irn !== undefined && expectedIrn && transformedData.irn !== expectedIrn) {
+        throw new InternalServerError("LLM attempted to modify the irn identity field");
+      }
+      const parsedSupplierTIN = transformedData.accounting_supplier_party?.tin;
+      if (parsedSupplierTIN !== undefined && expectedSupplierTIN && parsedSupplierTIN !== expectedSupplierTIN) {
+        throw new InternalServerError("LLM attempted to modify the supplier TIN identity field");
+      }
+
+      // Force-overwrite identity fields post-merge to prevent bypass
+      if (expectedBusinessId) {
+        transformedData.business_id = expectedBusinessId;
+      }
+      if (expectedIrn) {
+        transformedData.irn = expectedIrn;
+      }
+      if (expectedSupplierTIN) {
+        if (!transformedData.accounting_supplier_party) {
+          transformedData.accounting_supplier_party = {};
+        }
+        transformedData.accounting_supplier_party.tin = expectedSupplierTIN;
+      }
+
       // Step 2: Validate the transformed data
       console.log('Validating transformed data...');
       const validation = this.validateData(transformedData);
@@ -252,6 +291,20 @@ export class FIRSInvoiceTransformer {
         // Attempt to fix validation errors and retry once
         console.log('Validation failed, attempting to fix...');
         const fixedData = this.attemptAutoFix(transformedData, validation.errors!);
+
+        // Force-overwrite identity fields on fixedData to prevent bypass in auto-fix
+        if (expectedBusinessId) {
+          fixedData.business_id = expectedBusinessId;
+        }
+        if (expectedIrn) {
+          fixedData.irn = expectedIrn;
+        }
+        if (expectedSupplierTIN) {
+          if (!fixedData.accounting_supplier_party) {
+            fixedData.accounting_supplier_party = {};
+          }
+          fixedData.accounting_supplier_party.tin = expectedSupplierTIN;
+        }
 
         // Re-validate fixed data
         const reValidation = this.validateData(fixedData);
