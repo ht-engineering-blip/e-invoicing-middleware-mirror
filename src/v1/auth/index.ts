@@ -45,11 +45,14 @@ const authRoutes = new Elysia()
         logger.info("Login attempt", { email: body.email });
 
         // Find tenant by contact email
-        const tenant = await tenantService.getTenantByEmail(body.email);
+        const tenant = await tenantService.getTenantByEmail(body.email, false, true);
 
         if (!tenant) {
           throw new UnauthorizedError("Invalid credentials");
         }
+
+        console.log({ password: body.password, tenant: tenant.password });
+
 
         // Verify password
         const isPasswordValid = await verifyHash(

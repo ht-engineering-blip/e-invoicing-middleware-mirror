@@ -131,10 +131,9 @@ export class BaseService {
   ): Promise<string> {
     const tokenPayload = {
       tenantId: tenant.tenantId,
-      businessId: (tenant as any).businessId || tenant.tenantId,
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
-      scopes: (tenant as any).scopes || ["*"],
+      scopes: ["*"],
       email: tenant.contactEmail,
       businessName: tenant.businessName,
     };

@@ -239,6 +239,7 @@ export class TeamMemberService extends BaseService {
         email: member.email,
         role: member.role,
         type: "team_member",
+        scope: member.permissions
       };
       const authToken = await this.createAuthToken(_tmpTenant);
 
