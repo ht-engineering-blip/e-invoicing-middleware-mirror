@@ -3,6 +3,8 @@
  * Business logic for audit logging and reporting
  */
 
+import crypto from 'crypto';
+import { appConfig } from '../../../@config';
 import { AuditLogRepository } from '../repos/audit-log.repo';
 import { NotFoundError } from '../../../@lib/errors';
 import type { AuditLogDocument } from '../models';
@@ -392,5 +394,72 @@ export class AuditService {
     // This method is for manual cleanup if needed
 
     return count;
+  }
+
+  /**
+   * Cryptographically verify the integrity of the audit logs chain
+   */
+  async verifyIntegrity(): Promise<{ isValid: boolean; tamperedCount: number; details: any[] }> {
+    const logs = await this.auditRepo.find({}, 0, 10000); // Verify up to last 10,000 logs
+    let previousHash = '0'.repeat(64);
+    let tamperedCount = 0;
+    const details = [];
+
+    // Since find sorts by timestamp DESC, we reverse it to verify in chronological order
+    const chronologicalLogs = [...logs].reverse();
+
+    for (let i = 0; i < chronologicalLogs.length; i++) {
+      const log = chronologicalLogs[i];
+      const hashContent = JSON.stringify({
+        eventId: log.eventId,
+        tenantId: log.tenantId,
+        eventType: log.eventType,
+        severity: log.severity,
+        actor: {
+          actorType: log.actor?.actorType,
+          actorId: log.actor?.actorId,
+          actorName: log.actor?.actorName,
+        },
+        resource: typeof log.resource === 'object' ? {
+          resourceType: log.resource?.resourceType,
+          resourceId: log.resource?.resourceId,
+          resourceName: log.resource?.resourceName,
+        } : log.resource,
+        description: log.description,
+        timestamp: log.timestamp.toISOString(),
+        previousHash: log.previousHash || '0'.repeat(64),
+      });
+
+      const expectedHash = crypto
+        .createHmac('sha256', appConfig?.adminKey || 'audit-secret-key')
+        .update(hashContent)
+        .digest('hex');
+
+      const isCurrentValid = log.hash === expectedHash;
+      // For the first entry in the chain, if it has no previousHash, treat it as matching the default
+      const isChainValid = log.previousHash === previousHash;
+
+      if (!isCurrentValid || !isChainValid) {
+        tamperedCount++;
+        details.push({
+          eventId: log.eventId,
+          timestamp: log.timestamp,
+          isCurrentValid,
+          isChainValid,
+          expectedHash,
+          actualHash: log.hash,
+          expectedPreviousHash: previousHash,
+          actualPreviousHash: log.previousHash,
+        });
+      }
+
+      previousHash = log.hash || '0'.repeat(64);
+    }
+
+    return {
+      isValid: tamperedCount === 0,
+      tamperedCount,
+      details,
+    };
   }
 }

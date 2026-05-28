@@ -84,15 +84,11 @@ export const webhookEventRoutes = new Elysia({ prefix: '/webhook/events' })
     '/:eventId',
     async ({ params, auth, webhookEventRepo }) => {
       try {
-        const ev = await webhookEventRepo.findByEventId(params.eventId);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const ev = await webhookEventRepo.findByEventId(params.eventId, tenantId);
 
         if (!ev) {
           return { success: false, error: 'Webhook event not found', statusCode: 404 };
-        }
-
-        // Tenants can only access their own events
-        if (!auth!.isAdmin && ev.tenantId !== auth!.tenantId) {
-          return { success: false, error: 'Not authorized', statusCode: 403 };
         }
 
         return {

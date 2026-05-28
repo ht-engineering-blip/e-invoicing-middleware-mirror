@@ -1,4 +1,4 @@
-import { AppError } from '../../../@lib';
+import { AppError, safeSearchRegExp } from '../../../@lib';
 import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
 import {
   InboundInvoiceDocument,
@@ -45,10 +45,10 @@ export class InboundInvoiceRepository {
     // Search
     if (where.search) {
       query.$or = [
-        { invoiceNumber: new RegExp(where.search, 'i') },
-        { supplierName: new RegExp(where.search, 'i') },
-        { supplierTIN: new RegExp(where.search, 'i') },
-        { irn: new RegExp(where.search, 'i') },
+        { invoiceNumber: safeSearchRegExp(where.search) },
+        { supplierName: safeSearchRegExp(where.search) },
+        { supplierTIN: safeSearchRegExp(where.search) },
+        { irn: safeSearchRegExp(where.search) },
       ];
     }
 
@@ -136,7 +136,7 @@ export class InboundInvoiceRepository {
     } catch (error: any) {
       console.error('Error creating inbound invoice:', error);
       if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+        throw new AppError(400, 'Invalid input');
       }
       if (error.code === 11000) {
         throw new AppError(409, 'Invoice with this IRN already exists');
@@ -174,7 +174,7 @@ export class InboundInvoiceRepository {
     } catch (error: any) {
       console.error('Error updating inbound invoice:', error);
       if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+        throw new AppError(400, 'Invalid input');
       }
       if (error instanceof AppError) {
         throw error;
@@ -253,9 +253,12 @@ export class InboundInvoiceRepository {
   /**
    * Find inbound invoice by IRN
    */
-  async findByIRN(irn: string): Promise<InboundInvoiceDocument | null> {
+  async findByIRN(irn: string, tenantId?: string, businessId?: string): Promise<InboundInvoiceDocument | null> {
     try {
-      const doc = await this.inboundInvoiceModel.findOne({ irn }).exec();
+      const query: any = { irn };
+      if (tenantId) query.tenantId = tenantId;
+      if (businessId) query.businessId = businessId;
+      const doc = await this.inboundInvoiceModel.findOne(query).exec();
       return doc;
     } catch (error) {
       console.error('Error fetching inbound invoice:', error);
@@ -475,10 +478,10 @@ export class InboundInvoiceRepository {
       const query: any = {
         businessId,
         $or: [
-          { invoiceNumber: new RegExp(searchQuery, 'i') },
-          { supplierName: new RegExp(searchQuery, 'i') },
-          { supplierTIN: new RegExp(searchQuery, 'i') },
-          { irn: new RegExp(searchQuery, 'i') },
+          { invoiceNumber: safeSearchRegExp(searchQuery) },
+          { supplierName: safeSearchRegExp(searchQuery) },
+          { supplierTIN: safeSearchRegExp(searchQuery) },
+          { irn: safeSearchRegExp(searchQuery) },
         ],
       };
 

@@ -31,6 +31,15 @@ import {
  * All mutation operations require admin key
  */
 /*   prefix: '/admin', */
+function getActor(auth: any) {
+  if (!auth) return undefined;
+  return {
+    id: auth.userId || auth.tenantId || 'system',
+    type: auth.isAdmin ? 'system' : (auth.apiKeyId ? 'api_key' : 'user'),
+    name: auth.email || auth.businessName || (auth.isAdmin ? 'Admin' : 'System'),
+  };
+}
+
 const adminTenantRoutes = new Elysia({
   detail: {
     hide: appConfig?.env === 'production'
@@ -50,7 +59,7 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, body, tenantService, authService, set }) => {
       try {
         onlyAdmin(auth!, 'Forbidden: Admin access required');
-        const tenant = await tenantService.createTenant(body);
+        const tenant = await tenantService.createTenant(body, getActor(auth));
 
         /* Notify Tenant to complete onboarding */
         let activationToken = await authService.createAuthToken(tenant as any, "12HRS")
@@ -157,7 +166,7 @@ const adminTenantRoutes = new Elysia({
       try {
         // Verify access
         onlyTenantAdmin(auth!, params.tenantId);
-        const tenant = await tenantService.updateTenant(params.tenantId, body);
+        const tenant = await tenantService.updateTenant(params.tenantId, body, getActor(auth));
         return {
           success: true,
           message: 'Tenant updated successfully',
@@ -186,7 +195,7 @@ const adminTenantRoutes = new Elysia({
         onlyAdmin(auth!, 'Forbidden: You are not authorized to activate this tenant')
 
 
-        const tenant = await tenantService.activateTenant(params.tenantId);
+        const tenant = await tenantService.activateTenant(params.tenantId, getActor(auth));
         return {
           success: true,
           message: 'Tenant activated successfully',
@@ -214,7 +223,7 @@ const adminTenantRoutes = new Elysia({
         // Verify access
         onlyAdmin(auth!, 'Forbidden: You are not authorized to suspend this tenant')
 
-        const tenant = await tenantService.suspendTenant(params.tenantId);
+        const tenant = await tenantService.suspendTenant(params.tenantId, undefined, getActor(auth));
         return {
           success: true,
           message: 'Tenant suspended successfully',
@@ -242,7 +251,7 @@ const adminTenantRoutes = new Elysia({
         // Verify access
         onlyAdmin(auth!, 'Forbidden: You are not authorized to delete this tenant')
 
-        await tenantService.deleteTenant(params.tenantId);
+        await tenantService.deleteTenant(params.tenantId, getActor(auth));
         return {
           success: true,
           message: 'Tenant deleted successfully',
@@ -266,7 +275,7 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, params, body, tenantService }) => {
       try {
         onlyAdmin(auth!, 'Forbidden: Admin access required');
-        const onboarding = await tenantService.updateOnboarding(params.tenantId, body);
+        const onboarding = await tenantService.updateOnboarding(params.tenantId, body, getActor(auth));
         return {
           success: true,
           message: 'Onboarding status updated successfully',
@@ -296,7 +305,7 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, params, body, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId)
-        const result = await tenantService.createApiKey(params.tenantId, body);
+        const result = await tenantService.createApiKey(params.tenantId, body, getActor(auth));
         return {
           success: true,
           message: 'API key created successfully',
@@ -351,7 +360,7 @@ const adminTenantRoutes = new Elysia({
       try {
         console.log({ params })
         onlyTenantAdmin(auth!, params.tenantId)
-        await tenantService.revokeApiKey(params.tenantId, params.keyId, body?.reason);
+        await tenantService.revokeApiKey(params.tenantId, params.keyId, body?.reason, getActor(auth));
         return {
           success: true,
           message: 'API key revoked successfully',
@@ -379,7 +388,7 @@ const adminTenantRoutes = new Elysia({
         const result = await tenantService.rotateApiKey(params.tenantId, params.keyId, {
           sendEmail: body?.sendEmail !== false,
           reason: body?.reason,
-        });
+        }, getActor(auth));
 
         return {
           success: true,
@@ -498,19 +507,19 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, params, body, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
-        const _updatedTenant = await tenantService.configureERPSync(params.tenantId, body);
+        const _updatedTenant = await tenantService.configureERPSync(params.tenantId, body, getActor(auth));
 
         // Automatically update onboarding step - mark FIRS provisioning as complete
         try {
           const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
           if (onboarding && !onboarding.steps?.erpConfiguration?.completed) {
-            await tenantService.completeOnboardingStep(params.tenantId, 'erpConfiguration');
+            await tenantService.completeOnboardingStep(params.tenantId, 'erpConfiguration', getActor(auth));
 
             // Update status to in_progress if still pending
             if (onboarding.status === 'pending') {
               await tenantService.updateOnboarding(params.tenantId, {
                 status: 'in_progress',
-              });
+              }, getActor(auth));
             }
           }
         } catch (onboardingError) {

@@ -52,7 +52,7 @@ export function registerCompleteOutboundJob(): void {
           if (irn) {
             await outboundRepo.upsertByIrn({
               irn,
-              tenantId: authContext?.tenantId,
+              tenantId: authContext?.tenantId ?? tenantId,
               erpSystem: authContext?.tenantERP,
               createdBy: authContext?.tenantId,
               source: (context.source as OutboundInvoiceSource) ?? OutboundInvoiceSource.API,

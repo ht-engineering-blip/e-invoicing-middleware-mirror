@@ -32,7 +32,16 @@ import { ApiKeyRepository } from "../repos/api-key.repo";
 import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
 import { TenantRepository } from "../repos/tenant.repo";
 
-
+export interface ApiKeyDTO {
+  keyId: string;
+  name: string;
+  keyPrefix: string;
+  status: ApiKeyStatus;
+  scopes: string[];
+  createdAt: Date;
+  expiresAt?: Date;
+  lastUsedAt?: Date;
+}
 
 export class TenantService extends BaseService {
   private tenantRepo: TenantRepository;
@@ -61,7 +70,7 @@ export class TenantService extends BaseService {
   /**
    * Create a new tenant
    */
-  async createTenant(input: CreateTenantInput): Promise<TenantDocument> {
+  async createTenant(input: CreateTenantInput, actor?: any): Promise<TenantDocument> {
     // Check if TIN already exists
     const existingTenant = await this.tenantRepo.findByTIN(input.tin);
     if (existingTenant) {
@@ -95,7 +104,7 @@ export class TenantService extends BaseService {
         testing: { completed: false },
         goLive: { completed: false },
       },
-      createdBy: "system",
+      createdBy: actor?.id || "system",
     });
 
     // Audit log
@@ -104,9 +113,9 @@ export class TenantService extends BaseService {
       eventType: AuditEventType.TENANT_CREATED,
       description: `Tenant ${tenant.businessName} created`,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
-      actorName: "System",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name || "System",
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       resourceName: tenant.businessName,
@@ -247,6 +256,7 @@ export class TenantService extends BaseService {
   async updateTenant(
     tenantId: string,
     input: UpdateTenantInput,
+    actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
@@ -315,8 +325,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: "Tenant updated",
@@ -329,7 +340,7 @@ export class TenantService extends BaseService {
   /**
    * Activate tenant
    */
-  async activateTenant(tenantId: string): Promise<TenantDocument> {
+  async activateTenant(tenantId: string, actor?: any): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
     if (tenant.status === "active") {
@@ -343,8 +354,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_ACTIVATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: "Tenant activated",
@@ -360,6 +372,7 @@ export class TenantService extends BaseService {
   async suspendTenant(
     tenantId: string,
     reason?: string,
+    actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
@@ -374,8 +387,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_SUSPENDED,
       severity: AuditEventSeverity.WARNING,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: `Tenant suspended${reason ? `: ${reason}` : ""}`,
@@ -388,7 +402,7 @@ export class TenantService extends BaseService {
   /**
    * Delete tenant (soft delete)
    */
-  async deleteTenant(tenantId: string): Promise<void> {
+  async deleteTenant(tenantId: string, actor?: any): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
 
     // Check if tenant has active invoices
@@ -401,8 +415,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_DELETED,
       severity: AuditEventSeverity.WARNING,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: "Tenant deleted",
@@ -416,6 +431,7 @@ export class TenantService extends BaseService {
   async updateFIRSCredentials(
     tenantId: string,
     credentials: FIRSCredentialsInput,
+    actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
     let updateData: any = {
@@ -449,8 +465,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: "FIRS credentials updated",
@@ -502,7 +519,8 @@ export class TenantService extends BaseService {
   async createApiKey(
     tenantId: string,
     input: CreateApiKeyInput,
-  ): Promise<{ apiKey: ApiKeyDocument; plainKey: string }> {
+    actor?: any,
+  ): Promise<{ apiKey: ApiKeyDTO; plainKey: string }> {
     const tenant = await this.getTenantById(tenantId);
 
     // Generate API key
@@ -531,15 +549,27 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name || "System",
       resourceType: "api_key",
       resourceId: apiKey._id.toString(),
       description: `API key created: ${input.name}`,
       metadata: { name: input.name, keyPrefix },
     });
 
-    return { apiKey, plainKey };
+    const apiKeyDto: ApiKeyDTO = {
+      keyId: apiKey._id.toString(),
+      name: apiKey.name,
+      keyPrefix: apiKey.keyPrefix,
+      status: apiKey.status,
+      scopes: apiKey.scopes || [],
+      createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
+      lastUsedAt: apiKey.lastUsedAt,
+    };
+
+    return { apiKey: apiKeyDto, plainKey };
   }
 
   /**
@@ -547,9 +577,23 @@ export class TenantService extends BaseService {
    */
   async listApiKeys(
     tenantId: string,
-  ): Promise<{ data: ApiKeyDocument[]; meta: any }> {
+  ): Promise<{ data: ApiKeyDTO[]; meta: any }> {
     const tenant = await this.getTenantById(tenantId);
-    return this.apiKeyRepo.findByTenantId(tenantId);
+    const result = await this.apiKeyRepo.findByTenantId(tenantId);
+    const safeData = result.data.map((apiKey: any) => ({
+      keyId: apiKey._id.toString(),
+      name: apiKey.name,
+      keyPrefix: apiKey.keyPrefix,
+      status: apiKey.status,
+      scopes: apiKey.scopes || [],
+      createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
+      lastUsedAt: apiKey.lastUsedAt,
+    }));
+    return {
+      data: safeData,
+      meta: result.meta,
+    };
   }
 
   /**
@@ -559,6 +603,7 @@ export class TenantService extends BaseService {
     tenantId: string,
     keyId: string,
     reason?: string,
+    actor?: any,
   ): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
     const apiKey = await this.apiKeyRepo.findOne({ id: { _eq: keyId } });
@@ -567,15 +612,16 @@ export class TenantService extends BaseService {
       throw new NotFoundError("API key");
     }
 
-    await this.apiKeyRepo.revoke(keyId, "system", reason!);
+    await this.apiKeyRepo.revoke(keyId, actor?.id || "system", reason!);
 
     // Audit log
     await this.createAuditLog({
       tenantId: tenant.tenantId,
       eventType: AuditEventType.API_KEY_REVOKED,
       severity: AuditEventSeverity.WARNING,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name || "System",
       resourceType: "api_key",
       resourceId: keyId,
       description: `API key revoked${reason ? `: ${reason}` : ""}`,
@@ -590,7 +636,8 @@ export class TenantService extends BaseService {
     tenantId: string,
     keyId: string,
     options?: { sendEmail?: boolean; reason?: string },
-  ): Promise<{ apiKey: ApiKeyDocument; plainKey: string }> {
+    actor?: any,
+  ): Promise<{ apiKey: ApiKeyDTO; plainKey: string }> {
     const tenant = await this.getTenantById(tenantId);
     const oldApiKey = await this.apiKeyRepo.findOne({ id: { _eq: keyId } });
 
@@ -601,7 +648,7 @@ export class TenantService extends BaseService {
     // Revoke old key
     await this.apiKeyRepo.revoke(
       keyId,
-      "system",
+      actor?.id || "system",
       options?.reason || "API key rotated",
     );
 
@@ -615,7 +662,7 @@ export class TenantService extends BaseService {
           (24 * 60 * 60 * 1000),
         )
         : undefined,
-    });
+    }, actor);
 
     // Send email notification if requested
     if (options?.sendEmail !== false) {
@@ -653,14 +700,15 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.API_KEY_CREATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name || "System",
       resourceType: "api_key",
-      resourceId: newApiKey._id.toString(),
+      resourceId: newApiKey.keyId,
       description: `API key rotated: ${newApiKey.name} (old key: ${keyId})`,
       metadata: {
         oldKeyId: keyId,
-        newKeyId: newApiKey._id.toString(),
+        newKeyId: newApiKey.keyId,
         reason: options?.reason,
         emailSent: options?.sendEmail !== false,
       },
@@ -698,6 +746,7 @@ export class TenantService extends BaseService {
       | "erpConfiguration"
       | "testing"
       | "goLive",
+    actor?: any,
   ): Promise<TenantOnboardingDocument> {
     const tenant = await this.getTenantById(tenantId);
 
@@ -711,8 +760,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: updated.tenantId,
       description: `Onboarding step completed: ${step}`,
@@ -728,6 +778,7 @@ export class TenantService extends BaseService {
   async updateOnboarding(
     tenantId: string,
     input: UpdateOnboardingInput,
+    actor?: any,
   ): Promise<TenantOnboardingDocument> {
     const tenant = await this.getTenantById(tenantId);
     const onboarding = await this.onboardingRepo.findByTenantId(
@@ -755,8 +806,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
       description: "Tenant onboarding status updated",
@@ -769,7 +821,7 @@ export class TenantService extends BaseService {
   /**
    * Approve onboarding
    */
-  async approveOnboarding(tenantId: string): Promise<void> {
+  async approveOnboarding(tenantId: string, actor?: any): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
     const onboarding = await this.onboardingRepo.findByTenantId(
       tenant.tenantId,
@@ -779,16 +831,17 @@ export class TenantService extends BaseService {
       throw new NotFoundError("Onboarding record");
     }
 
-    await this.onboardingRepo.approve(tenantId, "system");
-    await this.activateTenant(tenantId);
+    await this.onboardingRepo.approve(tenantId, actor?.id || "system");
+    await this.activateTenant(tenantId, actor);
 
     // Audit log
     await this.createAuditLog({
       tenantId,
       eventType: AuditEventType.TENANT_ACTIVATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
       description: "Tenant onboarding approved",
@@ -799,7 +852,7 @@ export class TenantService extends BaseService {
   /**
    * Reject onboarding
    */
-  async rejectOnboarding(tenantId: string, reason: string): Promise<void> {
+  async rejectOnboarding(tenantId: string, reason: string, actor?: any): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
     const onboarding = await this.onboardingRepo.findByTenantId(
       tenant.tenantId,
@@ -816,8 +869,9 @@ export class TenantService extends BaseService {
       tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.WARNING,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
       description: `Tenant onboarding rejected: ${reason}`,
@@ -831,6 +885,7 @@ export class TenantService extends BaseService {
   async configureERPSync(
     tenantId: string,
     config: ERPSyncConfigInput,
+    actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
 
@@ -886,8 +941,9 @@ export class TenantService extends BaseService {
       tenantId: tenant.tenantId,
       eventType: AuditEventType.TENANT_UPDATED,
       severity: AuditEventSeverity.INFO,
-      actorType: "system",
-      actorId: "system",
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: `ERP sync configuration updated: ${config.name}`,

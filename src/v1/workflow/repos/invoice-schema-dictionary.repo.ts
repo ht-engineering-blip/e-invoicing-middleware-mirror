@@ -1,4 +1,4 @@
-import { AppError } from "../../../@lib";
+import { AppError, safeSearchRegExp } from "../../../@lib";
 import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   InvoiceSchemaDictionaryDocument,
@@ -86,9 +86,9 @@ export class InvoiceSchemaDictionaryRepository {
 
     if (filters.search) {
       query.$or = [
-        { name: new RegExp(filters.search, "i") },
-        { description: new RegExp(filters.search, "i") },
-        { schema_id: new RegExp(filters.search, "i") },
+        { name: safeSearchRegExp(filters.search) },
+        { description: safeSearchRegExp(filters.search) },
+        { schema_id: safeSearchRegExp(filters.search) },
       ];
     }
 
