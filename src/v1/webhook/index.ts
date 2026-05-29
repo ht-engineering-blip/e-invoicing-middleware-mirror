@@ -317,10 +317,9 @@ export const webhookRoutes = new Elysia({
    */
   .post(
     "/inbound/:webhookPath",
-    async ({ params, body: rawBody, headers, set }) => {
+    async ({ params, body, headers, set }) => {
       const { webhookPath } = params;
-      let body: any;
-      let originalPayload: any;
+      let originalPayload = body;
 
       // 1. Look up tenant by webhook path
       const tenant = await tenantRepo.findByWebhookPath(webhookPath);
@@ -344,7 +343,7 @@ export const webhookRoutes = new Elysia({
       // 3. Verify signature via helper function
       const verificationResult = await verifyWebhookSignature({
         headers,
-        rawBody: String(rawBody || ""),
+        rawBody: String(body),
         tenant,
       });
 
@@ -355,18 +354,6 @@ export const webhookRoutes = new Elysia({
           error: verificationResult.error,
         };
       }
-
-      // Parse JSON body now that signature is verified
-      try {
-        body = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
-      } catch (err) {
-        set.status = 400;
-        return {
-          success: false,
-          error: "Invalid JSON payload",
-        };
-      }
-      originalPayload = body;
 
       // 4. Determine event type from payload or headers
       const eventType =
