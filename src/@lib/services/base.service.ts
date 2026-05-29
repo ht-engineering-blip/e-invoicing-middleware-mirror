@@ -130,10 +130,8 @@ export class BaseService {
     tenant: Partial<TenantDocument> & {
       type?: string;
       role?: TeamMemberRole;
-      scopes?: string[];
       userId?: string;
       email?: string;
-      scope?: string[];
       permissions?: string[];
       businessId?: string;
     },
@@ -147,9 +145,9 @@ export class BaseService {
       businessId = decryptSensitiveData(tenant.config.firsCredentials.clientId);
     }
 
-    let scopes = tenant.scopes || tenant.scope || tenant.permissions;
-    if (!scopes) {
-      scopes = tenant.type === "team_member" ? [] : ["*"];
+    let permissions = tenant.permissions;
+    if (!permissions) {
+      permissions = tenant.type === "team_member" ? [] : ["*"];
     }
 
     let email = tenant.contactEmail;
@@ -160,7 +158,7 @@ export class BaseService {
       tenantId: tenant.tenantId,
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
-      scopes,
+      permissions,
       email,
       businessName: tenant.businessName,
       businessId

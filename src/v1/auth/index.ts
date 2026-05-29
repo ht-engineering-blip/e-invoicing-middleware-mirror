@@ -68,7 +68,7 @@ const authRoutes = new Elysia()
         } */
 
         // Generate JWT token
-        let token = await authService.createAuthToken(tenant as any);
+        let token = await authService.createAuthToken(tenant);
 
         logger.info("Login successful", {
           tenantId: tenant._id,
