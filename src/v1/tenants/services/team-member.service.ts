@@ -233,13 +233,14 @@ export class TeamMemberService extends BaseService {
       }
 
       // Generate auth token
+
       const _tmpTenant: any = {
-        tenantId: member.tenantId,
+        ...this.sanitize(tenant),
         userId: member.userId,
         email: member.email,
         role: member.role,
         type: "team_member",
-        scope: member.permissions
+        scope: member.permissions,
       };
       const authToken = await this.createAuthToken(_tmpTenant);
 

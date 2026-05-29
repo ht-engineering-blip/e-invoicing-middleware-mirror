@@ -182,9 +182,7 @@ export class TenantService extends BaseService {
       throw new NotFoundError("Tenant");
     }
 
-    if (includeSensitive) {
-      return tenant
-    }
+    if (includeSensitive) return tenant
 
     if (includeOnboarding) {
       try {

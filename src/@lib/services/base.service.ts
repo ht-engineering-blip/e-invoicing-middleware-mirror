@@ -124,27 +124,51 @@ export class BaseService {
   }
 
   /**
-   * Create Auth Token For Tenant
+   * Create Auth Token For Tenant or Team Member
    */
   public async createAuthToken(
-    tenant: TenantDocument & { type: string; role: TeamMemberRole, scopes?: string[] },
+    tenant: Partial<TenantDocument> & {
+      type?: string;
+      role?: TeamMemberRole;
+      scopes?: string[];
+      userId?: string;
+      email?: string;
+      scope?: string[];
+      permissions?: string[];
+      businessId?: string;
+    },
     expiresIn?: string,
   ): Promise<string> {
 
-    let businessId = '';
+
+
+    let businessId = "";
     if (tenant.config?.firsCredentials?.clientId) {
       businessId = decryptSensitiveData(tenant.config.firsCredentials.clientId);
     }
 
-    const tokenPayload = {
+    let scopes = tenant.scopes || tenant.scope || tenant.permissions;
+    if (!scopes) {
+      scopes = tenant.type === "team_member" ? [] : ["*"];
+    }
+
+    let email = tenant.contactEmail;
+
+    if (tenant.type === 'team_member') email = tenant.email;
+
+    const tokenPayload: any = {
       tenantId: tenant.tenantId,
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
-      scopes: tenant.scopes || ["*"], //tenant admin is a super user
-      email: tenant.contactEmail,
+      scopes,
+      email,
       businessName: tenant.businessName,
       businessId
     };
+
+    if (tenant.userId) {
+      tokenPayload.userId = tenant.userId;
+    }
 
     const jwtSecret = jwtConfig?.secret as string;
     const jwtExpiry = expiresIn || jwtConfig?.expiry;
