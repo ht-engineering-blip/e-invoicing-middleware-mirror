@@ -51,9 +51,6 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError("Invalid credentials");
         }
 
-
-
-
         // Verify password
         const isPasswordValid = await verifyHash(
           body.password,
