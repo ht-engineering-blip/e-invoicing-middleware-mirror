@@ -37,8 +37,8 @@ export class OutboundWorkflowService {
     console.log(error);
     let message =
       error?.errors &&
-      error?.errors?.response &&
-      error?.errors?.response?.public_message
+        error?.errors?.response &&
+        error?.errors?.response?.public_message
         ? error?.errors?.response?.public_message
         : "An error occured, please try again.";
     let code = error?.errors && error?.errors?.code ? error.errors.code : 500;
@@ -128,11 +128,14 @@ export class OutboundWorkflowService {
           invoice.irn,
         );
 
-        if (confirmedInvoice.code !== 200) {
+        console.log({ confirmedInvoice });
+
+
+        if (confirmedInvoice.data.code !== 200) {
           throw new Error("Invoice confirmation failed");
         }
 
-        toTransmit = !confirmedInvoice?.data?.transmitted;
+        toTransmit = !confirmedInvoice?.data?.data.transmitted;
 
         await this.outboundRepo.update(invoice.irn, {
           status: OutboundInvoiceStatus.TRANSMITTED,

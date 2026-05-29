@@ -117,7 +117,7 @@ export default class FIRSClient extends RestClient {
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status,
       foundError?.public_message + " - " + foundError?.details ||
-        HandleErrorResponse(error),
+      HandleErrorResponse(error),
       error,
     );
 
@@ -249,7 +249,7 @@ export class FIRSService {
   }
 
   public async confirmSignedInvoice(irn: string) {
-    return this.client.get<ConfirmResponse>(`invoice/confirm/${irn}`);
+    return this.client.get<{ data: ConfirmResponse }>(`invoice/confirm/${irn}`);
   }
 
   /*  public async generateQRCode(irn: any):  Promise<{ qrCode: string, data: string } | any> {

@@ -8,6 +8,47 @@ export function generateDatestamp(date: Date = new Date()): string {
     return `${y}${m}${d}`;
 }
 
+export function sanitizeIRN(irn: string): string {
+    if (typeof irn !== 'string') return irn;
+    return irn.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9-]/g, '');
+}
+
+export function sanitizeInvoiceIRNs(invoice: any): void {
+    if (!invoice) return;
+
+    if (invoice.irn) {
+        invoice.irn = sanitizeIRN(invoice.irn);
+    }
+
+    if (Array.isArray(invoice.billing_reference)) {
+        for (const ref of invoice.billing_reference) {
+            if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
+        }
+    }
+
+    if (invoice.dispatch_document_reference && invoice.dispatch_document_reference.irn) {
+        invoice.dispatch_document_reference.irn = sanitizeIRN(invoice.dispatch_document_reference.irn);
+    }
+
+    if (invoice.receipt_document_reference && invoice.receipt_document_reference.irn) {
+        invoice.receipt_document_reference.irn = sanitizeIRN(invoice.receipt_document_reference.irn);
+    }
+
+    if (invoice.originator_document_reference && invoice.originator_document_reference.irn) {
+        invoice.originator_document_reference.irn = sanitizeIRN(invoice.originator_document_reference.irn);
+    }
+
+    if (invoice.contract_document_reference && invoice.contract_document_reference.irn) {
+        invoice.contract_document_reference.irn = sanitizeIRN(invoice.contract_document_reference.irn);
+    }
+
+    if (Array.isArray(invoice.additional_document_reference)) {
+        for (const ref of invoice.additional_document_reference) {
+            if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
+        }
+    }
+}
+
 export function generateIRN(invoiceNumber: string, serviceId: string | undefined, date: Date = new Date()): string | undefined {
     if (!serviceId) return undefined;
     // Validate inputs: invoiceNumber alphanumeric, serviceId 8 alphanumeric
