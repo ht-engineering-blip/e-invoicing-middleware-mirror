@@ -4,7 +4,7 @@ import { ISchemaField, SchemaSourceType } from "../../models"
 import { TransformWorkflowService } from "../../services"
 import { FIRSInvoiceSchema, TransformationResult } from "."
 import { InternalServerError, logger } from "../../../../@lib"
-import { FIRS_SCHEMA_EXAMPLE, generateDatestamp, generateIRN } from "./utils"
+import { FIRS_SCHEMA_EXAMPLE, generateDatestamp, generateIRN, sanitizeInvoiceIRNs } from "./utils"
 import { FIRS_INVOICE_METADATA } from "../defaults"
 import { FIRS_INVOICE_TYPES, FIRS_TAX_CATEGORIES, formatSchemaFields, generateTransformPrompt, getOptionalFields, getRequiredFields } from "../../../../@lib/adapters/llm/prompts"
 import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples"
@@ -78,6 +78,7 @@ export class FIRSInvoiceTransformerV2 {
             }
 
             const transformedData = result.data;
+            sanitizeInvoiceIRNs(transformedData);
             return {
                 success: true,
                 data: transformedData

@@ -4,7 +4,7 @@ import { InternalServerError } from '../../../../@lib';
 import { generateTransformPrompt } from '../../../../@lib/adapters/llm/prompts';
 import { AuthContext } from '../../../../middlewares';
 import { SchemaSourceType } from '../../models';
-import { generateIRN } from './utils';
+import { generateIRN, sanitizeInvoiceIRNs } from './utils';
 // ============= SCHEMA VALIDATION =============
 
 // Simplified validation schemas for critical fields
@@ -280,6 +280,7 @@ export class FIRSInvoiceTransformer {
 
       // Step 2: Validate the transformed data
       console.log('Validating transformed data...');
+      sanitizeInvoiceIRNs(transformedData);
       const validation = this.validateData(transformedData);
       console.log(JSON.stringify(transformedData, undefined, 2))
       if (validation.isValid) {
@@ -307,6 +308,7 @@ export class FIRSInvoiceTransformer {
         }
 
         // Re-validate fixed data
+        sanitizeInvoiceIRNs(fixedData);
         const reValidation = this.validateData(fixedData);
 
         if (reValidation.isValid) {
