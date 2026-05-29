@@ -1,6 +1,6 @@
 import * as crypto from "crypto";
 import { appConfig } from "../../../@config";
-import { logger, BaseService } from "../../../@lib";
+import { BaseService, logger } from "../../../@lib";
 import {
   AppError,
   ConflictError,
@@ -240,7 +240,7 @@ export class TeamMemberService extends BaseService {
         email: member.email,
         role: member.role,
         type: "team_member",
-        scope: member.permissions,
+        permissions: member.permissions,
       };
       const authToken = await this.createAuthToken(_tmpTenant);
 
