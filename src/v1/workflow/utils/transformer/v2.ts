@@ -70,9 +70,11 @@ export class FIRSInvoiceTransformerV2 {
             console.log('Transforming invoice data...');
 
             if (!result.success) {
-
-                console.error(result.error)
-
+                console.error(result.error);
+                return {
+                    success: false,
+                    errors: Array.isArray(result.error) ? result.error : [String(result.error)]
+                };
             }
 
             const transformedData = result.data;
