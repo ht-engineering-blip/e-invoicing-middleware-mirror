@@ -317,9 +317,9 @@ export const webhookRoutes = new Elysia({
    */
   .post(
     "/inbound/:webhookPath",
-    async ({ params, body, headers, set }) => {
+    async ({ params, body: rawBody, headers, set }) => {
       const { webhookPath } = params;
-      let originalPayload = body;
+      let body: any;
 
       // 1. Look up tenant by webhook path
       const tenant = await tenantRepo.findByWebhookPath(webhookPath);
@@ -343,7 +343,7 @@ export const webhookRoutes = new Elysia({
       // 3. Verify signature via helper function
       const verificationResult = await verifyWebhookSignature({
         headers,
-        rawBody: String(body),
+        rawBody: String(rawBody || ""),
         tenant,
       });
 
@@ -354,6 +354,18 @@ export const webhookRoutes = new Elysia({
           error: verificationResult.error,
         };
       }
+
+      // Parse JSON body now that signature is verified
+      try {
+        body = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+      } catch (err) {
+        set.status = 400;
+        return {
+          success: false,
+          error: "Invalid JSON payload",
+        };
+      }
+
 
       // 4. Determine event type from payload or headers
       const eventType =
@@ -413,7 +425,7 @@ export const webhookRoutes = new Elysia({
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
       const invoiceIdKey = tenant.config?.invoiceIdKey ?? "invoiceId";
       const erpInvoiceId: string =
-        String(getNestedValue(originalPayload, invoiceIdKey) ?? "").trim() ||
+        String(getNestedValue(body, invoiceIdKey) ?? "").trim() ||
         generateRandomString(10);
 
       console.log({ erpInvoiceId });
@@ -519,7 +531,7 @@ export const webhookRoutes = new Elysia({
             webhookEventId: eventId,
             tenantId: tenant.tenantId,
             eventType,
-            payload: originalPayload,
+            payload: body,
             actions: matchedRoutes.flatMap((r) => r.actions),
             routeId: matchedRoutes[0]?.routeId,
             erpInvoiceId,
@@ -542,7 +554,7 @@ export const webhookRoutes = new Elysia({
           eventId,
           tenantId: tenant.tenantId,
           eventType,
-          payload: originalPayload,
+          payload: body,
           receivedAt: new Date().toISOString(),
           irn,
           erpInvoiceId,
