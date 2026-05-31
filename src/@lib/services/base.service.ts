@@ -159,6 +159,7 @@ export class BaseService {
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
       permissions,
+      scopes: permissions,
       email,
       businessName: tenant.businessName,
       businessId

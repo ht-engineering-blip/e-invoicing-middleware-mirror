@@ -69,11 +69,28 @@ function applyQueryAuth(
  */
 function applyQueryParams(
   url: string,
-  queryParams?: Record<string, string>,
+  queryParams?: Record<string, string> | Map<string, string> | any,
 ): string {
-  if (!queryParams || Object.keys(queryParams).length === 0) return url;
+  if (!queryParams) return url;
+
+  let entries: [string, string][] = [];
+
+  if (
+    queryParams instanceof Map ||
+    (typeof queryParams.entries === "function" && typeof queryParams.get === "function")
+  ) {
+    entries = Array.from(queryParams.entries());
+  } else if (typeof queryParams === "object") {
+    // Safely exclude internal Mongoose properties like $__parent, $__path
+    entries = Object.entries(queryParams).filter(
+      ([k]) => !k.startsWith("$__")
+    ) as [string, string][];
+  }
+
+  if (entries.length === 0) return url;
+
   const sep = url.includes("?") ? "&" : "?";
-  const qs = Object.entries(queryParams)
+  const qs = entries
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
   return `${url}${sep}${qs}`;
@@ -168,23 +185,18 @@ export function registerSyncErpJob(): void {
         ...buildAuthHeaders(erpSyncConfig.authentication),
       };
 
-      // Render body from Handlebars template using whitelisted data model to prevent context exfiltration
+      // Render body from Handlebars template using the full job context as data
       let qrCode = context.qrCode;
       if (context.qrCode && context.qrCode.indexOf("data:image/") > -1) {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
-      const whitelistedContext = {
-        irn: context.irn,
+      const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
+        ...context,
+        tenantId,
+        jobChainId,
         qrCode,
-        invoiceNumber: context.invoiceNumber,
-        transmissionId: context.transmissionId,
-      };
-
-      const renderedBody = renderBody(
-        erpSyncConfig.bodyTemplate,
-        whitelistedContext,
-      );
+      });
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)
       const controller = new AbortController();
@@ -222,12 +234,13 @@ export function registerSyncErpJob(): void {
         jobChainId,
         tenantId,
         status: response.status,
+        mappedKeys: Object.keys(responseData),
       });
 
-      // Strip response payload data to prevent data exfiltration
       await chainNext(job, {
         erpSyncResult: {
           status: response.status,
+          data: responseData,
         },
       });
     } catch (err: any) {
