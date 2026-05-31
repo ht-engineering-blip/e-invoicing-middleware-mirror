@@ -110,6 +110,20 @@ describe('JWT Security & Session Invalidation Boundary Tests', () => {
       jwtConfig.algorithm = 'HS256';
     }
 
+    if (!process.env.ENCRYPTION_KEY) {
+      process.env.ENCRYPTION_KEY = 'super-secret-encryption-key-for-test-runs';
+    }
+
+    const cryptoMod = await import('../src/@lib/crypto');
+    const encryptedClientId = cryptoMod.encryptSensitiveData('tenant-123');
+
+    (mockTenant as any).config = {
+      ...mockTenant.config,
+      firsCredentials: {
+        clientId: encryptedClientId,
+      },
+    };
+
     const authServiceMod = await import('../src/v1/auth/services');
     AuthService = authServiceMod.AuthService;
 

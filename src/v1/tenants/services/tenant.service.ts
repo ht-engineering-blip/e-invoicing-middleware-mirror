@@ -968,7 +968,11 @@ export class TenantService extends BaseService {
   async getERPSyncConfig(tenantId: string): Promise<ERPSyncConfigInput | null> {
     const tenant = await this.getTenantById(tenantId);
 
-    const config = (tenant as any).config?.erpSyncConfig;
+    const tenantObj = tenant.toObject
+      ? tenant.toObject({ flattenMaps: true })
+      : JSON.parse(JSON.stringify(tenant));
+
+    const config = tenantObj.config?.erpSyncConfig;
     if (!config) {
       return null;
     }
@@ -976,22 +980,23 @@ export class TenantService extends BaseService {
     // Decrypt sensitive data
     const decryptedConfig = { ...config };
 
-    if (config.authentication) {
-      if (config.authentication.password) {
+    if (decryptedConfig.authentication) {
+      decryptedConfig.authentication = { ...decryptedConfig.authentication };
+      if (decryptedConfig.authentication.password) {
         decryptedConfig.authentication.password = decryptSensitiveData(
-          config.authentication.password,
+          decryptedConfig.authentication.password,
           appConfig?.adminKey,
         );
       }
-      if (config.authentication.token) {
+      if (decryptedConfig.authentication.token) {
         decryptedConfig.authentication.token = decryptSensitiveData(
-          config.authentication.token,
+          decryptedConfig.authentication.token,
           appConfig?.adminKey,
         );
       }
-      if (config.authentication.apiKeyValue) {
+      if (decryptedConfig.authentication.apiKeyValue) {
         decryptedConfig.authentication.apiKeyValue = decryptSensitiveData(
-          config.authentication.apiKeyValue,
+          decryptedConfig.authentication.apiKeyValue,
           appConfig?.adminKey,
         );
       }
