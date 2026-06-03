@@ -322,7 +322,7 @@ export class InvoiceWorkflowService {
    * Updates the payment status of an invoice (PENDING, PAID, REJECTED)
    */
   async updateInvoiceStatus(
-    businessId: string,
+    tenantId: string,
     irn: string,
     status: InvoicePaymentStatus,
     metadata?: {
@@ -347,7 +347,7 @@ export class InvoiceWorkflowService {
         throw new NotFoundError('Invoice not found');
       }
 
-      if (invoice.businessId !== businessId) {
+      if (invoice.tenantId !== tenantId) {
         throw new ValidationError('Invoice does not belong to this business');
       }
 

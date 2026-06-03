@@ -20,7 +20,7 @@ const outboundInvoiceRoutes = new Elysia({ prefix: "/outbound" })
    */
   .post(
     "/",
-    async ({ auth, body, query, tenantService, outboundWorkflowService }) => {
+    async ({ auth, body, query, tenantService, outboundWorkflowService, set }) => {
       try {
         console.log({ query });
         const transmit = Boolean(query.transmit === "true");
@@ -32,6 +32,7 @@ const outboundInvoiceRoutes = new Elysia({ prefix: "/outbound" })
         );
         return { status: true, data: qrCode };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,

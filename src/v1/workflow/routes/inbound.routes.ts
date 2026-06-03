@@ -19,7 +19,7 @@ const inboundInvoiceRoutes = new Elysia({ prefix: "/inbound" })
    */
   .post(
     "/",
-    async ({ auth, body, query, tenantService, inboundWorkflowService }) => {
+    async ({ auth, body, query, tenantService, inboundWorkflowService, set }) => {
       try {
         console.log({ query });
         const transmit = Boolean(query.transmit === "true");
@@ -32,6 +32,7 @@ const inboundInvoiceRoutes = new Elysia({ prefix: "/inbound" })
         );
         return { status: true, data: qrCode };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,

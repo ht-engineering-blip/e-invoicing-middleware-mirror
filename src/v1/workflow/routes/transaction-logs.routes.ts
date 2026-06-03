@@ -43,7 +43,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .get(
     '/outbound',
-    async ({ query, auth, outboundRepo }) => {
+    async ({ query, auth, outboundRepo, set }) => {
       try {
         const page = parseInt(query.page || '1');
         const limit = Math.min(parseInt(query.limit || '20'), 100);
@@ -98,6 +98,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to list outbound invoices', { error: error.message });
         return {
           success: false,
@@ -115,12 +116,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .get(
     '/outbound/:irn',
-    async ({ params, auth, outboundRepo }) => {
+    async ({ params, auth, outboundRepo, set }) => {
       try {
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
         const result = await outboundRepo.findByIrnWithWebhookEvents(params.irn, tenantId);
 
         if (!result) {
+          set.status = 404
           return { success: false, error: 'Invoice not found', statusCode: 404 };
         }
 
@@ -232,6 +234,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to get outbound invoice', { error: error.message });
         return {
           success: false,
@@ -249,11 +252,15 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .patch(
     '/outbound/:irn/payment-status',
-    async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
+    async ({ params, body, auth, outboundRepo, webhookEventRepo, set }) => {
+
       try {
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
         const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
-        if (!invoice) return { success: false, error: 'Invoice not found', statusCode: 404 };
+        if (!invoice) {
+          set.status = 404
+          return { success: false, error: 'Invoice not found', statusCode: 404 }
+        };
 
         const updated = await outboundRepo.updatePaymentStatus(
           params.irn,
@@ -319,7 +326,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .post(
     '/outbound/:irn/retry-from-step',
-    async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
+    async ({ params, body, auth, outboundRepo, webhookEventRepo, set }) => {
       try {
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
         const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
@@ -333,6 +340,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
          */
         const startAction = body.fromStep;
         if (!ACTION_TO_JOB[startAction]) {
+          set.status = 400
           return { success: false, error: `Unknown action: ${startAction}`, statusCode: 400 };
         }
 
@@ -431,6 +439,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to retry invoice', { error: error.message });
         return { success: false, error: error.message || 'Failed to retry invoice', statusCode: error.statusCode || 500 };
       }
@@ -444,13 +453,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .post(
     '/outbound/:irn/resend',
-    async ({ params, auth, outboundRepo, outboundService }) => {
+    async ({ params, auth, outboundRepo, outboundService, set }) => {
       try {
         // Find invoice
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
         const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
 
         if (!invoice) {
+          set.status = 404
           return {
             success: false,
             error: 'Invoice not found',
@@ -460,6 +470,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
 
         // Check if invoice is in failed state
         if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+          set.status = 400
           return {
             success: false,
             error: 'Only failed invoices can be resent',
@@ -495,6 +506,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to resend invoice', { error: error.message });
         return {
           success: false,
@@ -514,7 +526,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .get(
     '/inbound',
-    async ({ query, auth, inboundRepo }) => {
+    async ({ query, auth, inboundRepo, set }) => {
       try {
         const page = parseInt(query.page || '1');
         const limit = Math.min(parseInt(query.limit || '20'), 100);
@@ -572,6 +584,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to list inbound invoices', { error: error.message });
         return {
           success: false,
@@ -589,7 +602,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    */
   .get(
     '/inbound/:irn',
-    async ({ params, auth, inboundRepo, auditRepo }) => {
+    async ({ params, auth, inboundRepo, auditRepo, set }) => {
       try {
         // Find invoice
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
@@ -597,6 +610,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         const invoice = await inboundRepo.findByIRN(params.irn, tenantId, businessId);
 
         if (!invoice) {
+          set.status = 404
           return {
             success: false,
             error: 'Invoice not found',
@@ -642,6 +656,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
+        set.status = 500
         logger.error('Failed to get inbound invoice', { error: error.message });
         return {
           success: false,
