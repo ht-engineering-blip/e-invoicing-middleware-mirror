@@ -36,10 +36,11 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/generate-irn',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         console.log({ auth })
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const irn = await generateIRN(
@@ -53,6 +54,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: { irn, generated: true },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -69,7 +71,7 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/transform',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         let invoice: any = body;
         if (auth?.businessId) {
@@ -90,6 +92,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -106,9 +109,10 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/validate',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.validateInvoice(auth.businessId, body);
@@ -121,6 +125,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -137,10 +142,11 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/sign',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         console.log({ body })
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.signInvoice(auth, body);
@@ -153,6 +159,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -169,7 +176,7 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/generate-qr',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
@@ -181,6 +188,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -197,9 +205,10 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/transmit',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.transmitInvoice(auth, body.irn);
@@ -209,6 +218,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -238,6 +248,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -254,9 +265,10 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/acknowledge',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.acknowledgeInvoiceReceipt(
@@ -270,6 +282,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -286,13 +299,14 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .patch(
     '/:irn/status',
-    async ({ auth, params, body, invoiceWorkflowService }) => {
+    async ({ auth, params, body, invoiceWorkflowService, set }) => {
       try {
-        if (!auth?.businessId) {
-          return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
+        if (!auth?.tenantId) {
+          set.status = 401
+          return { success: false, error: 'Tenant ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.updateInvoiceStatus(
-          auth.businessId,
+          auth.tenantId,
           params.irn,
           body.status as any,
           {
@@ -329,6 +343,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -345,9 +360,10 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .post(
     '/report',
-    async ({ auth, body, invoiceWorkflowService }) => {
+    async ({ auth, body, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
 
@@ -377,6 +393,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -393,9 +410,10 @@ const invoiceMgmtRoutes = new Elysia()
    */
   .get(
     '/:irn/confirm',
-    async ({ auth, params, invoiceWorkflowService }) => {
+    async ({ auth, params, invoiceWorkflowService, set }) => {
       try {
         if (!auth?.businessId) {
+          set.status = 401
           return { success: false, error: 'Business ID not found in auth context', statusCode: 401 };
         }
         const result = await invoiceWorkflowService.confirmInvoiceStatus(
@@ -408,6 +426,7 @@ const invoiceMgmtRoutes = new Elysia()
           data: result,
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,

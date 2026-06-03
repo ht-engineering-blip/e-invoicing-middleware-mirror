@@ -29,7 +29,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
    */
   .post(
     '/',
-    async ({ auth, body, query, tenantService, transformWorkflowService }) => {
+    async ({ auth, body, query, tenantService, transformWorkflowService, set }) => {
       try {
         const { invoice: rawInvoice, source_type }: any = body;
         const invoice = secureAndValidateInvoice(rawInvoice as SecureInvoice, auth);
@@ -45,6 +45,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
           data: transformedPayload
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -63,7 +64,7 @@ transformInvoiceRoutes
    */
   .post(
     '/dictionary/erp',
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!)
         const { erp, invoice: rawInvoice, metadata }: any = body;
@@ -102,6 +103,7 @@ transformInvoiceRoutes
           },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -117,7 +119,7 @@ transformInvoiceRoutes
    */
   .post(
     '/dictionary/firs',
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!)
         let { invoice, metadata }: any = body
@@ -159,6 +161,7 @@ transformInvoiceRoutes
           },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
