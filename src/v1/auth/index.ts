@@ -583,6 +583,8 @@ const protectedAuthRoutes = new Elysia()
           password: parsedPassword,
           metadata: {
             activationCompleted: true,
+            activationTokenId: null,
+            activationTokenExpiresAt: null,
           },
         });
         if (updatedTenant) {

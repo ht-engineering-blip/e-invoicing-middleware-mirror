@@ -72,10 +72,17 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-import { describe, it, expect, spyOn, beforeAll } from 'bun:test';
+import { describe, it, expect, spyOn, beforeAll, afterAll } from 'bun:test';
 import * as jwt from 'jsonwebtoken';
 import { jwtConfig } from '../src/@config/jwt';
 import { appConfig } from '../src/@config/app';
+const mockAdminKey = 'super-secret-admin-key';
+if (appConfig) {
+  appConfig.adminKey = mockAdminKey;
+}
+if (jwtConfig) {
+  jwtConfig.secret = 'my-jwt-secret';
+}
 
 describe('Tenant Admin Routes & Credentials Redaction Security Tests', () => {
   let adminTenantRoutes: any;
@@ -84,8 +91,17 @@ describe('Tenant Admin Routes & Credentials Redaction Security Tests', () => {
   let ApiKeyRepository: any;
   let AuditLogRepository: any;
   let TenantService: any;
+  let getERPSyncConfigSpy: any;
+  let createTenantSpy: any;
+  let listTenantsSpy: any;
+  let updateOnboardingSpy: any;
+  let createApiKeySpy: any;
+  let findByTenantIdSpy: any;
+  let findOneSpy: any;
+  let updateSpy: any;
+  let findByUserIdSpy: any;
+  let createAuditSpy: any;
 
-  const mockAdminKey = 'super-secret-admin-key';
 
   const mockTenant = {
     tenantId: 'tenant-123',
@@ -158,16 +174,11 @@ describe('Tenant Admin Routes & Credentials Redaction Security Tests', () => {
   };
 
   beforeAll(async () => {
-    // Inject mock admin key for authentication middleware
-    if (appConfig) {
-      appConfig.adminKey = mockAdminKey;
-    }
+    const routesMod = await import('../src/v1/tenants/routes/admin');
+    adminTenantRoutes = routesMod.default;
 
     const tenantServiceMod = await import('../src/v1/tenants/services/tenant.service');
     TenantService = tenantServiceMod.TenantService;
-
-    const routesMod = await import('../src/v1/tenants/routes/admin');
-    adminTenantRoutes = routesMod.default;
 
     const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
     TenantRepository = tenantRepoMod.TenantRepository;
@@ -182,44 +193,76 @@ describe('Tenant Admin Routes & Credentials Redaction Security Tests', () => {
     AuditLogRepository = auditRepoMod.AuditLogRepository;
 
     // Spy on TenantService to intercept database-backed method calls
-    spyOn(TenantService.prototype, 'getERPSyncConfig').mockImplementation(async (tenantId: string) => {
+    const originalGetERPSyncConfig = TenantService.prototype.getERPSyncConfig;
+    getERPSyncConfigSpy = spyOn(TenantService.prototype, 'getERPSyncConfig').mockImplementation(async function(this: any, tenantId: string) {
       if (tenantId === 'tenant-123') {
         return mockTenant.config.erpSyncConfig as any;
       }
-      return null;
+      return originalGetERPSyncConfig.call(this, tenantId);
     });
 
-    spyOn(TenantService.prototype, 'createTenant').mockImplementation(async (body: any) => {
-      return { _id: 'new-tenant-id', ...body } as any;
+    const originalCreateTenant = TenantService.prototype.createTenant;
+    createTenantSpy = spyOn(TenantService.prototype, 'createTenant').mockImplementation(async function(this: any, body: any, actor?: any) {
+      if (body?.businessName === 'Test Business' || body?.tenantId === 'tenant-123') {
+        return { _id: 'new-tenant-id', ...body } as any;
+      }
+      return originalCreateTenant.call(this, body, actor);
     });
 
-    spyOn(TenantService.prototype, 'listTenants').mockImplementation(async () => {
+    const originalListTenants = TenantService.prototype.listTenants;
+    listTenantsSpy = spyOn(TenantService.prototype, 'listTenants').mockImplementation(async function(this: any, filters?: any) {
+      if (filters?.tenantId && filters.tenantId !== 'tenant-123' && filters.tenantId !== 'tenant-other') {
+        return originalListTenants.call(this, filters);
+      }
       return { tenants: [mockTenant], total: 1 } as any;
     });
 
-    spyOn(TenantService.prototype, 'updateOnboarding').mockImplementation(async (tenantId: string, body: any) => {
-      return { tenantId, ...body } as any;
+    const originalUpdateOnboarding = TenantService.prototype.updateOnboarding;
+    updateOnboardingSpy = spyOn(TenantService.prototype, 'updateOnboarding').mockImplementation(async function(this: any, tenantId: string, body: any, actor?: any) {
+      if (tenantId === 'tenant-123') {
+        return { tenantId, ...body } as any;
+      }
+      return originalUpdateOnboarding.call(this, tenantId, body, actor);
     });
 
-    spyOn(TenantService.prototype, 'createApiKey').mockImplementation(async (tenantId: string, body: any) => {
-      return {
-        apiKey: { _id: 'key-123', tenantId, name: body.name },
-        plainKey: 'ht_key_secret_value',
-      } as any;
+    const originalCreateApiKey = TenantService.prototype.createApiKey;
+    createApiKeySpy = spyOn(TenantService.prototype, 'createApiKey').mockImplementation(async function(this: any, tenantId: string, body: any, actor?: any) {
+      if (tenantId === 'tenant-123') {
+        return {
+          apiKey: { _id: 'key-123', tenantId, name: body.name },
+          plainKey: 'ht_key_secret_value',
+        } as any;
+      }
+      return originalCreateApiKey.call(this, tenantId, body, actor);
     });
 
     // Spy on TenantRepository to make sure auth middleware is happy
-    spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async (id: string) => {
+    const originalFindByTenantId = TenantRepository.prototype.findByTenantId;
+    findByTenantIdSpy = spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async function(this: any, id: string) {
       if (id === 'tenant-123') return mockTenant as any;
       if (id === 'tenant-other') return { tenantId: 'tenant-other', status: 'active' } as any;
-      return null;
+      return originalFindByTenantId.call(this, id);
     });
 
-    spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
-    spyOn(TenantRepository.prototype, 'update').mockImplementation(async () => mockTenant as any);
+    const originalFindOne = TenantRepository.prototype.findOne;
+    findOneSpy = spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async function(this: any, query: any, ...args: any[]) {
+      if (query?.tenantId?._eq === 'tenant-123' || query?.tenantId?._eq === 'tenant-other') {
+        return mockTenant as any;
+      }
+      return originalFindOne.call(this, query, ...args);
+    });
+
+    const originalUpdate = TenantRepository.prototype.update;
+    updateSpy = spyOn(TenantRepository.prototype, 'update').mockImplementation(async function(this: any, tenantId: string, data: any) {
+      if (tenantId === 'tenant-123' || tenantId === 'tenant-other') {
+        return mockTenant as any;
+      }
+      return originalUpdate.call(this, tenantId, data);
+    });
 
     // Spy on TeamMemberRepository to mock roles for middleware validation
-    spyOn(TeamMemberRepository.prototype, 'findByUserId').mockImplementation(async (userId: string) => {
+    const originalFindByUserId = TeamMemberRepository.prototype.findByUserId;
+    findByUserIdSpy = spyOn(TeamMemberRepository.prototype, 'findByUserId').mockImplementation(async function(this: any, userId: string) {
       if (userId === 'user-owner') {
         return { userId, tenantId: 'tenant-123', role: 'owner', status: 'active' } as any;
       }
@@ -232,11 +275,30 @@ describe('Tenant Admin Routes & Credentials Redaction Security Tests', () => {
       if (userId === 'user-other') {
         return { userId, tenantId: 'tenant-other', role: 'owner', status: 'active' } as any;
       }
-      return null;
+      return originalFindByUserId.call(this, userId);
     });
 
     // Mock Audit Log creation
-    spyOn(AuditLogRepository.prototype, 'create').mockImplementation(async () => ({} as any));
+    const originalCreateAudit = AuditLogRepository.prototype.create;
+    createAuditSpy = spyOn(AuditLogRepository.prototype, 'create').mockImplementation(async function(this: any, data: any) {
+      if (data?.tenantId === 'tenant-123' || data?.tenantId === 'tenant-other') {
+        return {} as any;
+      }
+      return originalCreateAudit.call(this, data);
+    });
+  });
+
+  afterAll(() => {
+    if (getERPSyncConfigSpy) getERPSyncConfigSpy.mockRestore();
+    if (createTenantSpy) createTenantSpy.mockRestore();
+    if (listTenantsSpy) listTenantsSpy.mockRestore();
+    if (updateOnboardingSpy) updateOnboardingSpy.mockRestore();
+    if (createApiKeySpy) createApiKeySpy.mockRestore();
+    if (findByTenantIdSpy) findByTenantIdSpy.mockRestore();
+    if (findOneSpy) findOneSpy.mockRestore();
+    if (updateSpy) updateSpy.mockRestore();
+    if (findByUserIdSpy) findByUserIdSpy.mockRestore();
+    if (createAuditSpy) createAuditSpy.mockRestore();
   });
 
   describe('1. Global Admin Gating (POST /, GET /, PATCH /:tenantId/onboarding)', () => {

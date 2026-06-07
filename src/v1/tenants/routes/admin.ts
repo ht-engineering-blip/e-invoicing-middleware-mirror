@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import crypto from 'crypto';
 import { appConfig } from '../../../@config';
 import { logger } from '../../../@lib';
 import { MailContent, withTemplate } from '../../../@lib/messaging';
@@ -23,7 +24,8 @@ import {
   listAllApiKeysValidation,
   listAllERPConfigsValidation,
   configureERPSyncValidation,
-  getERPSyncConfigValidation
+  getERPSyncConfigValidation,
+  resendTenantTokenValidation
 } from '../validations/admin.validation';
 
 /**
@@ -54,7 +56,10 @@ const adminTenantRoutes = new Elysia({
         const tenant = await tenantService.createTenant(body, getActor(auth));
 
         /* Notify Tenant to complete onboarding */
-        let activationToken = await authService.createAuthToken(tenant as any, "12HRS")
+        let activationToken = await authService.createAuthToken({
+          ...tenant.toObject(),
+          activationTokenId: tenant.metadata?.activationTokenId,
+        }, "12HRS")
         let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
         let activationEmail: MailContent = {
           subject: 'Welcome to HT Invoicing',
@@ -587,6 +592,89 @@ const adminTenantRoutes = new Elysia({
       }
     },
     getERPSyncConfigValidation
+  )
+
+  /**
+   * POST /api/v1/tenants/:tenantId/resend-token
+   * Resend activation token for a tenant (Admin only)
+   */
+  .post(
+    '/:tenantId/resend-token',
+    async ({ params, auth, tenantService, authService, set }) => {
+      try {
+        onlyAdmin(auth!, 'Forbidden: Admin access required');
+
+        logger.info('Admin resending activation email', { tenantId: params.tenantId });
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        if (!tenant) {
+          set.status = 404;
+          return {
+            success: false,
+            error: 'Tenant not found',
+            statusCode: 404,
+          };
+        }
+
+        // Check if already activated
+        if (tenant.password || tenant.metadata?.activationCompleted) {
+          set.status = 400;
+          return {
+            success: false,
+            error: 'Account has already been activated',
+            statusCode: 400,
+          };
+        }
+
+        // Check if previous token is still in timeframe and disable/invalidate it using service helper
+        if (tenantService.isActivationTokenInTimeframe(tenant)) {
+          logger.info('Admin disabling previous activation token', {
+            tenantId: tenant.tenantId,
+            tokenId: tenant.metadata?.activationTokenId,
+          });
+          // Overwritten by new values in the update below
+        }
+
+        // Generate new activation token and timeframe
+        const activationTokenId = crypto.randomUUID();
+        const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours
+
+        const metadata = {
+          ...tenant.metadata,
+          activationTokenId,
+          activationTokenExpiresAt,
+        };
+
+        await tenantService.updateTenant(tenant.tenantId, { metadata }, getActor(auth));
+
+        // Resend activation email with new token ID
+        let activationToken = await authService.createAuthToken({
+          ...tenant.toObject(),
+          activationTokenId,
+        } as any, "12HRS")
+
+        let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
+        let activationEmail: MailContent = {
+          subject: 'Welcome to HT Invoicing',
+          html: withTemplate(templateEngine.render('newTenants', { activationLink })),
+        }
+        await tenantService.notifyTenant(activationEmail, tenant)
+
+        return {
+          success: true,
+          message: 'Activation email resent successfully by admin',
+        };
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error('Admin failed to resend activation email', { error: error.message });
+        return {
+          success: false,
+          error: error.message || 'Failed to resend activation email',
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    resendTenantTokenValidation
   )
 
 export default adminTenantRoutes;

@@ -240,7 +240,7 @@ export const requireJwt = (instance: Elysia) => instance.resolve(
  * Useful for endpoints that support multiple auth methods
  */
 
-export const requireAuth = async (instance: Elysia) => instance.resolve(
+export const requireAuth = (instance: Elysia) => instance.resolve(
   async ({ headers, request }): Promise<{ auth: AuthContext }> => {
     const apiKey = headers['x-api-key'];
     const authHeader = headers['authorization'];
@@ -416,6 +416,7 @@ export const requireAuth = async (instance: Elysia) => instance.resolve(
           let decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
           decoded.businessId = decryptedClientID
         }
+
         return {
           auth: {
             tenantId: decoded.tenantId,

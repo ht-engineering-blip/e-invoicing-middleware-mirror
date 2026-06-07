@@ -15,8 +15,12 @@ import {
   updateCredentialsValidation,
   generateWebhookValidation,
   updateInvoiceIdKeyValidation,
-  testWebhookValidation
+  testWebhookValidation,
+  resendTenantTokenValidation
 } from '../validations/onboarding.validation';
+import { AuthService } from '../../auth/services';
+import { MailContent, withTemplate } from '../../../@lib/messaging';
+import { templateEngine } from '../../../templates/engine';
 
 /**
  * Public Onboarding Routes (no auth required)
@@ -65,9 +69,27 @@ export const publicOnboardingRoutes = new Elysia()
 
         // Check if already activated
         if (tenant.password || tenant.metadata?.activationCompleted) {
+          set.status = 400
           return {
             success: false,
             error: 'Account has already been activated',
+            statusCode: 400,
+          };
+        }
+
+        // Verify single active token ID match and expiration using service helpers
+        if (!tenantService.isActivationTokenValid(tenant, decoded.activationTokenId)) {
+          set.status = 400
+          logger.warn('Activation token is invalid or expired (ID mismatch or timeframe expired)', {
+            tenantId: tenant.tenantId,
+            dbTokenId: tenant.metadata?.activationTokenId,
+            decodedTokenId: decoded.activationTokenId,
+            expiresAt: tenantService.getActivationTokenExpiry(tenant),
+          });
+          return {
+
+            success: false,
+            error: 'Invalid or expired activation link',
             statusCode: 400,
           };
         }
@@ -119,6 +141,7 @@ export const publicOnboardingRoutes = new Elysia()
 export const protectedOnboardingRoutes = new Elysia()
   .use(requireAuth)
   .decorate('tenantService', new TenantService())
+  .decorate('authService', new AuthService())
   .decorate('webhookService', new WebhookService())
   /**
    * PUT /tenants/:tenantId/credentials
@@ -268,27 +291,27 @@ export const protectedOnboardingRoutes = new Elysia()
         onlySelf(auth!, params.tenantId)
 
         logger.info('Updating Invoice ID Key', { tenantId: params.tenantId });
- 
+
         // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
 
         // Persist invoiceIdKey if provided; otherwise keep existing value
         const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
- 
 
-        await tenantService.updateTenant(params.tenantId, { 
+
+        await tenantService.updateTenant(params.tenantId, {
           config: {
             ...tenant.config,
             invoiceIdKey,
           }
         } as any, getActor(auth));
 
-        
+
         return {
           success: true,
           message: 'Invoice ID Key updated successfully',
-          data: { 
-            invoiceIdKey: invoiceIdKey ?? null, 
+          data: {
+            invoiceIdKey: invoiceIdKey ?? null,
           },
         };
       } catch (error: any) {
@@ -420,4 +443,85 @@ export const protectedOnboardingRoutes = new Elysia()
       }
     },
     testWebhookValidation
+  )
+
+  .post(
+    'resend/token/:tenantId',
+    async ({ params, auth, tenantService, set, authService }) => {
+      try {
+        // Check authorization
+        onlySelf(auth!, params.tenantId)
+
+        logger.info('Resending activation email', { tenantId: params.tenantId });
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+
+        if (!tenant) {
+          set.status = 404;
+          return {
+            success: false,
+            error: 'Tenant not found',
+            statusCode: 404,
+          };
+        }
+
+        // Check if already activated
+        if (tenant.password || tenant.metadata?.activationCompleted) {
+          set.status = 400;
+          return {
+            success: false,
+            error: 'Account has already been activated',
+            statusCode: 400,
+          };
+        }
+
+        // Check if previous token is still in timeframe and disable/invalidate it using service helper
+        if (tenantService.isActivationTokenInTimeframe(tenant)) {
+          logger.info('Disabling previous activation token', {
+            tenantId: tenant.tenantId,
+            tokenId: tenant.metadata?.activationTokenId,
+          });
+          // Overwritten by new values in the update below
+        }
+
+        // Generate new activation token and timeframe
+        const activationTokenId = crypto.randomUUID();
+        const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours
+
+        const metadata = {
+          ...tenant.metadata,
+          activationTokenId,
+          activationTokenExpiresAt,
+        };
+
+        await tenantService.updateTenant(tenant.tenantId, { metadata }, getActor(auth));
+
+        // Resend activation email with new token ID
+        let activationToken = await authService.createAuthToken({
+          ...tenant.toObject(),
+          activationTokenId,
+        } as any, "12HRS")
+
+        let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
+        let activationEmail: MailContent = {
+          subject: 'Welcome to HT Invoicing',
+          html: withTemplate(templateEngine.render('newTenants', { activationLink })),
+        }
+        await tenantService.notifyTenant(activationEmail, tenant)
+
+        return {
+          success: true,
+          message: 'Activation email resent successfully',
+        };
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error('Failed to resend activation email', { error: error.message });
+        return {
+          success: false,
+          error: error.message || 'Failed to resend activation email',
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    resendTenantTokenValidation
   );

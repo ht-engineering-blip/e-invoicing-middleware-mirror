@@ -73,7 +73,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-import { describe, it, expect, spyOn, beforeAll } from "bun:test";
+import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
 import crypto from "crypto";
 
 describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () => {
@@ -100,9 +100,16 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     },
   };
 
+  let findByWebhookPathSpy: any;
+  let createEventSpy: any;
+  let findByIdempotencyKeySpy: any;
+  let getRoutesForEventSpy: any;
+  let findOrCreateByErpInvoiceIdSpy: any;
+  let addWebhookEventSpy: any;
+  let findOneNonceSpy: any;
+  let createNonceSpy: any;
+
   beforeAll(async () => {
-    const routesMod = await import("../src/v1/webhook");
-    webhookRoutes = routesMod.webhookRoutes;
     const tenantMod = await import("../src/v1/tenants/repos/tenant.repo");
     TenantRepository = tenantMod.TenantRepository;
     const eventMod = await import("../src/v1/webhook/repos/webhook-event.repo");
@@ -115,7 +122,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     WebhookNonceRepository = nonceMod.WebhookNonceRepository;
 
     // Spy on TenantRepository.findByWebhookPath
-    spyOn(TenantRepository.prototype, "findByWebhookPath").mockImplementation(
+    findByWebhookPathSpy = spyOn(TenantRepository.prototype, "findByWebhookPath").mockImplementation(
       async (path: string) => {
         if (path === "valid-path") {
           return mockTenant as any;
@@ -135,20 +142,20 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     );
 
     // Spy on WebhookEventRepository methods
-    spyOn(WebhookEventRepository.prototype, "create").mockImplementation(
+    createEventSpy = spyOn(WebhookEventRepository.prototype, "create").mockImplementation(
       async (data: any) => ({ ...data, eventId: "wh_123" } as any)
     );
-    spyOn(WebhookEventRepository.prototype, "findByIdempotencyKey").mockImplementation(
+    findByIdempotencyKeySpy = spyOn(WebhookEventRepository.prototype, "findByIdempotencyKey").mockImplementation(
       async () => null
     );
 
     // Spy on EventRoutingRepository to prevent DB search
-    spyOn(EventRoutingRepository.prototype, "getRoutesForEvent").mockImplementation(
+    getRoutesForEventSpy = spyOn(EventRoutingRepository.prototype, "getRoutesForEvent").mockImplementation(
       async () => []
     );
 
     // Spy on OutboundInvoiceRepository to prevent DB updates
-    spyOn(OutboundInvoiceRepository.prototype, "findOrCreateByErpInvoiceId").mockImplementation(
+    findOrCreateByErpInvoiceIdSpy = spyOn(OutboundInvoiceRepository.prototype, "findOrCreateByErpInvoiceId").mockImplementation(
       async (tenantId: string, erpInvoiceId: string, data: any) => ({
         doc: {
           irn: "IRN-VALID-123",
@@ -161,18 +168,33 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
       } as any)
     );
 
-    spyOn(OutboundInvoiceRepository.prototype, "addWebhookEvent").mockImplementation(
+    addWebhookEventSpy = spyOn(OutboundInvoiceRepository.prototype, "addWebhookEvent").mockImplementation(
       async () => ({}) as any
     );
 
     // Spy on WebhookNonceRepository methods
-    spyOn(WebhookNonceRepository.prototype, "findOne").mockImplementation(async (query: any) => {
+    findOneNonceSpy = spyOn(WebhookNonceRepository.prototype, "findOne").mockImplementation(async (query: any) => {
       if (query.v1 === "replay-nonce") {
         return { tenantId: query.tenantId, t: query.t, v1: query.v1 } as any;
       }
       return null;
     });
-    spyOn(WebhookNonceRepository.prototype, "create").mockImplementation(async (data: any) => data as any);
+    createNonceSpy = spyOn(WebhookNonceRepository.prototype, "create").mockImplementation(async (data: any) => data as any);
+
+    // Load routes Mod LAST to ensure all class prototypes are already spied/mocked when constructors are run!
+    const routesMod = await import("../src/v1/webhook");
+    webhookRoutes = routesMod.webhookRoutes;
+  });
+
+  afterAll(() => {
+    if (findByWebhookPathSpy) findByWebhookPathSpy.mockRestore();
+    if (createEventSpy) createEventSpy.mockRestore();
+    if (findByIdempotencyKeySpy) findByIdempotencyKeySpy.mockRestore();
+    if (getRoutesForEventSpy) getRoutesForEventSpy.mockRestore();
+    if (findOrCreateByErpInvoiceIdSpy) findOrCreateByErpInvoiceIdSpy.mockRestore();
+    if (addWebhookEventSpy) addWebhookEventSpy.mockRestore();
+    if (findOneNonceSpy) findOneNonceSpy.mockRestore();
+    if (createNonceSpy) createNonceSpy.mockRestore();
   });
 
   // --- Common Missing Header Test ---
