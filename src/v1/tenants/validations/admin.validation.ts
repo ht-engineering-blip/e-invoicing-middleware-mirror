@@ -192,3 +192,13 @@ export const getERPSyncConfigValidation = {
     description: 'Retrieve the current ERP sync configuration with decrypted credentials',
   },
 };
+
+export const resendTenantTokenValidation = {
+  params: tenantIdParamValidator,
+  detail: {
+    tags: ['Admin - Tenants'],
+    security: [{ adminKey: [] }],
+    summary: 'Resend Tenant Onboarding Token',
+    description: 'Admin trigger to check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.',
+  },
+};

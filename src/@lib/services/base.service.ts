@@ -134,6 +134,7 @@ export class BaseService {
       email?: string;
       permissions?: string[];
       businessId?: string;
+      activationTokenId?: string;
     },
     expiresIn?: string,
   ): Promise<string> {
@@ -164,6 +165,11 @@ export class BaseService {
       businessName: tenant.businessName,
       businessId
     };
+
+    const actTokenId = tenant.activationTokenId || tenant.metadata?.activationTokenId;
+    if (actTokenId) {
+      tokenPayload.activationTokenId = actTokenId;
+    }
 
     if (tenant.userId) {
       tokenPayload.userId = tenant.userId;

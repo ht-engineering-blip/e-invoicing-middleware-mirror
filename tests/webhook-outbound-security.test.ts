@@ -73,7 +73,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-import { describe, it, expect, spyOn, beforeAll } from 'bun:test';
+import { describe, it, expect, spyOn, beforeAll, afterAll } from 'bun:test';
 
 describe('Outbound Webhook Security & CORS Tests', () => {
   let webhookService: any;
@@ -97,24 +97,29 @@ describe('Outbound Webhook Security & CORS Tests', () => {
     deliveryAttempts: [],
   };
 
-  beforeAll(async () => {
-    const { WebhookService } = await import('../src/v1/webhook/services/webhook.service');
-    const { WebhookEventRepository } = await import('../src/v1/webhook/repos/webhook-event.repo');
-    const { TenantRepository } = await import('../src/v1/tenants/repos/tenant.repo');
-    const { AuditLogRepository } = await import('../src/v1/audit/repos/audit-log.repo');
-    const routesMod = await import('../src/v1/webhook');
-    webhookRoutes = routesMod.webhookRoutes;
-    const axios = (await import('axios')).default;
+  let findByTenantIdSpy: any;
+  let findByWebhookPathSpy: any;
+  let findByIdSpy: any;
+  let markAsFailedSpy: any;
+  let markAsDeliveredSpy: any;
+  let addDeliveryAttemptSpy: any;
+  let createAuditSpy: any;
+  let axiosPostSpy: any;
+  let findOneSpy: any;
+  let updateSpy: any;
 
-    webhookService = new WebhookService();
+  beforeAll(async () => {
+    const { TenantRepository } = await import('../src/v1/tenants/repos/tenant.repo');
+    const { WebhookEventRepository } = await import('../src/v1/webhook/repos/webhook-event.repo');
+    const { AuditLogRepository } = await import('../src/v1/audit/repos/audit-log.repo');
 
     // Mock Repositories
-    spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async (id) => {
+    findByTenantIdSpy = spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async (id) => {
       if (id === 'tenant-123') return mockTenant as any;
       return null;
     });
 
-    spyOn(TenantRepository.prototype, 'findByWebhookPath').mockImplementation(async (path) => {
+    findByWebhookPathSpy = spyOn(TenantRepository.prototype, 'findByWebhookPath').mockImplementation(async (path) => {
       if (path === 'valid-path') {
         return {
           tenantId: 'tenant-123',
@@ -126,34 +131,58 @@ describe('Outbound Webhook Security & CORS Tests', () => {
       return null;
     });
 
-    spyOn(WebhookEventRepository.prototype, 'findById').mockImplementation(async (id) => {
+    findByIdSpy = spyOn(WebhookEventRepository.prototype, 'findById').mockImplementation(async (id) => {
       if (id === 'wh_event_123') return mockEvent as any;
       return null;
     });
 
-    spyOn(WebhookEventRepository.prototype, 'markAsFailed').mockImplementation(async (id, reason, status) => {
+    markAsFailedSpy = spyOn(WebhookEventRepository.prototype, 'markAsFailed').mockImplementation(async (id, reason, status) => {
       return { ...mockEvent, status: 'failed', failureReason: reason } as any;
     });
 
-    spyOn(WebhookEventRepository.prototype, 'markAsDelivered').mockImplementation(async (id, status, body) => {
+    markAsDeliveredSpy = spyOn(WebhookEventRepository.prototype, 'markAsDelivered').mockImplementation(async (id, status, body) => {
       return { ...mockEvent, status: 'delivered' } as any;
     });
 
-    spyOn(WebhookEventRepository.prototype, 'addDeliveryAttempt').mockImplementation(async () => {
+    addDeliveryAttemptSpy = spyOn(WebhookEventRepository.prototype, 'addDeliveryAttempt').mockImplementation(async () => {
       return {} as any;
     });
 
-    spyOn(AuditLogRepository.prototype, 'create').mockImplementation(async () => {
+    createAuditSpy = spyOn(AuditLogRepository.prototype, 'create').mockImplementation(async () => {
       return {} as any;
     });
+
+    findOneSpy = spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
+    updateSpy = spyOn(TenantRepository.prototype, 'update').mockImplementation(async () => mockTenant as any);
+
+    // Import WebhookService and webhook routes last
+    const { WebhookService } = await import('../src/v1/webhook/services/webhook.service');
+    const routesMod = await import('../src/v1/webhook');
+    webhookRoutes = routesMod.webhookRoutes;
+    const axios = (await import('axios')).default;
 
     // Mock axios.post
-    spyOn(axios, 'post').mockImplementation(async (url, payload, config) => {
+    axiosPostSpy = spyOn(axios, 'post').mockImplementation(async (url, payload, config) => {
       if (config && config.maxRedirects === 0) {
         return { status: 200, data: { success: true } } as any;
       }
       throw new Error('Redirects not limited');
     });
+
+    webhookService = new WebhookService();
+  });
+
+  afterAll(() => {
+    if (findByTenantIdSpy) findByTenantIdSpy.mockRestore();
+    if (findByWebhookPathSpy) findByWebhookPathSpy.mockRestore();
+    if (findByIdSpy) findByIdSpy.mockRestore();
+    if (markAsFailedSpy) markAsFailedSpy.mockRestore();
+    if (markAsDeliveredSpy) markAsDeliveredSpy.mockRestore();
+    if (addDeliveryAttemptSpy) addDeliveryAttemptSpy.mockRestore();
+    if (createAuditSpy) createAuditSpy.mockRestore();
+    if (axiosPostSpy) axiosPostSpy.mockRestore();
+    if (findOneSpy) findOneSpy.mockRestore();
+    if (updateSpy) updateSpy.mockRestore();
   });
 
   describe('SSRF Outbound Guard', () => {
@@ -192,12 +221,7 @@ describe('Outbound Webhook Security & CORS Tests', () => {
 
     it('should block configureERPSync if baseUrl is a loopback URL', async () => {
       const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
-      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
-      TenantRepository = tenantRepoMod.TenantRepository;
       tenantService = new TenantService();
-
-      // Spy on TenantRepository.prototype.findOne to prevent Mongoose buffering timeout
-      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
 
       const configInput = {
         name: 'My Test ERP',
@@ -214,12 +238,7 @@ describe('Outbound Webhook Security & CORS Tests', () => {
 
     it('should block configureERPSync if baseUrl is in private RFC1918 space', async () => {
       const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
-      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
-      TenantRepository = tenantRepoMod.TenantRepository;
       tenantService = new TenantService();
-
-      // Spy on TenantRepository.prototype.findOne to prevent Mongoose buffering timeout
-      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
 
       const configInput = {
         name: 'My Test ERP',
@@ -236,13 +255,7 @@ describe('Outbound Webhook Security & CORS Tests', () => {
 
     it('should allow configureERPSync if baseUrl is a valid public URL', async () => {
       const { TenantService } = await import('../src/v1/tenants/services/tenant.service');
-      const tenantRepoMod = await import('../src/v1/tenants/repos/tenant.repo');
-      TenantRepository = tenantRepoMod.TenantRepository;
       tenantService = new TenantService();
-
-      // Spy on TenantRepository.prototype.findOne and update to prevent Mongoose queries
-      spyOn(TenantRepository.prototype, 'findOne').mockImplementation(async () => mockTenant as any);
-      spyOn(TenantRepository.prototype, 'update').mockImplementation(async () => mockTenant as any);
 
       const configInput = {
         name: 'My Test ERP',

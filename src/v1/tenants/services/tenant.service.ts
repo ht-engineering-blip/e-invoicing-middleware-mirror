@@ -5,6 +5,7 @@
 
 import { appConfig } from "../../../@config";
 import { BaseService, logger } from "../../../@lib";
+import crypto from "crypto";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
@@ -80,6 +81,10 @@ export class TenantService extends BaseService {
     // Generate business ID
     const tenantId = this.generateBusinessId(input.businessName, input.tin);
 
+    // Generate onboarding activation token ID and expiration (12 hours)
+    const activationTokenId = crypto.randomUUID();
+    const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
     // Create tenant
     const tenant = await this.tenantRepo.create({
       tenantId,
@@ -91,6 +96,10 @@ export class TenantService extends BaseService {
       expectedVolume: input.expectedVolume,
       status: TenantStatus.ONBOARDING,
       config: { erpSystem: input.erpSystem },
+      metadata: {
+        activationTokenId,
+        activationTokenExpiresAt,
+      },
     });
 
     // Create onboarding record
@@ -1171,6 +1180,74 @@ export class TenantService extends BaseService {
       apiKeys: enrichedApiKeys,
       total,
     };
+  }
+
+  /**
+   * Get the activation token expiration date without using ternary operators.
+   */
+  getActivationTokenExpiry(tenant: any): Date | null {
+    if (!tenant) {
+      return null;
+    }
+    if (!tenant.metadata) {
+      return null;
+    }
+    if (!tenant.metadata.activationTokenExpiresAt) {
+      return null;
+    }
+    return new Date(tenant.metadata.activationTokenExpiresAt);
+  }
+
+  /**
+   * Checks if an activation token is valid based on its ID and expiration date.
+   * Completely avoids ternary operators.
+   */
+  isActivationTokenValid(tenant: any, decodedTokenId: string): boolean {
+    if (!tenant) {
+      return false;
+    }
+    if (!tenant.metadata) {
+      return false;
+    }
+    if (!tenant.metadata.activationTokenId) {
+      return false;
+    }
+    if (tenant.metadata.activationTokenId !== decodedTokenId) {
+      return false;
+    }
+    const expiresAt = this.getActivationTokenExpiry(tenant);
+    if (!expiresAt) {
+      return false;
+    }
+    const now = new Date();
+    if (expiresAt < now) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Checks if the activation token is still within its valid timeframe (not expired)
+   */
+  isActivationTokenInTimeframe(tenant: any): boolean {
+    if (!tenant) {
+      return false;
+    }
+    if (!tenant.metadata) {
+      return false;
+    }
+    if (!tenant.metadata.activationTokenId) {
+      return false;
+    }
+    const expiresAt = this.getActivationTokenExpiry(tenant);
+    if (!expiresAt) {
+      return false;
+    }
+    const now = new Date();
+    if (expiresAt > now) {
+      return true;
+    }
+    return false;
   }
 
   /**

@@ -72,7 +72,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-import { describe, it, expect, spyOn, beforeAll } from 'bun:test';
+import { describe, it, expect, spyOn, beforeAll, afterAll } from 'bun:test';
 import * as jwt from 'jsonwebtoken';
 import { jwtConfig } from '../src/@config/jwt';
 
@@ -82,6 +82,8 @@ describe('JWT Security & Session Invalidation Boundary Tests', () => {
   let requireAuth: any;
   let TenantRepository: any;
   let TeamMemberRepository: any;
+  let findByTenantIdSpy: any;
+  let findByUserIdSpy: any;
 
   const mockSecret = 'super-secure-jwt-key-min-32-chars-long-secret';
 
@@ -138,13 +140,25 @@ describe('JWT Security & Session Invalidation Boundary Tests', () => {
     TeamMemberRepository = memberRepoMod.TeamMemberRepository;
 
     // Spy on TenantRepository to return our mockTenant
-    spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async (id: string) => {
+    const originalFindByTenantId = TenantRepository.prototype.findByTenantId;
+    findByTenantIdSpy = spyOn(TenantRepository.prototype, 'findByTenantId').mockImplementation(async function(this: any, id: string) {
       if (id === 'tenant-123') return mockTenant as any;
-      return null;
+      return originalFindByTenantId.call(this, id);
     });
 
     // Mock TeamMemberRepository
-    spyOn(TeamMemberRepository.prototype, 'findByUserId').mockImplementation(async () => null);
+    const originalFindByUserId = TeamMemberRepository.prototype.findByUserId;
+    findByUserIdSpy = spyOn(TeamMemberRepository.prototype, 'findByUserId').mockImplementation(async function(this: any, userId: string) {
+      if (!userId || userId.startsWith('usr_')) {
+        return originalFindByUserId.call(this, userId);
+      }
+      return null;
+    });
+  });
+
+  afterAll(() => {
+    if (findByTenantIdSpy) findByTenantIdSpy.mockRestore();
+    if (findByUserIdSpy) findByUserIdSpy.mockRestore();
   });
 
   describe('1. JWT Payload Whitelisting', () => {

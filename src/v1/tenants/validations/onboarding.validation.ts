@@ -93,3 +93,15 @@ export const testWebhookValidation = {
     description: 'Send a test webhook to verify connectivity',
   },
 };
+
+export const resendTenantTokenValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  detail: {
+    tags: ['Onboarding'],
+    security: [{ bearerAuth: [] }] as any,
+    summary: 'Resend Onboarding Token',
+    description: 'Check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.',
+  },
+};
