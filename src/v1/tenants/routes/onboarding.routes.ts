@@ -446,7 +446,7 @@ export const protectedOnboardingRoutes = new Elysia()
   )
 
   .post(
-    'resend/token/:tenantId',
+    '/resend/token/:tenantId',
     async ({ params, auth, tenantService, set, authService }) => {
       try {
         // Check authorization
