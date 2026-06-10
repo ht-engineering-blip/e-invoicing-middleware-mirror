@@ -53,6 +53,8 @@ export abstract class RestClient {
         return config;
       },
       error => {
+        console.log(error, "error");
+
         let foundError = error.errors ? error.errors.toJSON() : error
         console.error('Request error:', { foundError });
         return Promise.reject(foundError);
