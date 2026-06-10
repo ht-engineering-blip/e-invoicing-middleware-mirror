@@ -132,6 +132,14 @@ export const FIRSInvoiceSchema = z.object({
     amount: z.number()
   })).optional(),
   invoice_reference: z.string().optional()
+}).refine((data) => {
+  if (data.invoice_type_code === '381') {
+    return Array.isArray(data.billing_reference) && data.billing_reference.length > 0;
+  }
+  return true;
+}, {
+  message: "billing_reference is required and must link to the original invoice when invoice_type_code is '381' (Credit Note)",
+  path: ['billing_reference'],
 });
 
 // ============= MAIN TRANSFORMER CLASS =============
@@ -352,7 +360,8 @@ export class FIRSInvoiceTransformer {
         } else if (path === 'issue_date') {
           fixed.issue_date = new Date().toISOString().slice(0, 10);
         } else if (path === 'invoice_type_code') {
-          fixed.invoice_type_code = '396';
+          const original = data.invoice_type_code;
+          fixed.invoice_type_code = (original === '381' || original === '380' || original === '384') ? original : '396';
         } else if (path === 'document_currency_code') {
           fixed.document_currency_code = 'NGN';
         }

@@ -29,7 +29,7 @@ export const SAMPLE_INVOICE_BODY = {
   "payment_status": "PENDING",
   due_date: SAMPLE_DUE_DATE,
   business_id: SAMPLE_BUSINESS_ID,
-  invoice_type_code: '381',
+  invoice_type_code: '380',
   invoice_kind: SAMPLE_INVOICE_KIND,
   document_currency_code: 'NGN',
   tax_currency_code: 'NGN',

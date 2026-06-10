@@ -11,7 +11,7 @@ const sampleInvoice = {
   invoice_number: `INV-${faker.number.int({ min: 1000, max: 9999 })}`,
   issue_date: issueDate,
   due_date: faker.date.soon({ days: 30 }).toISOString().split('T')[0],
-  invoice_type_code: '381',
+  invoice_type_code: '380',
   document_currency_code: 'NGN',
   accounting_supplier_party: {
     party_name: faker.company.name(),
