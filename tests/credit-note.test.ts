@@ -192,6 +192,71 @@ describe('FIRS Credit Note Invoicing and Validation', () => {
       const result = FIRSInvoiceSchema.safeParse(creditNotePayload);
       expect(result.success).toBe(true);
     });
+
+    it('should validate hsn_code and format it with a decimal if it does not have one (e.g., 90983 -> 90983.00)', () => {
+      const payload = {
+        ...baseInvoicePayload,
+        invoice_line: [
+          {
+            ...validLineItems[0],
+            hsn_code: '90983',
+          }
+        ]
+      };
+      const result = FIRSInvoiceSchema.safeParse(payload);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.invoice_line[0].hsn_code).toBe('90983.00');
+      }
+    });
+
+    it('should preserve hsn_code if it already has a decimal (e.g., 8471.30)', () => {
+      const payload = {
+        ...baseInvoicePayload,
+        invoice_line: [
+          {
+            ...validLineItems[0],
+            hsn_code: '8471.30',
+          }
+        ]
+      };
+      const result = FIRSInvoiceSchema.safeParse(payload);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.invoice_line[0].hsn_code).toBe('8471.30');
+      }
+    });
+
+    it('should successfully validate a non-numeric/custom hsn_code and append .00 if missing a decimal', () => {
+      const payload = {
+        ...baseInvoicePayload,
+        invoice_line: [
+          {
+            ...validLineItems[0],
+            hsn_code: 'CC-001',
+          }
+        ]
+      };
+      const result = FIRSInvoiceSchema.safeParse(payload);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.invoice_line[0].hsn_code).toBe('CC-001.00');
+      }
+    });
+
+    it('should fail to validate an empty hsn_code', () => {
+      const payload = {
+        ...baseInvoicePayload,
+        invoice_line: [
+          {
+            ...validLineItems[0],
+            hsn_code: '',
+          }
+        ]
+      };
+      const result = FIRSInvoiceSchema.safeParse(payload);
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('FIRSInvoiceTransformer LLM Integration & Auto-Fix', () => {

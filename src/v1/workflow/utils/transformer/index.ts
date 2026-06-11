@@ -50,7 +50,17 @@ const LegalMonetaryTotalSchema = z.object({
 });
 
 const InvoiceLineSchema = z.object({
-  hsn_code: z.string(),
+  hsn_code: z.preprocess(
+    (val) => (val === undefined || val === null ? '' : String(val).trim()),
+    z.string()
+      .min(1, "HSN code is required and cannot be empty")
+      .transform((val) => {
+        if (!val.includes('.')) {
+          return `${val}.00`;
+        }
+        return val;
+      })
+  ),
   product_category: z.string(),
   invoiced_quantity: z.number(),
   line_extension_amount: z.number(),
