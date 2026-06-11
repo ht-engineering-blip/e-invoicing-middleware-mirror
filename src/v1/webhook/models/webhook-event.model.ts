@@ -21,6 +21,20 @@ export enum WebhookEventType {
 }
 
 /**
+ * ERP Event Type
+ */
+export enum ErpEventType {
+  INVOICE_CREATED = 'erp.invoice.created',
+  INVOICE_SUBMITTED = 'erp.invoice.submitted',
+  INVOICE_UPDATED = 'erp.invoice.updated',
+  INVOICE_VOIDED = 'erp.invoice.voided',
+  INVOICE_CANCELED = 'erp.invoice.canceled',
+  PAYMENT_RECEIVED = 'erp.payment.received',
+  CREDIT_NOTE_ISSUED = 'erp.creditnote.issued',
+  DEBIT_NOTE_ISSUED = 'erp.debitnote.issued',
+}
+
+/**
  * Webhook Delivery Status
  */
 export enum WebhookDeliveryStatus {

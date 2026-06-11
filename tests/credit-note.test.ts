@@ -2,6 +2,48 @@ import { describe, it, expect, mock, beforeAll, afterAll } from 'bun:test';
 import { FIRSInvoiceSchema, FIRSInvoiceTransformer } from '../src/v1/workflow/utils/transformer';
 import { AuthContext } from '../src/middlewares';
 
+const definitions: Record<string, Function> = {};
+mock.module('../src/@lib/queue/agenda', () => {
+  return {
+    agenda: {
+      define: (name: string, fn: Function) => {
+        definitions[name] = fn;
+      }
+    }
+  };
+});
+
+let lastNextOutput: any = null;
+let lastFailError: any = null;
+mock.module('../src/v1/workflow/jobs/chain', () => {
+  return {
+    chainNext: async (job: any, stepOutput: any) => {
+      lastNextOutput = stepOutput;
+      return Promise.resolve();
+    },
+    chainFail: async (job: any, error: any) => {
+      lastFailError = error;
+      return Promise.resolve();
+    }
+  };
+});
+
+const mockFindOne = mock(() => Promise.resolve(null));
+const mockFindByIrn = mock(() => Promise.resolve(null));
+const mockUpdate = mock(() => Promise.resolve({}));
+const mockUpdateWorkflowState = mock(() => Promise.resolve({}));
+
+mock.module('../src/v1/workflow/repos/outbound-invoice.repo', () => {
+  return {
+    OutboundInvoiceRepository: class {
+      findOne = mockFindOne;
+      findByIrn = mockFindByIrn;
+      update = mockUpdate;
+      updateWorkflowState = mockUpdateWorkflowState;
+    }
+  };
+});
+
 // Mock the database repos so we don't connect to mongo
 mock.module('../src/v1/workflow/services/workflows/transform.service', () => {
   return {
@@ -232,6 +274,79 @@ describe('FIRS Credit Note Invoicing and Validation', () => {
       expect(result?.data.invoice_type_code).toBe('381');
       expect(result?.data.billing_reference).toBeDefined();
       expect(result?.data.billing_reference[0].irn).toBe('INV0042-6AFCD0BD-20260401');
+    });
+  });
+
+  describe('process_credit_note Agenda Job', () => {
+    it('should process a credit note job by cloning the original invoice and setting credit note fields', async () => {
+      const { registerProcessCreditNoteJob } = await import('../src/v1/workflow/jobs/definitions/process-credit-note.job');
+      registerProcessCreditNoteJob();
+
+      const jobFn = definitions['workflow:process-credit-note'];
+      expect(jobFn).toBeDefined();
+
+      const mockOriginalInvoice = {
+        irn: 'INV0042-6AFCD0BD-20260401',
+        createdAt: new Date('2026-04-01T10:00:00Z'),
+        metadata: {
+          transformedInvoice: {
+            business_id: '1c6eaf77-d0bd-455c-9c5c-500a3f1dbfb2',
+            irn: 'INV0042-6AFCD0BD-20260401',
+            issue_date: '2026-04-01',
+            invoice_type_code: '396',
+            document_currency_code: 'NGN',
+            accounting_supplier_party: validSupplier,
+            accounting_customer_party: validCustomer,
+            invoice_line: validLineItems,
+            tax_total: validTaxTotal,
+            legal_monetary_total: validMonetaryTotal
+          }
+        }
+      };
+
+      mockFindOne.mockImplementation(() => Promise.resolve(mockOriginalInvoice as any));
+
+      const mockJob: any = {
+        attrs: {
+          data: {
+            tenantId: 'tenant-123',
+            authContext: {
+              tenantId: 'tenant-123',
+              businessId: '1c6eaf77-d0bd-455c-9c5c-500a3f1dbfb2',
+              businessTIN: '12345678-0001',
+              serviceId: '6AFCD0BD',
+              tenantERP: 'SAP'
+            },
+            context: {
+              originalPayload: {
+                referenceId: 'INV0042-6AFCD0BD-20260401',
+                creditNoteId: 'CN-9999'
+              },
+              irn: 'CN0001-6AFCD0BD-20260411',
+              erpInvoiceId: 'CN-9999'
+            },
+            jobChainId: 'job-chain-456'
+          }
+        }
+      };
+
+      lastNextOutput = null;
+      lastFailError = null;
+
+      await jobFn(mockJob);
+
+      expect(lastFailError).toBeNull();
+      expect(lastNextOutput).toBeDefined();
+      expect(lastNextOutput.transformedInvoice).toBeDefined();
+      expect(lastNextOutput.transformedInvoice.invoice_type_code).toBe('381');
+      expect(lastNextOutput.transformedInvoice.billing_reference).toBeDefined();
+      expect(lastNextOutput.transformedInvoice.billing_reference[0].irn).toBe('INV0042-6AFCD0BD-20260401');
+      expect(lastNextOutput.transformedInvoice.irn).toBe('CN0001-6AFCD0BD-20260411');
+      expect(lastNextOutput.transformedInvoice.invoice_reference).toBe('CN-9999');
+
+      // Verify DB updates were called
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockUpdateWorkflowState).toHaveBeenCalled();
     });
   });
 });

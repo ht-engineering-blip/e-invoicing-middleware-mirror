@@ -11,6 +11,7 @@ export const ACTION_TO_JOB: Record<string, string> = {
     confirm_invoice_status: 'workflow:confirm-status',
     update_payment_status: 'workflow:update-payment-status',
     sync_erp: 'workflow:sync-erp',
+    process_credit_note: 'workflow:process-credit-note',
 };
 
 /** Default priority per event type */
@@ -19,6 +20,7 @@ export const EVENT_PRIORITY: Record<string, number> = {
     'invoice.received': 5,
     'invoice.created': 5,
     'erp.invoice.submitted': 5,
+    'erp.creditnote.issued': 5,
 };
 
 export function getPriority(eventType: string): number {
