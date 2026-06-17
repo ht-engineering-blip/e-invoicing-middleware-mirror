@@ -83,7 +83,8 @@ export function registerProcessCreditNoteJob(): void {
         }
 
         const fallbackOriginalInvoice = originalInvoices[0];
-        const fallbackOriginalTransformed = fallbackOriginalInvoice.metadata.transformedInvoice;
+        const fallbackOriginalTransformed =
+          fallbackOriginalInvoice.metadata.transformedInvoice;
 
         // Check if this is a full credit note payload containing items/lines
         const hasLines =
@@ -109,16 +110,24 @@ export function registerProcessCreditNoteJob(): void {
             { jobChainId },
           );
           // Construct the credit note payload based on the first original invoice
-          creditNotePayload = JSON.parse(JSON.stringify(fallbackOriginalTransformed));
+          creditNotePayload = JSON.parse(
+            JSON.stringify(fallbackOriginalTransformed),
+          );
         }
 
         // Convert to Credit Note
         creditNotePayload.invoice_type_code = "381";
 
         // Preserve billing_reference if already provided in the webhook payload, otherwise use resolved ones
-        if (Array.isArray(payload.billing_reference) && payload.billing_reference.length > 0) {
+        if (
+          Array.isArray(payload.billing_reference) &&
+          payload.billing_reference.length > 0
+        ) {
           creditNotePayload.billing_reference = payload.billing_reference;
-        } else if (Array.isArray(payload.billing_references) && payload.billing_references.length > 0) {
+        } else if (
+          Array.isArray(payload.billing_references) &&
+          payload.billing_references.length > 0
+        ) {
           creditNotePayload.billing_reference = payload.billing_references;
         } else {
           creditNotePayload.billing_reference = billingReferences;

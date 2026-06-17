@@ -61,13 +61,14 @@ const InvoiceLineSchema = z.object({
     (val) => (val === undefined || val === null ? "" : String(val).trim()),
     z
       .string()
-      .min(1, "HSN code is required and cannot be empty")
       .transform((val) => {
-        if (!val.includes(".")) {
+        if (!val) return "";
+        if (/^\d+$/.test(val)) {
           return `${val}.00`;
         }
         return val;
-      }),
+      })
+      .optional(),
   ),
   product_category: z.string(),
   invoiced_quantity: z.number(),

@@ -77,13 +77,28 @@ export function generateIRN(
   serviceId: string | undefined,
   date: Date = new Date(),
 ): string | undefined {
-  if (!serviceId) return undefined;
+  let finalServiceId = serviceId;
+  let baseRef = invoiceNumber;
+
+  if (invoiceNumber && typeof invoiceNumber === "string") {
+    // Check if the invoiceNumber is already a valid FIRS IRN pattern (e.g. PREFIX-SERVICEID-DATE)
+    const match = invoiceNumber.trim().match(/^([A-Z0-9]+)-([A-Z0-9]{8})-([0-9]{8})$/i);
+    if (match) {
+      if (!finalServiceId) {
+        finalServiceId = match[2];
+      }
+      baseRef = match[1];
+    }
+  }
+
+  if (!finalServiceId) return undefined;
+
   // Validate inputs: invoiceNumber alphanumeric, serviceId 8 alphanumeric
   let padding = generateRandomString(4).substring(0, 4).toUpperCase();
-  const inv = (invoiceNumber + padding).replace(/[^A-Za-z0-9]/g, "");
+  const inv = (baseRef + padding).replace(/[^A-Za-z0-9]/g, "");
   if (!/^[A-Za-z0-9]+$/.test(inv)) return undefined;
-  // if (!/^[A-Za-z0-9]{8}$/.test(serviceId)) return undefined;
-  return `${inv}-${serviceId}-${generateDatestamp(date)}`.toUpperCase();
+  // if (!/^[A-Za-z0-9]{8}$/.test(finalServiceId)) return undefined;
+  return `${inv}-${finalServiceId}-${generateDatestamp(date)}`.toUpperCase();
 }
 
 export const FIRS_SCHEMA_EXAMPLE = `{

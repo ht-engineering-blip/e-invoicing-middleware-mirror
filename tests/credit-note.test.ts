@@ -227,7 +227,24 @@ describe('FIRS Credit Note Invoicing and Validation', () => {
       }
     });
 
-    it('should successfully validate a non-numeric/custom hsn_code and append .00 if missing a decimal', () => {
+    it('should successfully validate an empty/missing hsn_code', () => {
+      const payload = {
+        ...baseInvoicePayload,
+        invoice_line: [
+          {
+            ...validLineItems[0],
+            hsn_code: '',
+          }
+        ]
+      };
+      const result = FIRSInvoiceSchema.safeParse(payload);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.invoice_line[0].hsn_code).toBe('');
+      }
+    });
+
+    it('should successfully validate a non-numeric/custom hsn_code and preserve it without appending decimal', () => {
       const payload = {
         ...baseInvoicePayload,
         invoice_line: [
@@ -240,22 +257,8 @@ describe('FIRS Credit Note Invoicing and Validation', () => {
       const result = FIRSInvoiceSchema.safeParse(payload);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.invoice_line[0].hsn_code).toBe('CC-001.00');
+        expect(result.data.invoice_line[0].hsn_code).toBe('CC-001');
       }
-    });
-
-    it('should fail to validate an empty hsn_code', () => {
-      const payload = {
-        ...baseInvoicePayload,
-        invoice_line: [
-          {
-            ...validLineItems[0],
-            hsn_code: '',
-          }
-        ]
-      };
-      const result = FIRSInvoiceSchema.safeParse(payload);
-      expect(result.success).toBe(false);
     });
   });
 
