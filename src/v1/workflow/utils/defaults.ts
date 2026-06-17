@@ -395,7 +395,7 @@ export const FIRS_INVOICE_SCHEMA= {
   },
   "invoice_line": [
     {
-      "hsn_code": "CC-001",
+      "hsn_code": "90983.00",
       "product_category": "Food and Beverages",
       "discount_rate": 2.01,
       "discount_amount": 0.603,
@@ -415,7 +415,7 @@ export const FIRS_INVOICE_SCHEMA= {
       }
     },
     {
-      "hsn_code": "CC-001",
+      "hsn_code": "90983.00",
       "product_category": "Food and Beverages",
       "discount_rate": 2.01,
       "discount_amount": 0.603,
@@ -559,7 +559,7 @@ export const FIRS_INVOICE_SCHEMA_V2= {
   },
   "invoice_line": [
     {
-      "hsn_code": "CC-001",
+      "hsn_code": "90983.00",
       "product_category": "Food and Beverages",
       "discount_rate": 2.01,
       "discount_amount": 0.603,
@@ -579,7 +579,7 @@ export const FIRS_INVOICE_SCHEMA_V2= {
       }
     },
     {
-      "hsn_code": "CC-001",
+      "hsn_code": "90983.00",
       "product_category": "Food and Beverages",
       "discount_rate": 2.01,
       "discount_amount": 0.603,

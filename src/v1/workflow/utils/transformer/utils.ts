@@ -1,62 +1,104 @@
 import { generateRandomString } from "../../../../@lib";
 
 export function generateDatestamp(date: Date = new Date()): string {
-    date = new Date(date);
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}${m}${d}`;
+  date = new Date(date);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
 }
 
 export function sanitizeIRN(irn: string): string {
-    if (typeof irn !== 'string') return irn;
-    return irn.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9-]/g, '');
+  if (typeof irn !== "string") return irn;
+  return irn
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[^A-Z0-9-]/g, "");
 }
 
 export function sanitizeInvoiceIRNs(invoice: any): void {
-    if (!invoice) return;
+  if (!invoice) return;
 
-    if (invoice.irn) {
-        invoice.irn = sanitizeIRN(invoice.irn);
-    }
+  if (invoice.irn) {
+    invoice.irn = sanitizeIRN(invoice.irn);
+  }
 
-    if (Array.isArray(invoice.billing_reference)) {
-        for (const ref of invoice.billing_reference) {
-            if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
-        }
+  if (Array.isArray(invoice.billing_reference)) {
+    for (const ref of invoice.billing_reference) {
+      if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
     }
+  }
 
-    if (invoice.dispatch_document_reference && invoice.dispatch_document_reference.irn) {
-        invoice.dispatch_document_reference.irn = sanitizeIRN(invoice.dispatch_document_reference.irn);
-    }
+  if (
+    invoice.dispatch_document_reference &&
+    invoice.dispatch_document_reference.irn
+  ) {
+    invoice.dispatch_document_reference.irn = sanitizeIRN(
+      invoice.dispatch_document_reference.irn,
+    );
+  }
 
-    if (invoice.receipt_document_reference && invoice.receipt_document_reference.irn) {
-        invoice.receipt_document_reference.irn = sanitizeIRN(invoice.receipt_document_reference.irn);
-    }
+  if (
+    invoice.receipt_document_reference &&
+    invoice.receipt_document_reference.irn
+  ) {
+    invoice.receipt_document_reference.irn = sanitizeIRN(
+      invoice.receipt_document_reference.irn,
+    );
+  }
 
-    if (invoice.originator_document_reference && invoice.originator_document_reference.irn) {
-        invoice.originator_document_reference.irn = sanitizeIRN(invoice.originator_document_reference.irn);
-    }
+  if (
+    invoice.originator_document_reference &&
+    invoice.originator_document_reference.irn
+  ) {
+    invoice.originator_document_reference.irn = sanitizeIRN(
+      invoice.originator_document_reference.irn,
+    );
+  }
 
-    if (invoice.contract_document_reference && invoice.contract_document_reference.irn) {
-        invoice.contract_document_reference.irn = sanitizeIRN(invoice.contract_document_reference.irn);
-    }
+  if (
+    invoice.contract_document_reference &&
+    invoice.contract_document_reference.irn
+  ) {
+    invoice.contract_document_reference.irn = sanitizeIRN(
+      invoice.contract_document_reference.irn,
+    );
+  }
 
-    if (Array.isArray(invoice.additional_document_reference)) {
-        for (const ref of invoice.additional_document_reference) {
-            if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
-        }
+  if (Array.isArray(invoice.additional_document_reference)) {
+    for (const ref of invoice.additional_document_reference) {
+      if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
     }
+  }
 }
 
-export function generateIRN(invoiceNumber: string, serviceId: string | undefined, date: Date = new Date()): string | undefined {
-    if (!serviceId) return undefined;
-    // Validate inputs: invoiceNumber alphanumeric, serviceId 8 alphanumeric
-    let padding = generateRandomString(4).substring(0, 4).toUpperCase();
-    const inv = (invoiceNumber + padding).replace(/[^A-Za-z0-9]/g, '');
-    if (!/^[A-Za-z0-9]+$/.test(inv)) return undefined;
-   // if (!/^[A-Za-z0-9]{8}$/.test(serviceId)) return undefined;
-    return `${inv}-${serviceId}-${generateDatestamp(date)}`.toUpperCase();
+export function generateIRN(
+  invoiceNumber: string,
+  serviceId: string | undefined,
+  date: Date = new Date(),
+): string | undefined {
+  let finalServiceId = serviceId;
+  let baseRef = invoiceNumber;
+
+  if (invoiceNumber && typeof invoiceNumber === "string") {
+    // Check if the invoiceNumber is already a valid FIRS IRN pattern (e.g. PREFIX-SERVICEID-DATE)
+    const match = invoiceNumber.trim().match(/^([A-Z0-9]+)-([A-Z0-9]{8})-([0-9]{8})$/i);
+    if (match) {
+      if (!finalServiceId) {
+        finalServiceId = match[2];
+      }
+      baseRef = match[1];
+    }
+  }
+
+  if (!finalServiceId) return undefined;
+
+  // Validate inputs: invoiceNumber alphanumeric, serviceId 8 alphanumeric
+  let padding = generateRandomString(4).substring(0, 4).toUpperCase();
+  const inv = (baseRef + padding).replace(/[^A-Za-z0-9]/g, "");
+  if (!/^[A-Za-z0-9]+$/.test(inv)) return undefined;
+  // if (!/^[A-Za-z0-9]{8}$/.test(finalServiceId)) return undefined;
+  return `${inv}-${finalServiceId}-${generateDatestamp(date)}`.toUpperCase();
 }
 
 export const FIRS_SCHEMA_EXAMPLE = `{
@@ -169,7 +211,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
     },
     "invoice_line": [
         {
-            "hsn_code": "CC-001",
+            "hsn_code": "90983.00",
             "product_category": "Food and Beverages",
             "discount_rate": 2.01,
             "discount_amount": 0.603,
@@ -190,10 +232,14 @@ export const FIRS_SCHEMA_EXAMPLE = `{
         }
     ],
     "invoice_reference": "INV20251007014"
-}`
+}`;
 
-
-export const SYSTEM_PROMPT = (invoice_data: any, today: string, invoiceRef: string, context?: string) => `You are an expert data transformation AI. Transform the following invoice data into the exact FIRS (Federal Inland Revenue Service) e-invoicing schema format.
+export const SYSTEM_PROMPT = (
+  invoice_data: any,
+  today: string,
+  invoiceRef: string,
+  context?: string,
+) => `You are an expert data transformation AI. Transform the following invoice data into the exact FIRS (Federal Inland Revenue Service) e-invoicing schema format.
 
 CRITICAL REQUIREMENTS:
 
@@ -269,4 +315,3 @@ INPUT INVOICE DATA:
 ${JSON.stringify(invoice_data, null, 2)}
 
 Transform the input data to match the FIRS schema exactly. Return only the JSON with no comments`;
-

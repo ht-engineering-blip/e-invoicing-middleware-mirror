@@ -115,11 +115,11 @@ export const FIRS_TAX_CATEGORIES: { code: string; value: string; percent: number
 export const FIRS_INVOICE_TYPES = [
     {
         "code": "380",
-        "value": "Credit Note"
+        "value": "Commercial Invoice"
     },
     {
         "code": "381",
-        "value": "Commercial Invoice"
+        "value": "Credit Note"
     },
     {
         "code": "384",
@@ -277,7 +277,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES default to "396" if not specified
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note), default to "396" if not specified. NOTE: "381" represents a Credit Note, which requires "billing_reference".
+- billing_reference: REQUIRED for Credit Notes (invoice_type_code = "381"). Must contain an array of objects linking the credit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -325,7 +326,7 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 
 ## INVOICE LINE ITEM RULES:
 Each invoice_line must contain:
-- hsn_code: product/service classification code
+- hsn_code: product/service classification code. MUST NOT be empty. If it is missing or empty in the input data, you must deduce the correct HSN code from the item name or description (e.g., if the item is "phone", deduce the HSN code for mobile phones). If it does not contain a decimal point, format it to end with ".00" (e.g., "90983" becomes "90983.00").
 - product_category: category name
 - invoiced_quantity: quantity (number)
 - line_extension_amount: line total before tax

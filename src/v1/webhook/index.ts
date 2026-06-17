@@ -424,9 +424,20 @@ export const webhookRoutes = new Elysia({
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
       const invoiceIdKey = tenant.config?.invoiceIdKey ?? "invoiceId";
-      const erpInvoiceId: string =
-        String(getNestedValue(body, invoiceIdKey) ?? "").trim() ||
-        generateRandomString(10);
+      let erpInvoiceId: string = "";
+      if (eventType === "erp.creditnote.issued" || eventType === "credit_note.created") {
+        erpInvoiceId = String(
+          getNestedValue(body, "creditNoteId") ??
+          getNestedValue(body, "credit_note_id") ??
+          getNestedValue(body, invoiceIdKey) ??
+          ""
+        ).trim();
+      } else {
+        erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
+      }
+      if (!erpInvoiceId) {
+        erpInvoiceId = generateRandomString(10);
+      }
 
       console.log({ erpInvoiceId });
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates

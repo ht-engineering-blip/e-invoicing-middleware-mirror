@@ -1,18 +1,20 @@
 /**
  * Register all Agenda job definitions.
  * Must be called once before agenda.start().
+ * (Reloaded to refresh TS Server file indexing)
  */
-import { registerGenerateIrnJob } from './definitions/generate-irn.job';
-import { registerTransformJob } from './definitions/transform.job';
-import { registerValidateJob } from './definitions/validate.job';
-import { registerSignJob } from './definitions/sign.job';
-import { registerTransmitJob } from './definitions/transmit.job';
-import { registerCompleteOutboundJob } from './definitions/complete-outbound.job';
-import { registerCompleteInboundJob } from './definitions/complete-inbound.job';
-import { registerReportVatJob } from './definitions/report-vat.job';
-import { registerConfirmStatusJob } from './definitions/confirm-status.job';
-import { registerUpdatePaymentStatusJob } from './definitions/update-payment-status.job';
-import { registerSyncErpJob } from './definitions/sync-erp.job';
+import { registerGenerateIrnJob } from "./definitions/generate-irn.job";
+import { registerTransformJob } from "./definitions/transform.job";
+import { registerValidateJob } from "./definitions/validate.job";
+import { registerSignJob } from "./definitions/sign.job";
+import { registerTransmitJob } from "./definitions/transmit.job";
+import { registerCompleteOutboundJob } from "./definitions/complete-outbound.job";
+import { registerCompleteInboundJob } from "./definitions/complete-inbound.job";
+import { registerReportVatJob } from "./definitions/report-vat.job";
+import { registerConfirmStatusJob } from "./definitions/confirm-status.job";
+import { registerUpdatePaymentStatusJob } from "./definitions/update-payment-status.job";
+import { registerSyncErpJob } from "./definitions/sync-erp.job";
+import { registerProcessCreditNoteJob } from "./definitions/process-credit-note.job";
 
 export function registerAllJobs(): void {
   registerGenerateIrnJob();
@@ -26,4 +28,5 @@ export function registerAllJobs(): void {
   registerConfirmStatusJob();
   registerUpdatePaymentStatusJob();
   registerSyncErpJob();
+  registerProcessCreditNoteJob();
 }

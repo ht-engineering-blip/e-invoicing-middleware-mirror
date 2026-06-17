@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia';
-import { WebhookEventType } from '../../webhook/models';
+import { WebhookEventType, ErpEventType } from '../../webhook/models';
 import {
   listEventsValidation,
   listWorkflowActionsValidation
@@ -98,56 +98,56 @@ export const INVOICE_EVENT_TYPES = [
 
   // ── ERP-originating events ───────────────────────────────────────────────
   {
-    id: 'erp.invoice.created',
+    id: ErpEventType.INVOICE_CREATED,
     name: '<TMP> ERP Invoice Created',
     category: 'erp',
     direction: 'inbound',
     description: 'Invoice created from ERP system into the middleware.',
   },
   {
-    id: 'erp.invoice.submitted',
+    id: ErpEventType.INVOICE_SUBMITTED,
     name: 'ERP Invoice Submitted',
     category: 'erp',
     direction: 'inbound',
     description: 'Invoice submitted from ERP system into the middleware.',
   },
   {
-    id: 'erp.invoice.updated',
+    id: ErpEventType.INVOICE_UPDATED,
     name: 'ERP Invoice Updated',
     category: 'erp',
     direction: 'inbound',
     description: 'An existing invoice was updated in the ERP.',
   },
   {
-    id: 'erp.invoice.voided',
+    id: ErpEventType.INVOICE_VOIDED,
     name: 'ERP Invoice Voided',
     category: 'erp',
     direction: 'inbound',
     description: 'Invoice has been voided in the ERP.',
   }, 
   {
-    id: 'erp.invoice.canceled',
+    id: ErpEventType.INVOICE_CANCELED,
     name: 'ERP Invoice Canceled',
     category: 'erp',
     direction: 'inbound',
     description: 'Invoice has been canceled in the ERP.',
   },
   {
-    id: 'erp.payment.received',
+    id: ErpEventType.PAYMENT_RECEIVED,
     name: 'ERP Payment Received',
     category: 'erp',
     direction: 'inbound',
     description: 'Payment recorded for an invoice in the ERP.',
   },
   {
-    id: 'erp.creditnote.issued',
+    id: ErpEventType.CREDIT_NOTE_ISSUED,
     name: 'ERP Credit Note Issued',
     category: 'erp',
     direction: 'inbound',
     description: 'A credit note was issued from the ERP.',
   },
   {
-    id: 'erp.debitnote.issued',
+    id: ErpEventType.DEBIT_NOTE_ISSUED,
     name: 'ERP Debit Note Issued',
     category: 'erp',
     direction: 'inbound',
@@ -160,6 +160,14 @@ export const INVOICE_EVENT_TYPES = [
  * `order` determines the natural execution sequence.
  */
 export const WORKFLOW_ACTIONS = [
+  {
+    id: 'process_credit_note',
+    name: 'Process Credit Note',
+    order: 0,
+    category: 'outbound',
+    description: 'Process credit note by fetching original invoice and adapting it.',
+    endpoint: 'POST /api/v1/workflow/credit-note',
+  },
   {
     id: 'generate_irn',
     name: 'Generate IRN',

@@ -4,23 +4,24 @@ import axios, {
   type AxiosResponse,
 } from "axios";
 import { decryptInvoice } from "firs-einvoicing";
-import { generateQRCode } from "./generateQR";
 import { AppError, HandleErrorResponse, RestClient } from "../rest";
-import QRCode from "qrcode";
+import { generateQRCode } from "./generateQR";
 
-import { encryptIRNAndCertificate, encryptSensitiveData } from "../../crypto";
-import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
 import { firsConfig } from "../../../@config";
+import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
 
 export interface FIRSUserInfo {
-  id: string;
-  reference: string;
-  custom_settings: any;
-  created_at: string;
-  updated_at: string;
-  businesses: FIRSUserInfoBusiness[];
-  is_active: boolean;
-  app_reference: string;
+  code: number,
+  data: {
+    id: string;
+    reference: string;
+    custom_settings: any;
+    created_at: string;
+    updated_at: string;
+    businesses: FIRSUserInfoBusiness[];
+    is_active: boolean;
+    app_reference: string;
+  }
 }
 
 export interface FIRSUserInfoBusiness {
@@ -170,13 +171,14 @@ export class FIRSService {
   }
 
   public async authenticate(credentials: { email: string; password: string }) {
-    const response: AxiosResponse<FIRSAuthResponse> = await this.client.post(
-      "/utilities/authenticate",
+    const response = await this.client.post<FIRSAuthResponse>(
+      "/api/v1/utilities/authenticate",
       credentials,
     );
-    if (response.status !== 200) {
+
+    if (response.code !== 200) {
       throw new Error(
-        `FIRS authentication failed with status: ${response.status}`,
+        `FIRS authentication failed with status: ${response.code}`,
       );
     }
 
@@ -184,12 +186,12 @@ export class FIRSService {
 
     // Step 2: Get user information using the access token
     const userInfo: FIRSUserInfo = await this.getFIRSUserInfo(
-      authResponse.data.entity_id,
+      authResponse.entity_id,
     );
 
     if (userInfo) {
-      let business = userInfo.businesses.find(
-        (business: FIRSUserInfoBusiness) => business.id === userInfo.reference,
+      let business = userInfo.data.businesses.find(
+        (business: FIRSUserInfoBusiness) => business.id === userInfo.data.reference,
       ) as FIRSUserInfoBusiness;
 
       return {
@@ -203,17 +205,17 @@ export class FIRSService {
    */
   async getFIRSUserInfo(entity_id: string): Promise<FIRSUserInfo> {
     try {
-      const response: AxiosResponse<FIRSUserInfo> = await this.client.get(
-        `/api/v1/entity/${entity_id}`,
+      const response = await this.client.get<FIRSUserInfo>(
+        `api/v1/entity/${entity_id}`,
       );
 
-      if (response.status !== 200) {
+      if (response.code !== 200) {
         throw new Error(
-          `Failed to get FIRS user info with status: ${response.status}`,
+          `Failed to get FIRS user info with status: ${response.code}`,
         );
       }
 
-      return response.data;
+      return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 401) {
