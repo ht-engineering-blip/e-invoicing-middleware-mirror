@@ -3,6 +3,7 @@ import { agenda } from '../../../@lib/queue/agenda';
 import { logger } from '../../../@lib/logger';
 import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
 import { ACTION_TO_JOB } from './types';
+import { OutboundInvoiceStatus } from '../models/outbound-invoice.model';
 
 const webhookEventRepo = new WebhookEventRepository();
 
@@ -34,6 +35,15 @@ export async function chainNext(
       tenantId: data.tenantId,
       steps: data.actions,
     });
+
+    const irn = data.context?.irn;
+    if (irn) {
+      const outboundRepo = await getOutboundRepo();
+      const invoice = await outboundRepo.findByIrn(irn).catch(() => null);
+      if (invoice && invoice.workflowState?.delivered) {
+        await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.DELIVERED).catch(() => {});
+      }
+    }
 
     await webhookEventRepo.markAsDelivered(data.webhookEventId, 200, {
       jobChainId: data.jobChainId,
@@ -112,6 +122,7 @@ export async function chainFail(
   if (irn) {
     const outboundRepo = await getOutboundRepo();
     await outboundRepo.setLastJobError(irn, action, error.message);
+    await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.FAILED).catch(() => {});
   }
 
   await webhookEventRepo.markAsFailed(
