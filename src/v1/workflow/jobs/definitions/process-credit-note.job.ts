@@ -3,8 +3,10 @@ import { agenda } from "../../../../@lib/queue/agenda";
 import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { TransformWorkflowService } from "../../services";
 
 const outboundRepo = new OutboundInvoiceRepository();
+const transformService = new TransformWorkflowService();
 
 export function registerProcessCreditNoteJob(): void {
   agenda.define(
@@ -26,52 +28,101 @@ export function registerProcessCreditNoteJob(): void {
           payload.credit_note_id ??
           context.erpInvoiceId;
 
-        if (!referenceId) {
+        // Resolve all referenced ERP/FIRS IDs
+        const referenceIds: string[] = [];
+        if (Array.isArray(payload.referenceIds)) {
+          referenceIds.push(...payload.referenceIds.map(String));
+        } else if (Array.isArray(payload.reference_ids)) {
+          referenceIds.push(...payload.reference_ids.map(String));
+        } else if (referenceId) {
+          referenceIds.push(String(referenceId));
+        }
+
+        if (referenceIds.length === 0) {
           throw new Error(
-            "Missing referenceId or reference_id in credit note payload",
+            "Missing referenceId, reference_id, or referenceIds in credit note payload",
           );
         }
 
-        logger.info("[Job:process-credit-note] Fetching original invoice", {
-          referenceId,
+        logger.info("[Job:process-credit-note] Fetching original invoice(s)", {
+          referenceIds,
         });
 
-        // Fetch the original invoice from the database
-        const originalInvoice =
-          (await outboundRepo.findOne({
-            tenantId: { _eq: tenantId },
-            erpInvoiceId: { _eq: String(referenceId) },
-          })) ?? (await outboundRepo.findByIrn(String(referenceId), tenantId));
+        const billingReferences: any[] = [];
+        const originalInvoices: any[] = [];
 
-        if (!originalInvoice) {
-          throw new Error(
-            `Original invoice not found for reference ID ${referenceId}`,
-          );
-        }
+        for (const refId of referenceIds) {
+          const originalInvoice =
+            (await outboundRepo.findOne({
+              tenantId: { _eq: tenantId },
+              erpInvoiceId: { _eq: String(refId) },
+            })) ?? (await outboundRepo.findByIrn(String(refId), tenantId));
 
-        const originalTransformed =
-          originalInvoice.metadata?.transformedInvoice;
-        if (!originalTransformed) {
-          throw new Error(
-            `Transformed invoice payload not found on original invoice ${referenceId}`,
-          );
-        }
+          if (!originalInvoice) {
+            throw new Error(
+              `Original invoice not found for reference ID ${refId}`,
+            );
+          }
 
-        // Construct the credit note payload based on the original invoice
-        const creditNotePayload = JSON.parse(
-          JSON.stringify(originalTransformed),
-        );
+          const originalTransformed =
+            originalInvoice.metadata?.transformedInvoice;
+          if (!originalTransformed) {
+            throw new Error(
+              `Transformed invoice payload not found on original invoice ${refId}`,
+            );
+          }
 
-        // Convert to Credit Note
-        creditNotePayload.invoice_type_code = "381";
-        creditNotePayload.billing_reference = [
-          {
+          originalInvoices.push(originalInvoice);
+
+          billingReferences.push({
             irn: originalInvoice.irn,
             issue_date:
               originalTransformed.issue_date ||
               originalInvoice.createdAt.toISOString().slice(0, 10),
-          },
-        ];
+          });
+        }
+
+        const fallbackOriginalInvoice = originalInvoices[0];
+        const fallbackOriginalTransformed = fallbackOriginalInvoice.metadata.transformedInvoice;
+
+        // Check if this is a full credit note payload containing items/lines
+        const hasLines =
+          Array.isArray(payload.invoice_line) ||
+          Array.isArray(payload.items) ||
+          Array.isArray(payload.invoiceLine);
+
+        let creditNotePayload: any;
+
+        if (hasLines) {
+          logger.info(
+            "[Job:process-credit-note] Full credit note payload detected — transforming...",
+            { jobChainId },
+          );
+          creditNotePayload = await transformService.transformInvoiceV2(
+            payload,
+            authContext as any,
+            context.sourceType,
+          );
+        } else {
+          logger.info(
+            "[Job:process-credit-note] Minimal credit note payload detected — cloning original...",
+            { jobChainId },
+          );
+          // Construct the credit note payload based on the first original invoice
+          creditNotePayload = JSON.parse(JSON.stringify(fallbackOriginalTransformed));
+        }
+
+        // Convert to Credit Note
+        creditNotePayload.invoice_type_code = "381";
+
+        // Preserve billing_reference if already provided in the webhook payload, otherwise use resolved ones
+        if (Array.isArray(payload.billing_reference) && payload.billing_reference.length > 0) {
+          creditNotePayload.billing_reference = payload.billing_reference;
+        } else if (Array.isArray(payload.billing_references) && payload.billing_references.length > 0) {
+          creditNotePayload.billing_reference = payload.billing_references;
+        } else {
+          creditNotePayload.billing_reference = billingReferences;
+        }
 
         // Assign credit note's own IRN
         const irn = context.irn;
@@ -84,9 +135,13 @@ export function registerProcessCreditNoteJob(): void {
           creditNotePayload.business_id = authContext.businessId;
         }
 
-        // Set current date/time for the credit note
-        creditNotePayload.issue_date = new Date().toISOString().slice(0, 10);
-        creditNotePayload.issue_time = new Date().toTimeString().slice(0, 8);
+        // Set current date/time for the credit note if not already set
+        if (!creditNotePayload.issue_date) {
+          creditNotePayload.issue_date = new Date().toISOString().slice(0, 10);
+        }
+        if (!creditNotePayload.issue_time) {
+          creditNotePayload.issue_time = new Date().toTimeString().slice(0, 8);
+        }
 
         // Update the invoice reference if we have one
         if (creditNoteId) {
@@ -99,7 +154,7 @@ export function registerProcessCreditNoteJob(): void {
             irn,
             {
               metadata: {
-                ...(originalInvoice.metadata ?? {}),
+                ...(fallbackOriginalInvoice.metadata ?? {}),
                 transformedInvoice: creditNotePayload,
               },
             },
