@@ -2,7 +2,7 @@ name: Deploy to ECR & EC2 (Dev)
 
 on:
   push:
-    branches: [master]
+    branches: [deploy]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
