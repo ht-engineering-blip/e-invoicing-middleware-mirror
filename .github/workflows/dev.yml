@@ -2,7 +2,7 @@ name: Deploy to ECR & EC2 (Dev)
 
 on:
   push:
-    branches: [ deploy ]
+    branches: [master]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -57,9 +57,9 @@ jobs:
             aws ecr get-login-password --region eu-west-1 \
             | docker login --username AWS --password-stdin \
             231399651855.dkr.ecr.eu-west-1.amazonaws.com
-          
+
             cd /home/ubuntu/middleware
-          
+
             docker compose up -d --pull always --force-recreate
-          
+
             docker system prune -f
