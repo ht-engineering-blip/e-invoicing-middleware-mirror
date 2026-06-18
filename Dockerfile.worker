@@ -1,4 +1,4 @@
-FROM docker.io/oven/bun:1.1
+FROM docker.io/oven/bun:1.2-slim
 
 WORKDIR /app
 
@@ -11,8 +11,6 @@ COPY ./src ./src
 
 ENV NODE_ENV=production
 
-# Agendash serves static assets from node_modules at runtime,
-# so we run with bun directly rather than compiling to a single binary.
 EXPOSE 3001
 
 CMD ["bun", "run", "src/worker.ts"]
