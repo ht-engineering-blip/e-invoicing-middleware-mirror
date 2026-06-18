@@ -11,7 +11,7 @@ import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
 
 export interface FIRSUserInfo {
-  code: number,
+  code: number;
   data: {
     id: string;
     reference: string;
@@ -21,7 +21,7 @@ export interface FIRSUserInfo {
     businesses: FIRSUserInfoBusiness[];
     is_active: boolean;
     app_reference: string;
-  }
+  };
 }
 
 export interface FIRSUserInfoBusiness {
@@ -118,7 +118,7 @@ export default class FIRSClient extends RestClient {
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status,
       foundError?.public_message + " - " + foundError?.details ||
-      HandleErrorResponse(error),
+        HandleErrorResponse(error),
       error,
     );
 
@@ -191,7 +191,8 @@ export class FIRSService {
 
     if (userInfo) {
       let business = userInfo.data.businesses.find(
-        (business: FIRSUserInfoBusiness) => business.id === userInfo.data.reference,
+        (business: FIRSUserInfoBusiness) =>
+          business.id === userInfo.data.reference,
       ) as FIRSUserInfoBusiness;
 
       return {
@@ -206,7 +207,7 @@ export class FIRSService {
   async getFIRSUserInfo(entity_id: string): Promise<FIRSUserInfo> {
     try {
       const response = await this.client.get<FIRSUserInfo>(
-        `api/v1/entity/${entity_id}`,
+        `/api/v1/entity/${entity_id}`,
       );
 
       if (response.code !== 200) {
@@ -230,28 +231,30 @@ export class FIRSService {
   }
 
   public async validateInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("/invoice/validate", invoice);
+    return this.client.post<OkayResponse>("/api/v1/invoice/validate", invoice);
   }
 
   public async searchInvoice(business_id: string, irn: string) {
-    return this.client.get<SearchResponse>(`invoice/${business_id}`, {
+    return this.client.get<SearchResponse>(`/api/v1/invoice/${business_id}`, {
       params: { irn },
     });
   }
 
   public async signInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("/invoice/sign", invoice);
+    return this.client.post<OkayResponse>("/api/v1/invoice/sign", invoice);
   }
 
   public async transmitInvoice(irn: string) {
-    return this.client.post(`invoice/transmit/${irn}`, {});
+    return this.client.post(`/api/v1/invoice/transmit/${irn}`, {});
   }
   public async downloadInvoice(irn: string) {
-    return this.client.get(`invoice/download/${irn}`, {});
+    return this.client.get(`/api/v1/invoice/download/${irn}`, {});
   }
 
   public async confirmSignedInvoice(irn: string) {
-    return this.client.get<{ data: ConfirmResponse }>(`invoice/confirm/${irn}`);
+    return this.client.get<{ data: ConfirmResponse }>(
+      `/api/v1/invoice/confirm/${irn}`,
+    );
   }
 
   /*  public async generateQRCode(irn: any):  Promise<{ qrCode: string, data: string } | any> {
