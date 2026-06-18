@@ -41,6 +41,9 @@
       },
     },
   },
+  "overrides": {
+    "bson": "6.7.0",
+  },
   "packages": {
     "@agendajs/mongo-backend": ["@agendajs/mongo-backend@4.0.0", "", { "dependencies": { "debug": "^4.4.0" }, "peerDependencies": { "agenda": "6.2.3", "mongodb": "^6.0.0 || ^7.0.0" } }, "sha512-ZzsueklCngZIhyyIWkGU0wELc1o7aWosUyTHlqPiGv0qcjKg2olsfg1S1TVR5xI42UlwMksLle7QDjsYl8hbYg=="],
 
@@ -332,7 +335,7 @@
 
     "bowser": ["bowser@2.13.1", "", {}, "sha512-OHawaAbjwx6rqICCKgSG0SAnT05bzd7ppyKLVUITZpANBaaMFBAsaNkto3LoQ31tyFP5kNujE8Cdx85G9VzOkw=="],
 
-    "bson": ["bson@7.0.0", "", {}, "sha512-Kwc6Wh4lQ5OmkqqKhYGKIuELXl+EPYSCObVE6bWsp1T/cGkOCBN0I8wF/T44BiuhHyNi1mmKVPXk60d41xZ7kw=="],
+    "bson": ["bson@6.7.0", "", {}, "sha512-w2IquM5mYzYZv6rs3uN2DZTOBe2a0zXLj53TGDqwF4l6Sz/XsISrisXOJihArF9+BZ6Cq/GjVht7Sjfmri7ytQ=="],
 
     "buffer-equal-constant-time": ["buffer-equal-constant-time@1.0.1", "", {}, "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA=="],
 
