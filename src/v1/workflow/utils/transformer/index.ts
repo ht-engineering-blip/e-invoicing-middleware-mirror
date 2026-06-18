@@ -356,14 +356,14 @@ export class FIRSInvoiceTransformer {
         }
       }
 
-      // Validate that LLM did not modify identity fields
+      // Warn if LLM modified identity fields — force-overwrite below will correct them
       if (
         transformedData.business_id !== undefined &&
         expectedBusinessId &&
         transformedData.business_id !== expectedBusinessId
       ) {
-        throw new InternalServerError(
-          "LLM attempted to modify the business_id identity field",
+        console.warn(
+          `[Transformer] LLM changed business_id from "${expectedBusinessId}" to "${transformedData.business_id}" — will be overwritten`,
         );
       }
       if (
@@ -371,8 +371,8 @@ export class FIRSInvoiceTransformer {
         expectedIrn &&
         transformedData.irn !== expectedIrn
       ) {
-        throw new InternalServerError(
-          "LLM attempted to modify the irn identity field",
+        console.warn(
+          `[Transformer] LLM changed irn from "${expectedIrn}" to "${transformedData.irn}" — will be overwritten`,
         );
       }
       const parsedSupplierTIN = transformedData.accounting_supplier_party?.tin;
@@ -381,8 +381,8 @@ export class FIRSInvoiceTransformer {
         expectedSupplierTIN &&
         parsedSupplierTIN !== expectedSupplierTIN
       ) {
-        throw new InternalServerError(
-          "LLM attempted to modify the supplier TIN identity field",
+        console.warn(
+          `[Transformer] LLM changed supplier TIN from "${expectedSupplierTIN}" to "${parsedSupplierTIN}" — will be overwritten`,
         );
       }
 
