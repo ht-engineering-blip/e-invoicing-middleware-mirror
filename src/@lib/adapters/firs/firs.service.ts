@@ -231,29 +231,29 @@ export class FIRSService {
   }
 
   public async validateInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("/api/v1/invoice/validate", invoice);
+    return this.client.post<OkayResponse>("api/v1/invoice/validate", invoice);
   }
 
   public async searchInvoice(business_id: string, irn: string) {
-    return this.client.get<SearchResponse>(`/api/v1/invoice/${business_id}`, {
+    return this.client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
       params: { irn },
     });
   }
 
   public async signInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("/api/v1/invoice/sign", invoice);
+    return this.client.post<OkayResponse>("api/v1/invoice/sign", invoice);
   }
 
   public async transmitInvoice(irn: string) {
-    return this.client.post(`/api/v1/invoice/transmit/${irn}`, {});
+    return this.client.post(`api/v1/invoice/transmit/${irn}`, {});
   }
   public async downloadInvoice(irn: string) {
-    return this.client.get(`/api/v1/invoice/download/${irn}`, {});
+    return this.client.get(`api/v1/invoice/download/${irn}`, {});
   }
 
   public async confirmSignedInvoice(irn: string) {
     return this.client.get<{ data: ConfirmResponse }>(
-      `/api/v1/invoice/confirm/${irn}`,
+      `api/v1/invoice/confirm/${irn}`,
     );
   }
 
