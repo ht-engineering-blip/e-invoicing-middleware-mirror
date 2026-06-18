@@ -4,7 +4,7 @@ import { InternalServerError } from "../../../../@lib";
 import { generateTransformPrompt } from "../../../../@lib/adapters/llm/prompts";
 import { AuthContext } from "../../../../middlewares";
 import { SchemaSourceType } from "../../models";
-import { generateIRN, sanitizeInvoiceIRNs } from "./utils";
+import { generateIRN, sanitizeInvoiceIRNs, sanitizeHsnCode } from "./utils";
 // ============= SCHEMA VALIDATION =============
 
 // Simplified validation schemas for critical fields
@@ -63,9 +63,8 @@ const InvoiceLineSchema = z.object({
       .string()
       .transform((val) => {
         if (!val) return "";
-        if (/^\d+$/.test(val)) {
-          return `${val}.00`;
-        }
+        const sanitized = sanitizeHsnCode(val);
+        if (sanitized) return sanitized;
         return val;
       })
       .optional(),
@@ -345,6 +344,18 @@ export class FIRSInvoiceTransformer {
         sourceType,
       );
 
+      // Deterministic HSN code sanitization
+      if (Array.isArray(transformedData.invoice_line)) {
+        for (const line of transformedData.invoice_line) {
+          if (line.hsn_code !== undefined && line.hsn_code !== null) {
+            const sanitized = sanitizeHsnCode(line.hsn_code);
+            if (sanitized !== undefined) {
+              line.hsn_code = sanitized;
+            }
+          }
+        }
+      }
+
       // Validate that LLM did not modify identity fields
       if (
         transformedData.business_id !== undefined &&
@@ -419,6 +430,18 @@ export class FIRSInvoiceTransformer {
             fixedData.accounting_supplier_party = {};
           }
           fixedData.accounting_supplier_party.tin = expectedSupplierTIN;
+        }
+
+        // Deterministic HSN code sanitization post-autofix
+        if (Array.isArray(fixedData.invoice_line)) {
+          for (const line of fixedData.invoice_line) {
+            if (line.hsn_code !== undefined && line.hsn_code !== null) {
+              const sanitized = sanitizeHsnCode(line.hsn_code);
+              if (sanitized !== undefined) {
+                line.hsn_code = sanitized;
+              }
+            }
+          }
         }
 
         // Re-validate fixed data

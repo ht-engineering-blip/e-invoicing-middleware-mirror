@@ -9,6 +9,7 @@ import {
   generateDatestamp,
   generateIRN,
   sanitizeInvoiceIRNs,
+  sanitizeHsnCode,
 } from "./utils";
 import { FIRS_INVOICE_METADATA } from "../defaults";
 import {
@@ -228,6 +229,18 @@ export class FIRSInvoiceTransformerV2 {
         logger.info("completed", completed);
       }
 
+      // Deterministic HSN code sanitization
+      if (Array.isArray(completed.invoice_line)) {
+        for (const line of completed.invoice_line) {
+          if (line.hsn_code !== undefined && line.hsn_code !== null) {
+            const sanitized = sanitizeHsnCode(line.hsn_code);
+            if (sanitized !== undefined) {
+              line.hsn_code = sanitized;
+            }
+          }
+        }
+      }
+
       const validation = this.validateWithZod(completed, firsZodSchema);
       logger.info("validation", validation);
 
@@ -238,6 +251,17 @@ export class FIRSInvoiceTransformerV2 {
           authContext,
           sourceSchema,
         );
+        // Deterministic HSN code sanitization post-repair
+        if (Array.isArray(completed.invoice_line)) {
+          for (const line of completed.invoice_line) {
+            if (line.hsn_code !== undefined && line.hsn_code !== null) {
+              const sanitized = sanitizeHsnCode(line.hsn_code);
+              if (sanitized !== undefined) {
+                line.hsn_code = sanitized;
+              }
+            }
+          }
+        }
       }
 
       logger.info("final", completed);
@@ -620,7 +644,7 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 
 ## INVOICE LINE ITEM RULES:
 Each invoice_line must contain:
-- hsn_code: product/service classification code. MUST NOT be empty. If it is missing or empty in the input data, you must deduce the correct HSN code from the item name or description (e.g., if the item is "phone", deduce the HSN code for mobile phones). If it does not contain a decimal point, format it to end with ".00" (e.g., "90983" becomes "90983.00").
+- hsn_code: product/service classification code. MUST NOT be empty. If it is missing or empty in the input data, you must deduce the correct HSN code from the item name or description (e.g., if the item is "phone", deduce the HSN code for mobile phones). If it does not contain a decimal point, format it to end with ".00" (e.g., "90983" becomes "90983.00"). Ensure each distinct type of product or service in the invoice line items has a unique and appropriate HSN code assigned (do not reuse the same HSN code for different products or services).
 - product_category: category name
 - invoiced_quantity: quantity (number)
 - line_extension_amount: line total before tax

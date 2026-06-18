@@ -72,6 +72,42 @@ export function sanitizeInvoiceIRNs(invoice: any): void {
   }
 }
 
+/**
+ * Sanitize an HSN code to the FIRS-required format: digits + "." + exactly 2 decimal digits.
+ * Handles: pure digits ("8517" → "8517.00"), missing decimals ("8517." → "8517.00"),
+ * single decimal ("8517.1" → "8517.10"), extra decimals ("8517.123" → "8517.12"),
+ * and non-digit characters. Returns undefined for empty/invalid input so the field
+ * stays optional.
+ */
+export function sanitizeHsnCode(val: any): string | undefined {
+  if (val === undefined || val === null) return undefined;
+  let str = String(val).trim();
+  if (!str) return undefined;
+
+  // If it has letters, treat it as a custom/non-numeric HSN code and don't sanitize/format it
+  if (/[a-zA-Z]/.test(str)) {
+    return undefined;
+  }
+
+  // Strip any non-digit/non-dot characters
+  str = str.replace(/[^\d.]/g, "");
+  if (!str || str === ".") return undefined;
+
+  // Pure digits → append .00
+  if (/^\d+$/.test(str)) return `${str}.00`;
+  // Trailing dot, no decimals → append 00
+  if (/^\d+\.$/.test(str)) return `${str}00`;
+  // One decimal digit → append 0
+  if (/^\d+\.\d$/.test(str)) return `${str}0`;
+  // Already valid → return as-is
+  if (/^\d+\.\d{2}$/.test(str)) return str;
+  // More than 2 decimal digits → truncate to 2
+  const match = str.match(/^(\d+\.\d{2})/);
+  if (match) return match[1];
+
+  return undefined;
+}
+
 export function generateIRN(
   invoiceNumber: string,
   serviceId: string | undefined,
