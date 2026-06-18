@@ -13,4 +13,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3001
 
-CMD ["bun", "run", "src/worker.ts"]
+CMD ["bun", "--preload", "./polyfill.js", "run", "src/worker.ts"]
