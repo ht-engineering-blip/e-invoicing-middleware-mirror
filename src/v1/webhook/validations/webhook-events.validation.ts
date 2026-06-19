@@ -1,4 +1,4 @@
-import { t } from 'elysia';
+import { t } from "elysia";
 
 export const listWebhookEventsValidation = {
   query: t.Object({
@@ -12,19 +12,21 @@ export const listWebhookEventsValidation = {
     to: t.Optional(t.String()),
   }),
   detail: {
-    tags: ['Webhook Events'],
+    tags: ["Webhook Events"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
-    summary: 'List Webhook Events',
-    description: 'List webhook events for the authenticated tenant. Supports filtering by eventType, status, IRN, and date range.',
+    summary: "List Webhook Events",
+    description:
+      "List webhook events for the authenticated tenant. Supports filtering by eventType, status, IRN, and date range.",
   },
 };
 
 export const getWebhookEventValidation = {
   params: t.Object({ eventId: t.String() }),
   detail: {
-    tags: ['Webhook Events'],
+    tags: ["Webhook Events"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
-    summary: 'Get Webhook Event',
-    description: 'Get a single webhook event by its eventId. Includes full jobErrors history and delivery attempts.',
+    summary: "Get Webhook Event",
+    description:
+      "Get a single webhook event by its eventId. Includes full jobErrors history and delivery attempts.",
   },
 };

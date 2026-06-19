@@ -1,47 +1,45 @@
-import mongoose, { Schema, Document } from 'mongoose';
-
-
+import mongoose, { Schema, Document } from "mongoose";
 
 /**
  * Webhook Event Type
  */
 export enum WebhookEventType {
-  TEST_EVENT = 'test.event',
-  INVOICE_CREATED = 'invoice.created',
-  INVOICE_VALIDATED = 'invoice.validated',
-  INVOICE_SIGNED = 'invoice.signed',
-  INVOICE_TRANSMITTED = 'invoice.transmitted',
-  INVOICE_DELIVERED = 'invoice.delivered',
-  INVOICE_FAILED = 'invoice.failed',
-  INVOICE_RECEIVED = 'invoice.received',
-  INVOICE_ACKNOWLEDGED = 'invoice.acknowledged',
-  INVOICE_PAID = 'invoice.paid',
-  INVOICE_REJECTED = 'invoice.rejected',
-  INVOICE_CANCELED = 'invoice.canceled',
+  TEST_EVENT = "test.event",
+  INVOICE_CREATED = "invoice.created",
+  INVOICE_VALIDATED = "invoice.validated",
+  INVOICE_SIGNED = "invoice.signed",
+  INVOICE_TRANSMITTED = "invoice.transmitted",
+  INVOICE_DELIVERED = "invoice.delivered",
+  INVOICE_FAILED = "invoice.failed",
+  INVOICE_RECEIVED = "invoice.received",
+  INVOICE_ACKNOWLEDGED = "invoice.acknowledged",
+  INVOICE_PAID = "invoice.paid",
+  INVOICE_REJECTED = "invoice.rejected",
+  INVOICE_CANCELED = "invoice.canceled",
 }
 
 /**
  * ERP Event Type
  */
 export enum ErpEventType {
-  INVOICE_CREATED = 'erp.invoice.created',
-  INVOICE_SUBMITTED = 'erp.invoice.submitted',
-  INVOICE_UPDATED = 'erp.invoice.updated',
-  INVOICE_VOIDED = 'erp.invoice.voided',
-  INVOICE_CANCELED = 'erp.invoice.canceled',
-  PAYMENT_RECEIVED = 'erp.payment.received',
-  CREDIT_NOTE_ISSUED = 'erp.creditnote.issued',
-  DEBIT_NOTE_ISSUED = 'erp.debitnote.issued',
+  INVOICE_CREATED = "erp.invoice.created",
+  INVOICE_SUBMITTED = "erp.invoice.submitted",
+  INVOICE_UPDATED = "erp.invoice.updated",
+  INVOICE_VOIDED = "erp.invoice.voided",
+  INVOICE_CANCELED = "erp.invoice.canceled",
+  PAYMENT_RECEIVED = "erp.payment.received",
+  CREDIT_NOTE_ISSUED = "erp.creditnote.issued",
+  DEBIT_NOTE_ISSUED = "erp.debitnote.issued",
 }
 
 /**
  * Webhook Delivery Status
  */
 export enum WebhookDeliveryStatus {
-  PENDING = 'pending',
-  DELIVERED = 'delivered',
-  FAILED = 'failed',
-  RETRY = 'retry',
+  PENDING = "pending",
+  DELIVERED = "delivered",
+  FAILED = "failed",
+  RETRY = "retry",
 }
 
 /**
@@ -72,7 +70,7 @@ export interface IWebhookDeliveryAttempt {
  * MongoDB Document interface for Webhook Event
  */
 export interface WebhookEventDocument extends Document {
-  tenantId: string; 
+  tenantId: string;
   eventId: string;
   eventType: string;
 
@@ -117,7 +115,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       required: true,
       index: true,
     },
-    
+
     eventId: {
       type: String,
       required: true,
@@ -125,7 +123,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       index: true,
     },
     eventType: {
-      type: String, 
+      type: String,
       required: true,
       index: true,
     },
@@ -137,7 +135,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
     },
     resourceId: {
       type: String,
-      required: true, 
+      required: true,
     },
     resourceType: {
       type: String,
@@ -170,7 +168,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
       default: 3,
     },
     nextRetryAt: {
-      type: Date 
+      type: Date,
     },
 
     // Response Information
@@ -213,8 +211,8 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
   },
   {
     timestamps: true,
-    collection: 'webhook_events',
-  }
+    collection: "webhook_events",
+  },
 );
 
 // Compound Indexes for performance
@@ -229,4 +227,4 @@ WebhookEventSchema.index({ nextRetryAt: 1 }, { sparse: true });
  */
 export const WebhookEventModel =
   mongoose.models.WebhookEvent ||
-  mongoose.model<WebhookEventDocument>('WebhookEvent', WebhookEventSchema);
+  mongoose.model<WebhookEventDocument>("WebhookEvent", WebhookEventSchema);
