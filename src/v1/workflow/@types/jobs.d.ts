@@ -20,6 +20,7 @@ interface JobChainData {
     businessTIN?: string;
     serviceId?: string;
     tenantERP?: string;
+    referenceIdKeyMap?: Record<string, string>;
     isAdmin: false;
   };
 

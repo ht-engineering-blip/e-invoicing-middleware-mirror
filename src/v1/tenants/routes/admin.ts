@@ -27,6 +27,10 @@ import {
   getERPSyncConfigValidation,
   resendTenantTokenValidation
 } from '../validations/admin.validation';
+import { updateKeyMapValidation } from '../validations/onboarding.validation';
+import { INVOICE_EVENT_TYPES } from '../../admin/routes/reference.routes';
+
+const VALID_EVENT_IDS = INVOICE_EVENT_TYPES.map((e) => e.id) as string[];
 
 /**
  * Admin-protected tenant routes
@@ -542,6 +546,112 @@ const adminTenantRoutes = new Elysia({
       }
     },
     configureERPSyncValidation
+  )
+
+  /**
+   * PUT /api/v1/tenants/:tenantId/id-key-map
+   * Add or update an idKeyMap entry
+   */
+  .put(
+    '/:tenantId/id-key-map',
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        if (!VALID_EVENT_IDS.includes(body.eventType)) {
+          set.status = 400;
+          return { success: false, error: `Unknown event '${body.eventType}'.` };
+        }
+
+        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        if (!tenant) {
+          set.status = 404;
+          return { success: false, error: 'Tenant not found' };
+        }
+
+        const idKeyMap = tenant.config?.idKeyMap instanceof Map 
+          ? tenant.config.idKeyMap 
+          : new Map(Object.entries(tenant.config?.idKeyMap || {}));
+        
+        idKeyMap.set(body.eventType, body.idKey);
+
+        const updatedConfig = {
+          ...tenant.config,
+          idKeyMap,
+        };
+
+        await tenantService.updateTenant(params.tenantId, { config: updatedConfig } as any, getActor(auth));
+
+        return {
+          success: true,
+          message: 'idKeyMap updated successfully',
+          data: {
+            eventType: body.eventType,
+            idKey: body.idKey,
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    updateKeyMapValidation
+  )
+
+  /**
+   * PUT /api/v1/tenants/:tenantId/reference-id-key-map
+   * Add or update a referenceIdKeyMap entry
+   */
+  .put(
+    '/:tenantId/reference-id-key-map',
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        if (!VALID_EVENT_IDS.includes(body.eventType)) {
+          set.status = 400;
+          return { success: false, error: `Unknown event '${body.eventType}'.` };
+        }
+
+        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        if (!tenant) {
+          set.status = 404;
+          return { success: false, error: 'Tenant not found' };
+        }
+
+        const referenceIdKeyMap = tenant.config?.referenceIdKeyMap instanceof Map 
+          ? tenant.config.referenceIdKeyMap 
+          : new Map(Object.entries(tenant.config?.referenceIdKeyMap || {}));
+        
+        referenceIdKeyMap.set(body.eventType, body.idKey);
+
+        const updatedConfig = {
+          ...tenant.config,
+          referenceIdKeyMap,
+        };
+
+        await tenantService.updateTenant(params.tenantId, { config: updatedConfig } as any, getActor(auth));
+
+        return {
+          success: true,
+          message: 'referenceIdKeyMap updated successfully',
+          data: {
+            eventType: body.eventType,
+            idKey: body.idKey,
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    updateKeyMapValidation
   )
 
   /**

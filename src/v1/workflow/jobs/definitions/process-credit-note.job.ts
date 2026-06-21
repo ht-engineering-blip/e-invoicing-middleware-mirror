@@ -4,6 +4,7 @@ import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { TransformWorkflowService } from "../../services";
+import { getNestedValue } from "../../../../@lib";
 
 const outboundRepo = new OutboundInvoiceRepository();
 const transformService = new TransformWorkflowService();
@@ -21,21 +22,30 @@ export function registerProcessCreditNoteJob(): void {
 
       try {
         const payload = context.originalPayload;
-        const referenceId =
-          payload.referenceId ?? payload.reference_id ?? payload.invoiceId;
-        const creditNoteId =
-          payload.creditNoteId ??
-          payload.credit_note_id ??
-          context.erpInvoiceId;
 
-        // Resolve all referenced ERP/FIRS IDs
+        const refKey =
+          authContext?.referenceIdKeyMap?.[job.attrs.data.eventType];
+        const creditNoteId = context.erpInvoiceId;
         const referenceIds: string[] = [];
-        if (Array.isArray(payload.referenceIds)) {
-          referenceIds.push(...payload.referenceIds.map(String));
-        } else if (Array.isArray(payload.reference_ids)) {
-          referenceIds.push(...payload.reference_ids.map(String));
-        } else if (referenceId) {
-          referenceIds.push(String(referenceId));
+
+        if (refKey) {
+          const configuredRef = getNestedValue(payload, refKey);
+          if (Array.isArray(configuredRef)) {
+            referenceIds.push(...configuredRef.map(String));
+          } else if (configuredRef) {
+            referenceIds.push(String(configuredRef));
+          }
+        } else {
+          // Legacy fallback to prevent breaking existing integrations
+          const referenceId =
+            payload.referenceId ?? payload.reference_id ?? payload.invoiceId;
+          if (Array.isArray(payload.referenceIds)) {
+            referenceIds.push(...payload.referenceIds.map(String));
+          } else if (Array.isArray(payload.reference_ids)) {
+            referenceIds.push(...payload.reference_ids.map(String));
+          } else if (referenceId) {
+            referenceIds.push(String(referenceId));
+          }
         }
 
         if (referenceIds.length === 0) {
