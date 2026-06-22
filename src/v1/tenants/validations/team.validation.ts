@@ -8,6 +8,28 @@ export const acceptInviteValidation = {
   body: t.Object({
     password: t.String({ minLength: 8, example: acceptInviteExample.password }),
   }, { examples: [acceptInviteExample] }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     summary: 'Accept Invitation',
@@ -25,6 +47,28 @@ export const listTeamMembersValidation = {
     page: t.Optional(t.String()),
     limit: t.Optional(t.String()),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -48,6 +92,28 @@ export const inviteTeamMemberValidation = {
     }),
     permissions: t.Optional(t.Array(t.String())),
   }, { examples: [inviteMemberExample] }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -61,6 +127,28 @@ export const getTeamMemberValidation = {
     tenantId: t.String(),
     userId: t.String(),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -92,6 +180,28 @@ export const updateTeamMemberValidation = {
       })
     ),
   }, { examples: [updateMemberExample] }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -105,6 +215,28 @@ export const removeTeamMemberValidation = {
     tenantId: t.String(),
     userId: t.String(),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -118,6 +250,28 @@ export const resendInviteValidation = {
     tenantId: t.String(),
     userId: t.String(),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Team Management'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,

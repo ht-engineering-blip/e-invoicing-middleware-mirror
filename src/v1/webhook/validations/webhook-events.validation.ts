@@ -11,6 +11,28 @@ export const listWebhookEventsValidation = {
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ["Webhook Events"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -22,6 +44,28 @@ export const listWebhookEventsValidation = {
 
 export const getWebhookEventValidation = {
   params: t.Object({ eventId: t.String() }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ["Webhook Events"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,

@@ -33,6 +33,28 @@ export const getERPDictionaryValidation = {
   params: t.Object({
     erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - System Configuration'],
     security: [{ adminKey: [] }],
@@ -48,8 +70,30 @@ export const addERPDictionaryValidation = {
       t.String(),
     ]),
     invoice: t.Any({ default: {} }),
-    metadata: t.Optional(t.Any()),
+    metadata: t.Optional(t.Record(t.String(), t.Any())),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - System Configuration'],
     security: [{ adminKey: [] }],
