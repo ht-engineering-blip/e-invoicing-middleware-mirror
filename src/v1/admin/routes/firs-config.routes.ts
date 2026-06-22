@@ -34,9 +34,12 @@ export const firsConfigRoutes = new Elysia({ prefix: '/config/firs-dictionary' }
 
         if (!firsSchemaDoc) {
           return {
-            schema: null,
-            version: 0,
+            success: true,
             message: 'FIRS dictionary not configured',
+            data: {
+              schema: null,
+              version: 0,
+            }
           };
         }
 
