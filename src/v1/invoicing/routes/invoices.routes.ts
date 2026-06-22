@@ -53,6 +53,10 @@ const invoiceMgmtRoutes = new Elysia()
           body.issueDate ? new Date(body.issueDate) : undefined,
         );
 
+        if (!irn) {
+          throw new Error("Failed to generate IRN");
+        }
+
         return {
           success: true,
           data: { irn, generated: true },
