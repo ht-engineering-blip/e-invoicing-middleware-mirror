@@ -84,6 +84,42 @@ export const transformInvoiceValidation = {
     }),
   },
   detail: {
+    summary: "Transform Invoice",
+    description: "Transform invoice to FIRS UBL format",
+    tags: ["Invoicing"],
+  },
+};
+
+export const validateInvoiceValidation = {
+  body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      valid: t.Optional(t.Boolean()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+      errors: t.Optional(t.Array(t.String())),
+      workflowState: t.Optional(t.Object({
+        validated: t.Boolean()
+      }))
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
+  detail: {
     summary: "Validate Invoice",
     description: "Validate invoice against FIRS requirements",
     tags: ["Invoicing"],
