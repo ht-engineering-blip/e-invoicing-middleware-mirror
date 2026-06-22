@@ -45,6 +45,9 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
     businessTIN: tenant?.tin,
     serviceId: tenant?.config?.firsCredentials?.serviceId,
     tenantERP: tenant?.config?.erpSystem,
+    referenceIdKeyMap: tenant?.config?.referenceIdKeyMap instanceof Map
+      ? Object.fromEntries(tenant.config.referenceIdKeyMap)
+      : tenant?.config?.referenceIdKeyMap,
     isAdmin: false,
   };
 

@@ -76,7 +76,8 @@ export async function verifyWebhookSignature({
   }
 
   // Check if the header is formatted as a secure signature (t=...,v1=...)
-  const isSecureFormat = webhookKey!.includes("t=") && webhookKey!.includes("v1=");
+  const isSecureFormat =
+    webhookKey!.includes("t=") && webhookKey!.includes("v1=");
 
   if (isSecureFormat) {
     // 1. Secure Signature Flow with Timestamp and Replay Protection
@@ -160,7 +161,6 @@ export async function verifyWebhookSignature({
       t,
       v1,
     });
-
   } else {
     // 2. Legacy Static Secret Flow (Fallback for compatibility with existing clients)
     const hashedKey = crypto
@@ -202,11 +202,11 @@ export const webhookRoutes = new Elysia({
           appConfig?.webAppURL,
           "http://localhost:3000",
           "http://localhost:3001",
-          "http://localhost:3002"
+          "http://localhost:3002",
         ].filter(Boolean);
         return allowedOrigins.includes(origin);
-      }
-    })
+      },
+    }),
   )
 
   /**
@@ -215,99 +215,97 @@ export const webhookRoutes = new Elysia({
    * Clients connect here to listen for data as it arrives on the webhook.
    */
   .group("/listen", (app) =>
-    app
-      .use(requireAuth)
-      .all(
-        "/:webhookPath",
-        async function* ({ request, params, set, auth }) {
-          if (request.method == "OPTIONS") {
-            return {};
+    app.use(requireAuth).all(
+      "/:webhookPath",
+      async function* ({ request, params, set, auth }) {
+        if (request.method == "OPTIONS") {
+          return {};
+        }
+
+        if (!auth?.tenantId) {
+          set.status = 401;
+          return;
+        }
+
+        const { webhookPath } = params;
+
+        // Validate tenant
+        const tenant = await tenantRepo.findByWebhookPath(webhookPath);
+        if (!tenant) {
+          set.status = 404;
+          return;
+        }
+
+        // Scope decryption to invoices owned by the authenticated tenant
+        if (tenant.tenantId !== auth.tenantId) {
+          set.status = 403;
+          return;
+        }
+
+        const channel = `wh:${webhookPath}`;
+        const queue: any[] = [];
+        let resolve: (() => void) | null = null;
+
+        const handler = (data: any) => {
+          console.log({ data });
+          queue.push(data);
+          if (resolve) {
+            resolve();
+            resolve = null;
           }
+        };
 
-          if (!auth?.tenantId) {
-            set.status = 401;
-            return;
-          }
+        webhookBus.on(channel, handler);
 
-          const { webhookPath } = params;
-
-          // Validate tenant
-          const tenant = await tenantRepo.findByWebhookPath(webhookPath);
-          if (!tenant) {
-            set.status = 404;
-            return;
-          }
-
-          // Scope decryption to invoices owned by the authenticated tenant
-          if (tenant.tenantId !== auth.tenantId) {
-            set.status = 403;
-            return;
-          }
-
-          const channel = `wh:${webhookPath}`;
-          const queue: any[] = [];
-          let resolve: (() => void) | null = null;
-
-          const handler = (data: any) => {
-            console.log({ data });
-            queue.push(data);
-            if (resolve) {
-              resolve();
-              resolve = null;
-            }
-          };
-
-          webhookBus.on(channel, handler);
-
-          // Send initial connection event
-          yield sse({
-            event: "connected",
-            data: {
-              tenantId: tenant.tenantId,
-              webhookPath,
-              connectedAt: new Date().toISOString(),
-              message: "Listening for inbound webhook events",
-            },
-          });
-
-          try {
-            while (true) {
-              if (queue.length === 0) {
-                await new Promise<void>((r) => {
-                  resolve = r;
-                });
-              }
-              while (queue.length > 0) {
-                const event = queue.shift();
-                yield sse({
-                  id: event.eventId,
-                  event: event.eventType,
-                  data: event,
-                });
-              }
-            }
-          } catch (e) {
-            console.log({ e });
-          } finally {
-            webhookBus.off(channel, handler);
-            logger.info("SSE client disconnected", {
-              webhookPath,
-              tenantId: tenant.tenantId,
-            });
-          }
-        },
-        {
-          params: t.Object({
-            webhookPath: t.String(),
-          }),
-          detail: {
-            tags: ["Webhook - Inbound"],
-            summary: "Listen for inbound webhook events",
-            description:
-              "Connect to receive real-time (SSE) inbound webhook data as it arrives for this tenant.",
+        // Send initial connection event
+        yield sse({
+          event: "connected",
+          data: {
+            tenantId: tenant.tenantId,
+            webhookPath,
+            connectedAt: new Date().toISOString(),
+            message: "Listening for inbound webhook events",
           },
+        });
+
+        try {
+          while (true) {
+            if (queue.length === 0) {
+              await new Promise<void>((r) => {
+                resolve = r;
+              });
+            }
+            while (queue.length > 0) {
+              const event = queue.shift();
+              yield sse({
+                id: event.eventId,
+                event: event.eventType,
+                data: event,
+              });
+            }
+          }
+        } catch (e) {
+          console.log({ e });
+        } finally {
+          webhookBus.off(channel, handler);
+          logger.info("SSE client disconnected", {
+            webhookPath,
+            tenantId: tenant.tenantId,
+          });
+        }
+      },
+      {
+        params: t.Object({
+          webhookPath: t.String(),
+        }),
+        detail: {
+          tags: ["Webhook - Inbound"],
+          summary: "Listen for inbound webhook events",
+          description:
+            "Connect to receive real-time (SSE) inbound webhook data as it arrives for this tenant.",
         },
-      )
+      },
+    ),
   )
 
   /**
@@ -366,7 +364,6 @@ export const webhookRoutes = new Elysia({
         };
       }
 
-
       // 4. Determine event type from payload or headers
       const eventType =
         headers["x-event-type"] ||
@@ -423,18 +420,31 @@ export const webhookRoutes = new Elysia({
       const routedActions = matchedRoutes.flatMap((r) => r.actions);
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
-      const invoiceIdKey = tenant.config?.invoiceIdKey ?? "invoiceId";
-      let erpInvoiceId: string = "";
-      if (eventType === "erp.creditnote.issued" || eventType === "credit_note.created") {
-        erpInvoiceId = String(
-          getNestedValue(body, "creditNoteId") ??
-          getNestedValue(body, "credit_note_id") ??
-          getNestedValue(body, invoiceIdKey) ??
-          ""
-        ).trim();
+      const config = tenant.config;
+      const idKeyMap =
+        config?.idKeyMap instanceof Map
+          ? Object.fromEntries(config.idKeyMap)
+          : config?.idKeyMap;
+          
+      let erpInvoiceId = "";
+      
+      if (idKeyMap && idKeyMap[eventType]) {
+        erpInvoiceId = String(getNestedValue(body, idKeyMap[eventType]) ?? "").trim();
       } else {
-        erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
+        // Legacy fallback to prevent breaking existing integrations
+        const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";
+        if (eventType === "erp.creditnote.issued" || eventType === "credit_note.created") {
+          erpInvoiceId = String(
+            getNestedValue(body, "creditNoteId") ??
+            getNestedValue(body, "credit_note_id") ??
+            getNestedValue(body, invoiceIdKey) ??
+            ""
+          ).trim();
+        } else {
+          erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
+        }
       }
+
       if (!erpInvoiceId) {
         erpInvoiceId = generateRandomString(10);
       }

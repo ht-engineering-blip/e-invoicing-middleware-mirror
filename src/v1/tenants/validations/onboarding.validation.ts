@@ -4,6 +4,7 @@ import {
   generateWebhookExample,
   updateInvoiceIdKeyExample,
   testWebhookExample,
+  updateKeyMapExample,
 } from '../examples/onboarding.examples';
 
 export const activateValidation = {
@@ -74,6 +75,26 @@ export const updateInvoiceIdKeyValidation = {
     summary: 'Update Invoice ID Key for tenant',
     description:
       'Update invoiceIdKey to configure which payload field identifies the ERP invoice.',
+  },
+};
+
+export const updateKeyMapValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  body: t.Object({
+    eventType: t.String({
+      description: 'The event type (e.g. erp.creditnote.issued)'
+    }),
+    idKey: t.String({
+      description: 'Dot-notation path to the ID field in the webhook payload'
+    }),
+  }, { examples: [updateKeyMapExample] }),
+  detail: {
+    tags: ['Onboarding'],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
+    summary: 'Update Event ID Key Mapping',
+    description: 'Add or update the mapping between an event type and its corresponding ID extraction key.',
   },
 };
 
