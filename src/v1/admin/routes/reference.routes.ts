@@ -146,6 +146,7 @@ export const INVOICE_EVENT_TYPES = [
     category: "erp",
     direction: "inbound",
     description: "A credit note was issued from the ERP.",
+    referencesOriginalDocument: true,
   },
   {
     id: ErpEventType.DEBIT_NOTE_ISSUED,
@@ -153,6 +154,7 @@ export const INVOICE_EVENT_TYPES = [
     category: "erp",
     direction: "inbound",
     description: "A debit note was issued from the ERP.",
+    referencesOriginalDocument: true,
   },
 ] as const;
 

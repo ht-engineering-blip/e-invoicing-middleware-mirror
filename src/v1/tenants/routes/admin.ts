@@ -655,6 +655,49 @@ const adminTenantRoutes = new Elysia({
   )
 
   /**
+   * GET /api/v1/tenants/:tenantId/key-config
+   * Get invoiceIdKey, idKeyMap, and referenceIdKeyMap configuration
+   */
+  .get(
+    '/:tenantId/key-config',
+    async ({ auth, params, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+        
+        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        if (!tenant) {
+          set.status = 404;
+          return { success: false, error: 'Tenant not found' };
+        }
+
+        const idKeyMap = tenant.config?.idKeyMap instanceof Map 
+          ? Object.fromEntries(tenant.config.idKeyMap) 
+          : tenant.config?.idKeyMap || {};
+
+        const referenceIdKeyMap = tenant.config?.referenceIdKeyMap instanceof Map 
+          ? Object.fromEntries(tenant.config.referenceIdKeyMap) 
+          : tenant.config?.referenceIdKeyMap || {};
+
+        return {
+          success: true,
+          data: {
+            invoiceIdKey: tenant.config?.invoiceIdKey || 'invoiceId',
+            idKeyMap,
+            referenceIdKeyMap,
+          },
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    getTenantByIdValidation
+  )
+
+  /**
    * GET /api/v1/tenants/:tenantId/erp-sync
    * Get ERP sync configuration
    */
