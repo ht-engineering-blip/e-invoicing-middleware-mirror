@@ -7,6 +7,28 @@ export const listEventsValidation = {
     ),
     direction: t.Optional(t.UnionEnum(['all', 'inbound', 'outbound', 'both'])),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Reference Data'],
     summary: 'List invoice event types',
@@ -21,6 +43,28 @@ export const listWorkflowActionsValidation = {
       t.UnionEnum(['all', 'outbound', 'inbound', 'reporting'])
     ),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Reference Data'],
     summary: 'List workflow actions',

@@ -13,6 +13,28 @@ import {
 
 export const createTenantValidation = {
   body: createTenantValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -23,6 +45,28 @@ export const createTenantValidation = {
 
 export const listTenantsValidation = {
   query: listTenantsQueryValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -33,6 +77,28 @@ export const listTenantsValidation = {
 
 export const getTenantByIdValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants', 'Tenant'],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
@@ -44,6 +110,28 @@ export const getTenantByIdValidation = {
 export const updateTenantValidation = {
   params: tenantIdParamValidator,
   body: updateTenantValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -54,6 +142,28 @@ export const updateTenantValidation = {
 
 export const activateTenantValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -64,6 +174,28 @@ export const activateTenantValidation = {
 
 export const suspendTenantValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -74,6 +206,28 @@ export const suspendTenantValidation = {
 
 export const deleteTenantValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -85,6 +239,28 @@ export const deleteTenantValidation = {
 export const updateOnboardingStatusValidation = {
   params: tenantIdParamValidator,
   body: updateOnboardingStatusValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],
@@ -96,6 +272,28 @@ export const updateOnboardingStatusValidation = {
 export const createApiKeyValidation = {
   params: tenantIdParamValidator,
   body: createApiKeyValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - API Keys'],
     security: [{ adminKey: [] }],
@@ -106,6 +304,28 @@ export const createApiKeyValidation = {
 
 export const listApiKeysValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - API Keys'],
     security: [{ adminKey: [] }],
@@ -117,6 +337,28 @@ export const listApiKeysValidation = {
 export const revokeApiKeyValidation = {
   params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
   body: revokeApiKeyValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - API Keys'],
     security: [{ adminKey: [] }],
@@ -131,6 +373,28 @@ export const rotateApiKeyValidation = {
     reason: t.Optional(t.String()),
     sendEmail: t.Optional(t.Boolean({ default: true })),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - API Keys'],
     security: [{ adminKey: [] }],
@@ -146,6 +410,28 @@ export const listAllApiKeysValidation = {
     status: t.Optional(t.String()),
     tenantId: t.Optional(t.String()),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - API Keys'],
     security: [{ adminKey: [] }],
@@ -161,6 +447,28 @@ export const listAllERPConfigsValidation = {
     erpSystem: t.Optional(t.String()),
     enabled: t.Optional(t.String()),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - ERP Integration'],
     security: [{ adminKey: [] }],
@@ -172,6 +480,28 @@ export const listAllERPConfigsValidation = {
 export const configureERPSyncValidation = {
   params: tenantIdParamValidator,
   body: erpSyncConfigValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - ERP Integration', 'Tenant'],
     security: [{ adminKey: [] }],
@@ -185,6 +515,28 @@ export const getERPSyncConfigValidation = {
   query: t.Object({
     decrypt: t.Optional(t.String({ default: 'true' })),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - ERP Integration', 'Tenant'],
     security: [{ adminKey: [] }],
@@ -195,6 +547,28 @@ export const getERPSyncConfigValidation = {
 
 export const resendTenantTokenValidation = {
   params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Admin - Tenants'],
     security: [{ adminKey: [] }],

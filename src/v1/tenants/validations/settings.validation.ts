@@ -5,6 +5,28 @@ export const getBusinessInfoValidation = {
   params: t.Object({
     tenantId: t.String(),
   }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Tenant'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -33,6 +55,28 @@ export const updateBusinessInfoValidation = {
     website: t.Optional(t.String({ example: updateBusinessInfoExample.website })),
     industry: t.Optional(t.String({ example: updateBusinessInfoExample.industry })),
   }, { examples: [updateBusinessInfoExample] }),
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      message: t.Optional(t.String()),
+      data: t.Optional(t.Record(t.String(), t.Any())),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
   detail: {
     tags: ['Tenant'],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
