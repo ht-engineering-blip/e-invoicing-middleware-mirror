@@ -98,6 +98,26 @@ export const updateKeyMapValidation = {
   },
 };
 
+export const updateReferenceKeyMapValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  body: t.Object({
+    eventType: t.String({
+      description: 'The event type (e.g. erp.creditnote.issued)'
+    }),
+    idKey: t.String({
+      description: 'Dot-notation path to the reference ID field in the webhook payload'
+    }),
+  }, { examples: [updateKeyMapExample] }),
+  detail: {
+    tags: ['Onboarding'],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
+    summary: 'Update Event Reference ID Key Mapping',
+    description: 'Add or update the mapping between an event type and its corresponding reference document ID extraction key.',
+  },
+};
+
 export const testWebhookValidation = {
   params: t.Object({
     tenantId: t.String(),
