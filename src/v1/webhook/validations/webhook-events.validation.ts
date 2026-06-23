@@ -1,3 +1,4 @@
+import { WebhookEventSchema } from '../../shared/validations/models.schema';
 import { t } from "elysia";
 
 export const listWebhookEventsValidation = {
@@ -15,7 +16,7 @@ export const listWebhookEventsValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Array(WebhookEventSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -48,7 +49,7 @@ export const getWebhookEventValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Array(WebhookEventSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

@@ -1,3 +1,4 @@
+import { InvoiceSchema } from "../../shared/validations/models.schema";
 import { t } from "elysia";
 import {
   SAMPLE_INVOICE_BODY,
@@ -29,7 +30,7 @@ export const generateIrnValidation = {
       message: t.Optional(t.String()),
       data: t.Object({
         irn: t.String(),
-        generated: t.Boolean()
+        generated: t.Boolean(),
       }),
     }),
     400: t.Object({
@@ -62,10 +63,12 @@ export const transformInvoiceValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
-      workflowState: t.Optional(t.Object({
-        transformed: t.Boolean()
-      }))
+      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
+      workflowState: t.Optional(
+        t.Object({
+          transformed: t.Boolean(),
+        }),
+      ),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -97,11 +100,13 @@ export const validateInvoiceValidation = {
       success: t.Boolean(),
       message: t.Optional(t.String()),
       valid: t.Optional(t.Boolean()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
       errors: t.Optional(t.Array(t.String())),
-      workflowState: t.Optional(t.Object({
-        validated: t.Boolean()
-      }))
+      workflowState: t.Optional(
+        t.Object({
+          validated: t.Boolean(),
+        }),
+      ),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -133,11 +138,13 @@ export const signInvoiceValidation = {
       success: t.Boolean(),
       message: t.Optional(t.String()),
       signed: t.Optional(t.Boolean()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
       errors: t.Optional(t.Array(t.String())),
-      workflowState: t.Optional(t.Object({
-        signed: t.Boolean()
-      }))
+      workflowState: t.Optional(
+        t.Object({
+          signed: t.Boolean(),
+        }),
+      ),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -179,8 +186,8 @@ export const generateQRValidation = {
         success: t.Boolean(),
         irn: t.String(),
         qrCode: t.String(),
-        encryptedData: t.Optional(t.Record(t.String(), t.Any()))
-      })
+        encryptedData: t.Optional(t.Record(t.String(), t.Any())),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -222,11 +229,15 @@ export const transmitInvoiceValidation = {
         success: t.Boolean(),
         irn: t.String(),
         transmitted: t.Boolean(),
-        data: t.Optional(t.Record(t.String(), t.Any())),
-        workflowState: t.Optional(t.Object({
-          transmitted: t.Boolean()
-        }))
-      })
+        data: t.Optional(
+          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
+        ),
+        workflowState: t.Optional(
+          t.Object({
+            transmitted: t.Boolean(),
+          }),
+        ),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -268,8 +279,10 @@ export const decryptInvoiceValidation = {
         success: t.Boolean(),
         irn: t.String(),
         decrypted: t.Boolean(),
-        data: t.Optional(t.Record(t.String(), t.Any()))
-      })
+        data: t.Optional(
+          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
+        ),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -312,8 +325,10 @@ export const acknowledgeInvoiceValidation = {
         success: t.Boolean(),
         irn: t.String(),
         acknowledged: t.Boolean(),
-        data: t.Optional(t.Record(t.String(), t.Any()))
-      })
+        data: t.Optional(
+          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
+        ),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -374,8 +389,10 @@ export const updateInvoiceStatusValidation = {
         invoiceType: t.String(),
         status: t.String(),
         updated: t.Boolean(),
-        metadata: t.Optional(t.Record(t.String(), t.Any()))
-      })
+        metadata: t.Optional(
+          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
+        ),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -481,8 +498,10 @@ export const reportVATValidation = {
         success: t.Boolean(),
         irn: t.String(),
         reported: t.Boolean(),
-        data: t.Optional(t.Record(t.String(), t.Any()))
-      })
+        data: t.Optional(
+          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
+        ),
+      }),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -521,15 +540,17 @@ export const confirmInvoiceStatusValidation = {
         irn: t.String(),
         found: t.Boolean(),
         message: t.Optional(t.String()),
-        firsStatus: t.Optional(t.Object({
-          paymentStatus: t.Optional(t.String()),
-          entryStatus: t.Optional(t.String()),
-          transmitted: t.Optional(t.Boolean()),
-          delivered: t.Optional(t.Boolean()),
-          issueDate: t.Optional(t.String()),
-          dueDate: t.Optional(t.String()),
-          syncDate: t.Optional(t.String())
-        }))
+        firsStatus: t.Optional(
+          t.Object({
+            paymentStatus: t.Optional(t.String()),
+            entryStatus: t.Optional(t.String()),
+            transmitted: t.Optional(t.Boolean()),
+            delivered: t.Optional(t.Boolean()),
+            issueDate: t.Optional(t.String()),
+            dueDate: t.Optional(t.String()),
+            syncDate: t.Optional(t.String()),
+          }),
+        ),
       }),
     }),
     400: t.Object({
