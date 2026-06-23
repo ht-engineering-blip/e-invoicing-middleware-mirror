@@ -1,3 +1,4 @@
+import { TeamMemberSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 import { acceptInviteExample, inviteMemberExample, updateMemberExample } from '../examples/team.examples';
 
@@ -12,7 +13,7 @@ export const acceptInviteValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -51,7 +52,7 @@ export const listTeamMembersValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -96,7 +97,7 @@ export const inviteTeamMemberValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -131,7 +132,7 @@ export const getTeamMemberValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -184,7 +185,7 @@ export const updateTeamMemberValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -219,7 +220,7 @@ export const removeTeamMemberValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -254,7 +255,7 @@ export const resendInviteValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TeamMemberSchema, t.Array(TeamMemberSchema), t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

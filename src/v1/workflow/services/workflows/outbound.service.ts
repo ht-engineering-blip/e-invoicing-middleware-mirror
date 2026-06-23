@@ -2,6 +2,7 @@ import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { generateUniqueHsnCode } from "../../utils/transformer/utils";
 
 export class OutboundWorkflowService {
   private tenantService: TenantService;
@@ -37,8 +38,8 @@ export class OutboundWorkflowService {
     console.log(error);
     let message =
       error?.errors &&
-        error?.errors?.response &&
-        error?.errors?.response?.public_message
+      error?.errors?.response &&
+      error?.errors?.response?.public_message
         ? error?.errors?.response?.public_message
         : "An error occured, please try again.";
     let code = error?.errors && error?.errors?.code ? error.errors.code : 500;
@@ -85,9 +86,42 @@ export class OutboundWorkflowService {
 
       // Step 1: Validate
       if (!wf.validated) {
-        const validatedInvoice = await firsService.validateInvoice(invoice);
+        let validatedInvoice;
+        let attempts = 0;
+        const maxAttempts = 3;
 
-        if (validatedInvoice.code !== 200 && !validatedInvoice?.data?.ok) {
+        while (attempts < maxAttempts) {
+          try {
+            validatedInvoice = await firsService.validateInvoice(invoice);
+            break;
+          } catch (error: any) {
+            attempts++;
+            const errorStr = String(error?.message || "").toLowerCase();
+
+            if (errorStr.includes("hsn") && attempts < maxAttempts) {
+              console.log(
+                `[OutboundService] Caught HSN code error from FIRS. Regenerating HSN codes and retrying (Attempt ${attempts + 1}/${maxAttempts})...`,
+              );
+
+              if (Array.isArray((invoice as any).invoice_line)) {
+                const usedHsnCodes = new Set<string>();
+                for (const line of (invoice as any).invoice_line) {
+                  line.hsn_code = generateUniqueHsnCode(usedHsnCodes);
+                }
+              }
+              // Wait 1 second before retrying
+              await new Promise((res) => setTimeout(res, 1000));
+              continue;
+            }
+            // If it's a different error or we exceeded max attempts, throw
+            throw error;
+          }
+        }
+
+        if (
+          !validatedInvoice ||
+          (validatedInvoice.code !== 200 && !validatedInvoice?.data?.ok)
+        ) {
           throw new Error("Invoice validation failed");
         }
 
@@ -129,7 +163,6 @@ export class OutboundWorkflowService {
         );
 
         console.log({ confirmedInvoice });
-
 
         if (confirmedInvoice.data.code !== 200) {
           throw new Error("Invoice confirmation failed");

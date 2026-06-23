@@ -1,3 +1,4 @@
+import { TenantSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 
 export const listEventsValidation = {
@@ -11,7 +12,7 @@ export const listEventsValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -47,7 +48,7 @@ export const listWorkflowActionsValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

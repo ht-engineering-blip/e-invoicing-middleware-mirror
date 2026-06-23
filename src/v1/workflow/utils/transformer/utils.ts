@@ -105,7 +105,24 @@ export function sanitizeHsnCode(val: any): string | undefined {
   const match = str.match(/^(\d+\.\d{2})/);
   if (match) return match[1];
 
-  return undefined;
+  return "0000.00";
+}
+
+/**
+ * Generates a random, valid FIRS HSN code (format 0000.00) that is guaranteed
+ * to be unique among the set of already generated codes for an invoice.
+ */
+export function generateUniqueHsnCode(existingCodes: Set<string>): string {
+  let code = "";
+  while (true) {
+    const random4Digits = Math.floor(1000 + Math.random() * 9000);
+    code = `${random4Digits}.00`;
+    if (!existingCodes.has(code)) {
+      existingCodes.add(code);
+      break;
+    }
+  }
+  return code;
 }
 
 export function generateIRN(

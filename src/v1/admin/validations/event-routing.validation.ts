@@ -1,3 +1,4 @@
+import { WebhookEventSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 import { addRouteExample, updateRouteExample, replaceRoutesExample } from '../examples/event-routing.examples';
 
@@ -17,7 +18,7 @@ export const getEventRoutingValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -50,7 +51,7 @@ export const addEventRouteValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -83,7 +84,7 @@ export const updateEventRouteValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -115,7 +116,7 @@ export const removeEventRouteValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -158,7 +159,7 @@ export const replaceEventRoutingValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -190,7 +191,7 @@ export const clearEventRoutingValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

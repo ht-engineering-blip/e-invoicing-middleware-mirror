@@ -1,3 +1,4 @@
+import { SystemConfigSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from '../../workflow/utils/defaults';
 
@@ -6,7 +7,7 @@ export const getFIRSDictionaryValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([SystemConfigSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -41,7 +42,7 @@ export const updateFIRSDictionaryValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([SystemConfigSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

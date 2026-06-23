@@ -1,3 +1,4 @@
+import { TenantSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 import { SchemaSourceType } from '../../workflow/models';
 import { testTransformExample, testValidateExample, testFullExample } from '../examples/sandbox.examples';
@@ -11,7 +12,7 @@ export const testTransformValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -45,7 +46,7 @@ export const testValidateValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -80,7 +81,7 @@ export const testFullValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),

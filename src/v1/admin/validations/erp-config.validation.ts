@@ -1,3 +1,4 @@
+import { TenantSchema } from '../../shared/validations/models.schema';
 import { t } from 'elysia';
 import { SchemaSourceType } from '../../workflow/models';
 
@@ -37,7 +38,7 @@ export const getERPDictionaryValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -70,13 +71,13 @@ export const addERPDictionaryValidation = {
       t.String(),
     ]),
     invoice: t.Any({ default: {} }),
-    metadata: t.Optional(t.Record(t.String(), t.Any())),
+    metadata: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
   }),
   response: {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Record(t.String(), t.Any())),
+      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
     }),
     400: t.Object({
       success: t.Boolean(),
