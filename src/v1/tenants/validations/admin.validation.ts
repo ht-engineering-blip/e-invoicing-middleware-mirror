@@ -1,5 +1,5 @@
-import { TenantSchema } from '../../shared/validations/models.schema';
-import { t } from 'elysia';
+import { TenantSchema } from "../../shared/validations/models.schema";
+import { t } from "elysia";
 import {
   apiKeyIdParamValidator,
   createApiKeyValidator,
@@ -9,8 +9,8 @@ import {
   revokeApiKeyValidator,
   tenantIdParamValidator,
   updateOnboardingStatusValidator,
-  updateTenantValidator
-} from '../utils/tenant.validators';
+  updateTenantValidator,
+} from "../utils/tenant.validators";
 
 export const createTenantValidation = {
   body: createTenantValidator,
@@ -18,7 +18,7 @@ export const createTenantValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -37,10 +37,11 @@ export const createTenantValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Create a new tenant',
-    description: 'Create a new tenant with business information and ERP configuration',
+    summary: "Create a new tenant",
+    description:
+      "Create a new tenant with business information and ERP configuration",
   },
 };
 
@@ -50,7 +51,7 @@ export const listTenantsValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -69,10 +70,10 @@ export const listTenantsValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'List all tenants',
-    description: 'Get paginated list of tenants with optional filtering',
+    summary: "List all tenants",
+    description: "Get paginated list of tenants with optional filtering",
   },
 };
 
@@ -82,7 +83,7 @@ export const getTenantByIdValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -101,10 +102,46 @@ export const getTenantByIdValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants', 'Tenant'],
+    tags: ["Admin - Tenants", "Tenant"],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
-    summary: 'Get tenant by ID',
-    description: 'Retrieve detailed information about a specific tenant',
+    summary: "Get tenant by ID",
+    description: "Retrieve detailed information about a specific tenant",
+  },
+};
+
+export const getKeyConfigValidation = {
+  params: tenantIdParamValidator,
+  response: {
+    200: t.Object({
+      success: t.Boolean(),
+      data: t.Object({
+        invoiceIdKey: t.String(),
+        idKeyMap: t.Record(t.String(), t.String()),
+        referenceIdKeyMap: t.Record(t.String(), t.String()),
+      }),
+    }),
+    400: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    404: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+    500: t.Object({
+      success: t.Boolean(),
+      error: t.String(),
+      statusCode: t.Optional(t.Number()),
+    }),
+  },
+  detail: {
+    tags: ["Onboarding"],
+    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    summary: "Get tenant key configuration",
+    description:
+      "Retrieve invoice ID key and ID mapping configurations for a specific tenant",
   },
 };
 
@@ -115,7 +152,7 @@ export const updateTenantValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -134,10 +171,11 @@ export const updateTenantValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Update tenant',
-    description: 'Update tenant information (business details, limits, features)',
+    summary: "Update tenant",
+    description:
+      "Update tenant information (business details, limits, features)",
   },
 };
 
@@ -147,7 +185,7 @@ export const activateTenantValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -166,10 +204,10 @@ export const activateTenantValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Activate tenant',
-    description: 'Activate a suspended tenant account',
+    summary: "Activate tenant",
+    description: "Activate a suspended tenant account",
   },
 };
 
@@ -179,7 +217,7 @@ export const suspendTenantValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -198,10 +236,10 @@ export const suspendTenantValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Suspend tenant',
-    description: 'Suspend a tenant account (reversible)',
+    summary: "Suspend tenant",
+    description: "Suspend a tenant account (reversible)",
   },
 };
 
@@ -211,7 +249,7 @@ export const deleteTenantValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -230,10 +268,10 @@ export const deleteTenantValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Delete tenant',
-    description: 'Permanently delete a tenant (use with caution)',
+    summary: "Delete tenant",
+    description: "Permanently delete a tenant (use with caution)",
   },
 };
 
@@ -244,7 +282,7 @@ export const updateOnboardingStatusValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -263,10 +301,10 @@ export const updateOnboardingStatusValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Update onboarding status',
-    description: 'Update the onboarding progress for a tenant',
+    summary: "Update onboarding status",
+    description: "Update the onboarding progress for a tenant",
   },
 };
 
@@ -277,7 +315,7 @@ export const createApiKeyValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -296,10 +334,10 @@ export const createApiKeyValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - API Keys'],
+    tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
-    summary: 'Create API key',
-    description: 'Generate a new API key for tenant authentication',
+    summary: "Create API key",
+    description: "Generate a new API key for tenant authentication",
   },
 };
 
@@ -309,7 +347,7 @@ export const listApiKeysValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -328,10 +366,10 @@ export const listApiKeysValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - API Keys'],
+    tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
-    summary: 'List API keys',
-    description: 'Get all API keys for a tenant',
+    summary: "List API keys",
+    description: "Get all API keys for a tenant",
   },
 };
 
@@ -342,7 +380,7 @@ export const revokeApiKeyValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -361,10 +399,10 @@ export const revokeApiKeyValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - API Keys'],
+    tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
-    summary: 'Revoke API key',
-    description: 'Permanently revoke an API key',
+    summary: "Revoke API key",
+    description: "Permanently revoke an API key",
   },
 };
 
@@ -378,7 +416,7 @@ export const rotateApiKeyValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -397,10 +435,11 @@ export const rotateApiKeyValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - API Keys'],
+    tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
-    summary: 'Rotate API key',
-    description: 'Revoke old API key and generate a new one. Tenant receives an email with the new key.',
+    summary: "Rotate API key",
+    description:
+      "Revoke old API key and generate a new one. Tenant receives an email with the new key.",
   },
 };
 
@@ -415,7 +454,7 @@ export const listAllApiKeysValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -434,10 +473,11 @@ export const listAllApiKeysValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - API Keys'],
+    tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
-    summary: 'List all API keys',
-    description: 'Get a list of all API keys across all tenants with filtering and pagination. Admin only.',
+    summary: "List all API keys",
+    description:
+      "Get a list of all API keys across all tenants with filtering and pagination. Admin only.",
   },
 };
 
@@ -452,7 +492,7 @@ export const listAllERPConfigsValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -471,10 +511,11 @@ export const listAllERPConfigsValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - ERP Integration'],
+    tags: ["Admin - ERP Integration"],
     security: [{ adminKey: [] }],
-    summary: 'List all ERP configurations',
-    description: 'Get a list of all ERP configurations across all tenants with filtering options',
+    summary: "List all ERP configurations",
+    description:
+      "Get a list of all ERP configurations across all tenants with filtering options",
   },
 };
 
@@ -485,7 +526,7 @@ export const configureERPSyncValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -504,23 +545,24 @@ export const configureERPSyncValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - ERP Integration', 'Tenant'],
+    tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
-    summary: 'Configure ERP sync',
-    description: 'Configure dynamic HTTP payload composition for ERP synchronization. Supports template-based request building with authentication, retries, and response mapping.',
+    summary: "Configure ERP sync",
+    description:
+      "Configure dynamic HTTP payload composition for ERP synchronization. Supports template-based request building with authentication, retries, and response mapping.",
   },
 };
 
 export const getERPSyncConfigValidation = {
   params: tenantIdParamValidator,
   query: t.Object({
-    decrypt: t.Optional(t.String({ default: 'true' })),
+    decrypt: t.Optional(t.String({ default: "true" })),
   }),
   response: {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -539,10 +581,11 @@ export const getERPSyncConfigValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - ERP Integration', 'Tenant'],
+    tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
-    summary: 'Get ERP sync configuration',
-    description: 'Retrieve the current ERP sync configuration with decrypted credentials',
+    summary: "Get ERP sync configuration",
+    description:
+      "Retrieve the current ERP sync configuration with decrypted credentials",
   },
 };
 
@@ -552,7 +595,7 @@ export const resendTenantTokenValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Array(TenantSchema), t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -571,9 +614,10 @@ export const resendTenantTokenValidation = {
     }),
   },
   detail: {
-    tags: ['Admin - Tenants'],
+    tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
-    summary: 'Resend Tenant Onboarding Token',
-    description: 'Admin trigger to check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.',
+    summary: "Resend Tenant Onboarding Token",
+    description:
+      "Admin trigger to check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.",
   },
 };

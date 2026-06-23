@@ -428,8 +428,9 @@ export const webhookRoutes = new Elysia({
           
       let erpInvoiceId = "";
       
-      if (idKeyMap && idKeyMap[eventType]) {
-        erpInvoiceId = String(getNestedValue(body, idKeyMap[eventType]) ?? "").trim();
+      const safeEventType = eventType.replace(/\./g, '_');
+      if (idKeyMap && idKeyMap[safeEventType]) {
+        erpInvoiceId = String(getNestedValue(body, idKeyMap[safeEventType]) ?? "").trim();
       } else {
         // Legacy fallback to prevent breaking existing integrations
         const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";

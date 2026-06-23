@@ -30,6 +30,7 @@ import {
   configureERPSyncValidation,
   getERPSyncConfigValidation,
   resendTenantTokenValidation,
+  getKeyConfigValidation,
 } from "../validations/admin.validation";
 import {
   updateKeyMapValidation,
@@ -634,12 +635,15 @@ const adminTenantRoutes = new Elysia({
           return { success: false, error: "Tenant not found" };
         }
 
-        const idKeyMap =
+        const rawIdKeyMap =
           tenant.config?.idKeyMap instanceof Map
-            ? tenant.config.idKeyMap
-            : new Map(Object.entries(tenant.config?.idKeyMap || {}));
+            ? Object.fromEntries(tenant.config.idKeyMap)
+            : tenant.config?.idKeyMap || {};
 
-        idKeyMap.set(body.eventType, body.idKey);
+        const idKeyMap = {
+          ...rawIdKeyMap,
+          [body.eventType.replace(/\./g, "_")]: body.idKey,
+        };
 
         const updatedConfig = {
           ...tenant.config,
@@ -661,6 +665,7 @@ const adminTenantRoutes = new Elysia({
           },
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,
@@ -700,7 +705,7 @@ const adminTenantRoutes = new Elysia({
             ? tenant.config.referenceIdKeyMap
             : new Map(Object.entries(tenant.config?.referenceIdKeyMap || {}));
 
-        referenceIdKeyMap.set(body.eventType, body.idKey);
+        referenceIdKeyMap.set(body.eventType.replace(/\./g, "_"), body.idKey);
 
         const updatedConfig = {
           ...tenant.config,
@@ -743,27 +748,45 @@ const adminTenantRoutes = new Elysia({
         onlyTenantAdmin(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId, true);
+        console.log({ tenant });
+
         if (!tenant) {
           set.status = 404;
           return { success: false, error: "Tenant not found" };
         }
 
-        const idKeyMap =
-          tenant.config?.idKeyMap instanceof Map
-            ? Object.fromEntries(tenant.config.idKeyMap)
-            : tenant.config?.idKeyMap || {};
+        const parseMap = (m: any) => {
+          if (!m) return {};
+          if (typeof m.entries === "function") {
+            return Object.fromEntries(m.entries());
+          }
+          return m;
+        };
 
-        const referenceIdKeyMap =
-          tenant.config?.referenceIdKeyMap instanceof Map
-            ? Object.fromEntries(tenant.config.referenceIdKeyMap)
-            : tenant.config?.referenceIdKeyMap || {};
+        const rawIdKeyMap = parseMap(tenant.config?.idKeyMap);
+
+        const idKeyMap = Object.fromEntries(
+          Object.entries(rawIdKeyMap).map(([k, v]) => [
+            k.replace(/_/g, "."),
+            v,
+          ]),
+        );
+
+        const rawRefIdKeyMap = parseMap(tenant.config?.referenceIdKeyMap);
+
+        const referenceIdKeyMap = Object.fromEntries(
+          Object.entries(rawRefIdKeyMap).map(([k, v]) => [
+            k.replace(/_/g, "."),
+            v,
+          ]),
+        );
 
         return {
           success: true,
           data: {
-            invoiceIdKey: tenant.config?.invoiceIdKey || "invoiceId",
-            idKeyMap,
-            referenceIdKeyMap,
+            invoiceIdKey: (tenant.config?.invoiceIdKey || "invoiceId") as string,
+            idKeyMap: idKeyMap as Record<string, string>,
+            referenceIdKeyMap: referenceIdKeyMap as Record<string, string>,
           },
         };
       } catch (error: any) {
@@ -774,7 +797,7 @@ const adminTenantRoutes = new Elysia({
         };
       }
     },
-    getTenantByIdValidation,
+    getKeyConfigValidation,
   )
 
   /**
