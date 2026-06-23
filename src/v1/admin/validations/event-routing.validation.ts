@@ -14,28 +14,7 @@ export const routeBodyValidator = t.Object({
 
 export const getEventRoutingValidation = {
   params: t.Object({ tenantId: t.String() }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],
@@ -47,28 +26,7 @@ export const getEventRoutingValidation = {
 export const addEventRouteValidation = {
   params: t.Object({ tenantId: t.String() }),
   body: routeBodyValidator,
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],
@@ -80,28 +38,7 @@ export const addEventRouteValidation = {
 export const updateEventRouteValidation = {
   params: t.Object({ tenantId: t.String(), routeId: t.String() }),
   body: t.Partial(routeBodyValidator, { examples: [updateRouteExample] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],
@@ -112,28 +49,7 @@ export const updateEventRouteValidation = {
 
 export const removeEventRouteValidation = {
   params: t.Object({ tenantId: t.String(), routeId: t.String() }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],
@@ -155,28 +71,7 @@ export const replaceEventRoutingValidation = {
       })
     ),
   }, { examples: [replaceRoutesExample] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],
@@ -187,28 +82,7 @@ export const replaceEventRoutingValidation = {
 
 export const clearEventRoutingValidation = {
   params: t.Object({ tenantId: t.String() }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([WebhookEventSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin - Event Routing'],
     security: [{ adminKey: [] }],

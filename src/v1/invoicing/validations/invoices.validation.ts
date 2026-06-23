@@ -24,31 +24,7 @@ export const generateIrnValidation = {
       examples: [generateIrnExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        irn: t.String(),
-        generated: t.Boolean(),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Generate IRN",
     description:
@@ -59,33 +35,7 @@ export const generateIrnValidation = {
 
 export const transformInvoiceValidation = {
   body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
-      workflowState: t.Optional(
-        t.Object({
-          transformed: t.Boolean(),
-        }),
-      ),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Transform Invoice",
     description: "Transform invoice to FIRS UBL format",
@@ -95,35 +45,7 @@ export const transformInvoiceValidation = {
 
 export const validateInvoiceValidation = {
   body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      valid: t.Optional(t.Boolean()),
-      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
-      errors: t.Optional(t.Array(t.String())),
-      workflowState: t.Optional(
-        t.Object({
-          validated: t.Boolean(),
-        }),
-      ),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Validate Invoice",
     description: "Validate invoice against FIRS requirements",
@@ -133,35 +55,7 @@ export const validateInvoiceValidation = {
 
 export const signInvoiceValidation = {
   body: t.Any({ default: {}, examples: [SAMPLE_INVOICE_BODY] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      signed: t.Optional(t.Boolean()),
-      data: t.Optional(t.Union([InvoiceSchema, t.Record(t.String(), t.Any())])),
-      errors: t.Optional(t.Array(t.String())),
-      workflowState: t.Optional(
-        t.Object({
-          signed: t.Boolean(),
-        }),
-      ),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Sign Invoice",
     description: "Sign the invoice using tenant FIRS credentials",
@@ -178,33 +72,7 @@ export const generateQRValidation = {
       examples: [irnOnlyExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        qrCode: t.String(),
-        encryptedData: t.Optional(t.Record(t.String(), t.Any())),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Generate QR Code",
     description: "Generate QR code for an invoice using tenant credentials",
@@ -221,40 +89,7 @@ export const transmitInvoiceValidation = {
       examples: [irnOnlyExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        transmitted: t.Boolean(),
-        data: t.Optional(
-          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
-        ),
-        workflowState: t.Optional(
-          t.Object({
-            transmitted: t.Boolean(),
-          }),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Transmit Invoice",
     description: "Transmit signed invoice to FIRS",
@@ -271,35 +106,7 @@ export const decryptInvoiceValidation = {
       examples: [irnOnlyExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        decrypted: t.Boolean(),
-        data: t.Optional(
-          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Decrypt Invoice",
     description: "Download and decrypt an inbound invoice from FIRS",
@@ -317,35 +124,7 @@ export const acknowledgeInvoiceValidation = {
       examples: [acknowledgeExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        acknowledged: t.Boolean(),
-        data: t.Optional(
-          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Acknowledge Invoice",
     description: "Acknowledge receipt of an inbound invoice",
@@ -379,37 +158,7 @@ export const updateInvoiceStatusValidation = {
       examples: [statusUpdateExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        invoiceType: t.String(),
-        status: t.String(),
-        updated: t.Boolean(),
-        metadata: t.Optional(
-          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Update Invoice Payment Status",
     description:
@@ -490,35 +239,7 @@ export const reportVATValidation = {
       examples: [vatReportExample],
     },
   ),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        reported: t.Boolean(),
-        data: t.Optional(
-          t.Union([InvoiceSchema, t.Record(t.String(), t.Any())]),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Report VAT Post-Payment",
     description:
@@ -531,44 +252,7 @@ export const confirmInvoiceStatusValidation = {
   params: t.Object({
     irn: t.String({ minLength: 1 }),
   }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Object({
-        success: t.Boolean(),
-        irn: t.String(),
-        found: t.Boolean(),
-        message: t.Optional(t.String()),
-        firsStatus: t.Optional(
-          t.Object({
-            paymentStatus: t.Optional(t.String()),
-            entryStatus: t.Optional(t.String()),
-            transmitted: t.Optional(t.Boolean()),
-            delivered: t.Optional(t.Boolean()),
-            issueDate: t.Optional(t.String()),
-            dueDate: t.Optional(t.String()),
-            syncDate: t.Optional(t.String()),
-          }),
-        ),
-      }),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     summary: "Confirm Invoice Status",
     description: "Confirm the status of an invoice on FIRS",
