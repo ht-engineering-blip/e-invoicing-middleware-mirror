@@ -8,28 +8,7 @@ export const testTransformValidation = {
     erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
     invoice: t.Any({ default: {}, examples: [testTransformExample.invoice] }),
   }, { examples: [testTransformExample] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin', 'Sandbox'],
     security: [{ adminKey: [] }],
@@ -42,28 +21,7 @@ export const testValidateValidation = {
   body: t.Object({
     invoice: t.Any({ default: {}, examples: [testValidateExample.invoice] }),
   }, { examples: [testValidateExample] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin', 'Sandbox'],
     security: [{ adminKey: [] }],
@@ -77,28 +35,7 @@ export const testFullValidation = {
     erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
     invoice: t.Any({ default: {}, examples: [testFullExample.invoice] }),
   }, { examples: [testFullExample] }),
-  response: {
-    200: t.Object({
-      success: t.Boolean(),
-      message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
-    }),
-    400: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    404: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-    500: t.Object({
-      success: t.Boolean(),
-      error: t.String(),
-      statusCode: t.Optional(t.Number()),
-    }),
-  },
+  
   detail: {
     tags: ['Admin', 'Sandbox'],
     security: [{ adminKey: [] }],
