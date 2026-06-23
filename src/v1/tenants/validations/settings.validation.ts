@@ -10,7 +10,7 @@ export const getBusinessInfoValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
@@ -86,7 +86,7 @@ export const updateBusinessInfoValidation = {
     200: t.Object({
       success: t.Boolean(),
       message: t.Optional(t.String()),
-      data: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
+      data: t.Optional(t.Record(t.String(), t.Any())),
     }),
     400: t.Object({
       success: t.Boolean(),
