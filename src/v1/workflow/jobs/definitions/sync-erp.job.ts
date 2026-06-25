@@ -192,20 +192,29 @@ export function registerSyncErpJob(): void {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
-      let derivedInvoiceType = "380";
+      let derivedInvoiceType = "";
 
-      if (!derivedInvoiceType && eventType) {
-        const typeStr = String(eventType).toLowerCase();
-        if (typeStr.includes("creditnote") || typeStr.includes("credit_note")) {
-          derivedInvoiceType = "381";
-        } else if (
-          typeStr.includes("debitnote") ||
-          typeStr.includes("debit_note")
-        ) {
-          derivedInvoiceType = "384";
-        } else {
-          derivedInvoiceType = "380";
-        }
+      const typeStr = (eventType ? String(eventType) : "").toLowerCase();
+      const payloadType = String(
+        context.originalPayload?.invoice?.type ?? 
+        context.originalPayload?.type ?? 
+        ""
+      ).toLowerCase();
+      
+      const combined = `${typeStr} ${payloadType}`;
+
+      if (combined.includes("creditnote") || combined.includes("credit_note") || combined.includes("credit note")) {
+        derivedInvoiceType = "381"; // Credit Note
+      } else if (combined.includes("debitnote") || combined.includes("debit_note") || combined.includes("debit note")) {
+        derivedInvoiceType = "384"; // Debit Note
+      } else if (combined.includes("self") && combined.includes("bill")) {
+        derivedInvoiceType = "385"; // Self Billed Invoice
+      } else if (combined.includes("factor")) {
+        derivedInvoiceType = "386"; // Factored Invoice
+      } else if (combined.includes("statement")) {
+        derivedInvoiceType = "388"; // Statement of Account
+      } else {
+        derivedInvoiceType = "380"; // Commercial Invoice
       }
 
       const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
