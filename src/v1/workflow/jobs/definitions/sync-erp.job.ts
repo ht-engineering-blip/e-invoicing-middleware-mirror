@@ -107,6 +107,7 @@ function renderBody(
 ): string | undefined {
   if (!bodyTemplate) return undefined;
   try {
+    logger.info("[Job:sync-erp] Rendering body template", { bodyTemplate });
     const compiled = Handlebars.compile(bodyTemplate, { noEscape: true });
     return compiled(data);
   } catch (err: any) {
@@ -192,29 +193,30 @@ export function registerSyncErpJob(): void {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
-      let derivedInvoiceType = "";
+      let invoiceType = "";
 
-      const typeStr = (eventType ? String(eventType) : "").toLowerCase();
-      const payloadType = String(
-        context.originalPayload?.invoice?.type ?? 
-        context.originalPayload?.type ?? 
-        ""
-      ).toLowerCase();
-      
-      const combined = `${typeStr} ${payloadType}`;
+      const event = eventType.toLowerCase();
 
-      if (combined.includes("creditnote") || combined.includes("credit_note") || combined.includes("credit note")) {
-        derivedInvoiceType = "381"; // Credit Note
-      } else if (combined.includes("debitnote") || combined.includes("debit_note") || combined.includes("debit note")) {
-        derivedInvoiceType = "384"; // Debit Note
-      } else if (combined.includes("self") && combined.includes("bill")) {
-        derivedInvoiceType = "385"; // Self Billed Invoice
-      } else if (combined.includes("factor")) {
-        derivedInvoiceType = "386"; // Factored Invoice
-      } else if (combined.includes("statement")) {
-        derivedInvoiceType = "388"; // Statement of Account
+      if (
+        event.includes("creditnote") ||
+        event.includes("credit_note") ||
+        event.includes("credit note")
+      ) {
+        invoiceType = "381"; // Credit Note
+      } else if (
+        event.includes("debitnote") ||
+        event.includes("debit_note") ||
+        event.includes("debit note")
+      ) {
+        invoiceType = "384"; // Debit Note
+      } else if (event.includes("self") && event.includes("bill")) {
+        invoiceType = "385"; // Self Billed Invoice
+      } else if (event.includes("factor")) {
+        invoiceType = "386"; // Factored Invoice
+      } else if (event.includes("statement")) {
+        invoiceType = "388"; // Statement of Account
       } else {
-        derivedInvoiceType = "380"; // Commercial Invoice
+        invoiceType = "380"; // Commercial Invoice
       }
 
       const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
@@ -222,7 +224,8 @@ export function registerSyncErpJob(): void {
         tenantId,
         jobChainId,
         qrCode,
-        invoiceType: derivedInvoiceType || "380",
+        invoiceType,
+        invoice_type: invoiceType, // Also pass snake_case for templates that use {{invoice_type}}
       });
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)
