@@ -367,8 +367,8 @@ export const webhookRoutes = new Elysia({
       // 4. Determine event type from payload or headers
       const eventType =
         headers["x-event-type"] ||
-        (body as any)?.event ||
-        (body as any)?.eventType ||
+        body?.event ||
+        body?.eventType ||
         WebhookEventType.INVOICE_RECEIVED;
 
       // 5. Resolve idempotency key
@@ -425,32 +425,21 @@ export const webhookRoutes = new Elysia({
         config?.idKeyMap instanceof Map
           ? Object.fromEntries(config.idKeyMap)
           : config?.idKeyMap;
-          
+
       let erpInvoiceId = "";
-      
-      const safeEventType = eventType.replace(/\./g, '_');
+
+      const safeEventType = eventType.replace(/\./g, "_");
       if (idKeyMap && idKeyMap[safeEventType]) {
-        erpInvoiceId = String(getNestedValue(body, idKeyMap[safeEventType]) ?? "").trim();
+        erpInvoiceId = String(
+          getNestedValue(body, idKeyMap[safeEventType]) ?? "",
+        ).trim();
       } else {
-        // Legacy fallback to prevent breaking existing integrations
         const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";
-        if (eventType === "erp.creditnote.issued" || eventType === "credit_note.created") {
-          erpInvoiceId = String(
-            getNestedValue(body, "creditNoteId") ??
-            getNestedValue(body, "credit_note_id") ??
-            getNestedValue(body, invoiceIdKey) ??
-            ""
-          ).trim();
-        } else {
-          erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
-        }
+        erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
       }
 
-      if (!erpInvoiceId) {
-        erpInvoiceId = generateRandomString(10);
-      }
+      if (!erpInvoiceId) erpInvoiceId = generateRandomString(10);
 
-      console.log({ erpInvoiceId });
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
@@ -501,9 +490,8 @@ export const webhookRoutes = new Elysia({
           eventId,
           eventType,
           payload: body,
-          resourceId:
-            irn ?? (body as any)?.irn ?? (body as any)?.resourceId ?? eventId,
-          resourceType: (body as any)?.resourceType || "invoice",
+          resourceId: irn ?? body?.irn ?? body?.resourceId ?? eventId,
+          resourceType: body?.resourceType || "invoice",
           webhookUrl: tenant.metadata?.webhookUrl || "",
           status: WebhookDeliveryStatus.DELIVERED,
           deliveryAttempts: [

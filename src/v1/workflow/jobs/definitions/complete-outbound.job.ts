@@ -118,7 +118,7 @@ export function registerCompleteOutboundJob(): void {
           irn,
         });
       } catch (err: any) {
-        const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+        const { context } = job.attrs.data;
         await outboundRepo.update(context.irn!, {
           status: OutboundInvoiceStatus.FAILED,
         });
