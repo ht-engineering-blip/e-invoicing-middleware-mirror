@@ -196,6 +196,7 @@ export function registerSyncErpJob(): void {
         tenantId,
         jobChainId,
         qrCode,
+        invoiceType: context.transformedInvoice?.invoice_type_code,
       });
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)

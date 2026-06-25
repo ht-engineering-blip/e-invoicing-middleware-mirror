@@ -1,10 +1,20 @@
 import { AuthContext } from "../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../../v1/workflow/models";
 import { TransformWorkflowService } from "../../../v1/workflow/services/workflows/transform.service";
-import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from "../../../v1/workflow/utils/defaults";
-import { generateDatestamp, generateIRN } from "../../../v1/workflow/utils/transformer/utils";
+import {
+  FIRS_INVOICE_METADATA,
+  FIRS_INVOICE_SCHEMA,
+} from "../../../v1/workflow/utils/defaults";
+import {
+  generateDatestamp,
+  generateIRN,
+} from "../../../v1/workflow/utils/transformer/utils";
 
-export const DICTIONARY_PROMPT = (erp: string, payload: any, format: string = "CSV") => `
+export const DICTIONARY_PROMPT = (
+  erp: string,
+  payload: any,
+  format: string = "CSV",
+) => `
 You are an Expert ${erp} ERP Data Analyst & Schema Extractor. Extract a complete field dictionary from an invoice payload.
 
 # Input:
@@ -39,161 +49,191 @@ Valid ${format} list of objects with the following fields/keys: field_id,field_p
 If payload is invalid/empty: Output ${format} fields only
 `;
 
-
 /**
  * Format schema fields into a readable mapping guide for the LLM
  */
-export const formatSchemaFields = (fields: ISchemaField[], schemaName: string): string => {
-    if (!fields || fields.length === 0) {
-        return `No fields defined for ${schemaName}`;
-    }
+export const formatSchemaFields = (
+  fields: ISchemaField[],
+  schemaName: string,
+): string => {
+  if (!fields || fields.length === 0) {
+    return `No fields defined for ${schemaName}`;
+  }
 
-    const fieldLines = fields.map(field => {
-        const required = field.is_required || field.validation_rules!.indexOf('required') > -1 ? 'REQUIRED' : 'optional';
-        const format = field.format ? ` (format: ${field.format})` : '';
-        const validation = field.validation_rules ? ` [${field.validation_rules}]` : '';
-        const example = field.example_value !== undefined ? ` e.g., ${JSON.stringify(field.example_value)}` : '';
+  const fieldLines = fields.map((field) => {
+    const required =
+      field.is_required || field.validation_rules!.indexOf("required") > -1
+        ? "REQUIRED"
+        : "optional";
+    const format = field.format ? ` (format: ${field.format})` : "";
+    const validation = field.validation_rules
+      ? ` [${field.validation_rules}]`
+      : "";
+    const example =
+      field.example_value !== undefined
+        ? ` e.g., ${JSON.stringify(field.example_value)}`
+        : "";
 
-        return `  - ${field.field_id}: ${field.data_type}${format} | path: ${field.field_path} | ${required}${validation}${example}`;
-    });
+    return `  - ${field.field_id}: ${field.data_type}${format} | path: ${field.field_path} | ${required}${validation}${example}`;
+  });
 
-    return fieldLines.join('\n');
+  return fieldLines.join("\n");
 };
 
 /**
  * Extract required fields from schema
  */
 export const getRequiredFields = (fields: ISchemaField[]): string[] => {
-    return fields
-        .filter(f => f.is_required || f.validation_rules!.indexOf('required') > -1)
-        .map(f => f.field_id);
+  return fields
+    .filter(
+      (f) => f.is_required || f.validation_rules!.indexOf("required") > -1,
+    )
+    .map((f) => f.field_id);
 };
 
 /**
  * Extract optional fields from schema
  */
 export const getOptionalFields = (fields: ISchemaField[]): string[] => {
-    return fields
-        .filter(f => !f.is_required)
-        .map(f => f.field_id);
+  return fields.filter((f) => !f.is_required).map((f) => f.field_id);
 };
 
 /**
  * FIRS Tax Categories reference
  */
-export const FIRS_TAX_CATEGORIES: { code: string; value: string; percent: number }[] = [
-    { "code": "STANDARD_GST",         "value": "Standard Goods and Services Tax",  "percent": 7.5  },
-    { "code": "REDUCED_GST",           "value": "Reduced Goods and Services Tax",   "percent": 5.0  },
-    { "code": "ZERO_GST",              "value": "Zero Goods and Services Tax",      "percent": 0.0  },
-    { "code": "STANDARD_VAT",          "value": "Standard Value-Added Tax",         "percent": 7.5  },
-    { "code": "REDUCED_VAT",           "value": "Reduced Value-Added Tax",          "percent": 5.0  },
-    { "code": "ZERO_VAT",              "value": "Zero Value-Added Tax",             "percent": 0.0  },
-    { "code": "STATE_SALES_TAX",       "value": "State Sales Tax",                  "percent": 0.0  },
-    { "code": "LOCAL_SALES_TAX",       "value": "Local Sales Tax",                  "percent": 0.0  },
-    { "code": "ALCOHOL_EXCISE_TAX",    "value": "Alcohol Excise Tax",               "percent": 20.0 },
-    { "code": "TOBACCO_EXCISE_TAX",    "value": "Tobacco Excise Tax",               "percent": 20.0 },
-    { "code": "FUEL_EXCISE_TAX",       "value": "Fuel Excise Tax",                  "percent": 0.0  },
-    { "code": "CORPORATE_INCOME_TAX",  "value": "Corporate Income Tax",             "percent": 30.0 },
-    { "code": "PERSONAL_INCOME_TAX",   "value": "Personal Income Tax",              "percent": 24.0 },
-    { "code": "SOCIAL_SECURITY_TAX",   "value": "Social Security Tax",              "percent": 0.0  },
-    { "code": "MEDICARE_TAX",          "value": "Medicare Tax",                     "percent": 0.0  },
-    { "code": "REAL_ESTATE_TAX",       "value": "Real Estate Tax",                  "percent": 0.0  },
-    { "code": "PERSONAL_PROPERTY_TAX", "value": "Personal Property Tax",            "percent": 0.0  },
-    { "code": "CARBON_TAX",            "value": "Carbon Tax",                       "percent": 0.0  },
-    { "code": "PLASTIC_TAX",           "value": "Plastic Tax",                      "percent": 0.0  },
-    { "code": "IMPORT_DUTY",           "value": "Import Duty",                      "percent": 0.0  },
-    { "code": "EXPORT_DUTY",           "value": "Export Duty",                      "percent": 0.0  },
-    { "code": "LUXURY_TAX",            "value": "Luxury Tax",                       "percent": 0.0  },
-    { "code": "SERVICE_TAX",           "value": "Service Tax",                      "percent": 0.0  },
-    { "code": "TOURISM_TAX",           "value": "Tourism Tax",                      "percent": 0.0  },
-    { "code": "WITHHOLDING_TAX",       "value": "Withholding Tax",                  "percent": 10.0 },
-    { "code": "STAMP_DUTY",            "value": "Stamp Duty",                       "percent": 0.0  },
-    { "code": "EXEMPTED",              "value": "Tax Exemption",                    "percent": 0.0  },
-  ];
+export const FIRS_TAX_CATEGORIES: {
+  code: string;
+  value: string;
+  percent: number;
+}[] = [
+  {
+    code: "STANDARD_GST",
+    value: "Standard Goods and Services Tax",
+    percent: 7.5,
+  },
+  {
+    code: "REDUCED_GST",
+    value: "Reduced Goods and Services Tax",
+    percent: 5.0,
+  },
+  { code: "ZERO_GST", value: "Zero Goods and Services Tax", percent: 0.0 },
+  { code: "STANDARD_VAT", value: "Standard Value-Added Tax", percent: 7.5 },
+  { code: "REDUCED_VAT", value: "Reduced Value-Added Tax", percent: 5.0 },
+  { code: "ZERO_VAT", value: "Zero Value-Added Tax", percent: 0.0 },
+  { code: "STATE_SALES_TAX", value: "State Sales Tax", percent: 0.0 },
+  { code: "LOCAL_SALES_TAX", value: "Local Sales Tax", percent: 0.0 },
+  { code: "ALCOHOL_EXCISE_TAX", value: "Alcohol Excise Tax", percent: 20.0 },
+  { code: "TOBACCO_EXCISE_TAX", value: "Tobacco Excise Tax", percent: 20.0 },
+  { code: "FUEL_EXCISE_TAX", value: "Fuel Excise Tax", percent: 0.0 },
+  {
+    code: "CORPORATE_INCOME_TAX",
+    value: "Corporate Income Tax",
+    percent: 30.0,
+  },
+  { code: "PERSONAL_INCOME_TAX", value: "Personal Income Tax", percent: 24.0 },
+  { code: "SOCIAL_SECURITY_TAX", value: "Social Security Tax", percent: 0.0 },
+  { code: "MEDICARE_TAX", value: "Medicare Tax", percent: 0.0 },
+  { code: "REAL_ESTATE_TAX", value: "Real Estate Tax", percent: 0.0 },
+  {
+    code: "PERSONAL_PROPERTY_TAX",
+    value: "Personal Property Tax",
+    percent: 0.0,
+  },
+  { code: "CARBON_TAX", value: "Carbon Tax", percent: 0.0 },
+  { code: "PLASTIC_TAX", value: "Plastic Tax", percent: 0.0 },
+  { code: "IMPORT_DUTY", value: "Import Duty", percent: 0.0 },
+  { code: "EXPORT_DUTY", value: "Export Duty", percent: 0.0 },
+  { code: "LUXURY_TAX", value: "Luxury Tax", percent: 0.0 },
+  { code: "SERVICE_TAX", value: "Service Tax", percent: 0.0 },
+  { code: "TOURISM_TAX", value: "Tourism Tax", percent: 0.0 },
+  { code: "WITHHOLDING_TAX", value: "Withholding Tax", percent: 10.0 },
+  { code: "STAMP_DUTY", value: "Stamp Duty", percent: 0.0 },
+  { code: "EXEMPTED", value: "Tax Exemption", percent: 0.0 },
+];
 
 /* FIRS Invoice Types reference */
 export const FIRS_INVOICE_TYPES = [
-    {
-        "code": "380",
-        "value": "Commercial Invoice"
-    },
-    {
-        "code": "381",
-        "value": "Credit Note"
-    },
-    {
-        "code": "384",
-        "value": "Debit Note"
-    },
-    {
-        "code": "385",
-        "value": "Self Billed Invoice"
-    },
-    {
-        "code": "386",
-        "value": "Factored Invoice"
-    },
-    {
-        "code": "388",
-        "value": "Statement of Account"
-    },
-    {
-        "code": "389",
-        "value": "Purchase Order"
-    },
-    {
-        "code": "390",
-        "value": "Proforma Invoice"
-    },
-    {
-        "code": "392",
-        "value": "Consignment Invoice"
-    },
-    {
-        "code": "393",
-        "value": "Self-billed Credit Note"
-    },
-    {
-        "code": "394",
-        "value": "Self-billed Invoice"
-    },
-    {
-        "code": "395",
-        "value": "Credit Note Request"
-    },
-    {
-        "code": "396",
-        "value": "Invoice Request"
-    },
-    {
-        "code": "397",
-        "value": "Final Settlement"
-    },
-    {
-        "code": "399",
-        "value": "Bill of Lading"
-    },
-    {
-        "code": "400",
-        "value": "Waybill"
-    },
-    {
-        "code": "402",
-        "value": "Shipping Instructions"
-    },
-    {
-        "code": "404",
-        "value": "Certificate of Origin"
-    },
-    {
-        "code": "406",
-        "value": "Customs Declaration"
-    },
-    {
-        "code": "408",
-        "value": "Packing List"
-    }
-]
+  {
+    code: "380",
+    value: "Commercial Invoice",
+  },
+  {
+    code: "381",
+    value: "Credit Note",
+  },
+  {
+    code: "384",
+    value: "Debit Note",
+  },
+  {
+    code: "385",
+    value: "Self Billed Invoice",
+  },
+  {
+    code: "386",
+    value: "Factored Invoice",
+  },
+  {
+    code: "388",
+    value: "Statement of Account",
+  },
+  {
+    code: "389",
+    value: "Purchase Order",
+  },
+  {
+    code: "390",
+    value: "Proforma Invoice",
+  },
+  {
+    code: "392",
+    value: "Consignment Invoice",
+  },
+  {
+    code: "393",
+    value: "Self-billed Credit Note",
+  },
+  {
+    code: "394",
+    value: "Self-billed Invoice",
+  },
+  {
+    code: "395",
+    value: "Credit Note Request",
+  },
+  {
+    code: "396",
+    value: "Invoice Request",
+  },
+  {
+    code: "397",
+    value: "Final Settlement",
+  },
+  {
+    code: "399",
+    value: "Bill of Lading",
+  },
+  {
+    code: "400",
+    value: "Waybill",
+  },
+  {
+    code: "402",
+    value: "Shipping Instructions",
+  },
+  {
+    code: "404",
+    value: "Certificate of Origin",
+  },
+  {
+    code: "406",
+    value: "Customs Declaration",
+  },
+  {
+    code: "408",
+    value: "Packing List",
+  },
+];
 
 /**
  * Generate transformation prompt using schemas from database
@@ -204,67 +244,71 @@ export const FIRS_INVOICE_TYPES = [
  * @param mappingRules - Mapping Rules customized for current client
  */
 export const SYSTEM_PROMPT_V2 = (
-    invoice: any,
-    authContext?: AuthContext,
-    sourceSchema?: ISchemaField[],
-    firsSchema?: ISchemaField[],
-    mappingRules?: Array<Record<string, any>>,
-    metaContext?: string
+  invoice: any,
+  authContext?: AuthContext,
+  sourceSchema?: ISchemaField[],
+  firsSchema?: ISchemaField[],
+  mappingRules?: Array<Record<string, any>>,
+  metaContext?: string,
 ): string => {
-    const today = new Date().toISOString().slice(0, 10);
-    const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-    let irn = generateIRN(
-        invoiceRef,
-        authContext?.serviceId,
-        invoice.issueDate ? new Date(invoice.issueDate) : undefined,
-    );
-    // Build source schema section
-    let sourceSchemaSection = '';
-    if (sourceSchema && sourceSchema.length > 0) {
-        const sourceRequired = getRequiredFields(sourceSchema);
-        const sourceOptional = getOptionalFields(sourceSchema);
-        sourceSchemaSection = `
+  const today = new Date().toISOString().slice(0, 10);
+  const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(
+    Math.random() * 1000,
+  )
+    .toString()
+    .padStart(3, "0")}`;
+  let irn = generateIRN(
+    invoiceRef,
+    authContext?.serviceId,
+    invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+  );
+  // Build source schema section
+  let sourceSchemaSection = "";
+  if (sourceSchema && sourceSchema.length > 0) {
+    const sourceRequired = getRequiredFields(sourceSchema);
+    const sourceOptional = getOptionalFields(sourceSchema);
+    sourceSchemaSection = `
 ## SOURCE ERP SCHEMA FIELDS:
-${formatSchemaFields(sourceSchema, 'Source ERP')}
+${formatSchemaFields(sourceSchema, "Source ERP")}
 
-Source Required Fields: ${sourceRequired.join(', ') || 'None specified'}
-Source Optional Fields: ${sourceOptional.join(', ') || 'None specified'}
+Source Required Fields: ${sourceRequired.join(", ") || "None specified"}
+Source Optional Fields: ${sourceOptional.join(", ") || "None specified"}
 `;
-    }
+  }
 
-    // Build FIRS schema section
-    let firsSchemaSection = '';
-    if (firsSchema && firsSchema.length > 0) {
-        const firsRequired = getRequiredFields(firsSchema);
-        const firsOptional = getOptionalFields(firsSchema);
-        firsSchemaSection = `
+  // Build FIRS schema section
+  let firsSchemaSection = "";
+  if (firsSchema && firsSchema.length > 0) {
+    const firsRequired = getRequiredFields(firsSchema);
+    const firsOptional = getOptionalFields(firsSchema);
+    firsSchemaSection = `
 ## TARGET FIRS UBL SCHEMA FIELDS:
-${formatSchemaFields(firsSchema, 'FIRS UBL')}
+${formatSchemaFields(firsSchema, "FIRS UBL")}
 
-FIRS Required Fields: ${firsRequired.join(', ') || 'None specified'}
-FIRS Optional Fields: ${firsOptional.join(', ') || 'None specified'}
+FIRS Required Fields: ${firsRequired.join(", ") || "None specified"}
+FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
 `;
-    }
-    // Build business context section
-    let businessContext = '';
-    if (authContext) {
-        irn = generateIRN(
-        invoiceRef,
-        authContext?.serviceId,
-        invoice.issueDate ? new Date(invoice.issueDate) : undefined,
-    )
-        businessContext = `
+  }
+  // Build business context section
+  let businessContext = "";
+  if (authContext) {
+    irn = generateIRN(
+      invoiceRef,
+      authContext?.serviceId,
+      invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+    );
+    businessContext = `
             ## BUSINESS CONTEXT:
-            - Business ID: ${authContext.businessId || '{{TEST_BUSINESS_ID}}'}
-            - Tenant ID: ${authContext.tenantId || 'N/A'}
+            - Business ID: ${authContext.businessId || "{{TEST_BUSINESS_ID}}"}
+            - Tenant ID: ${authContext.tenantId || "N/A"}
             - Tenant Business Name: ${authContext.businessName}
             - Tenant Business TIN: ${authContext.businessTIN}
             - Service ID: ${authContext?.serviceId}
             - Default IRN: ${irn}
             `;
-    }
+  }
 
-    return `You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
+  return `You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
 
 ${businessContext}
 ${sourceSchemaSection}
@@ -273,7 +317,7 @@ ${firsSchemaSection}
 # FIRS INVOICE TRANSFORMATION RULES
 
 ## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
-- business_id: Use "${authContext?.businessId || '{{TEST_BUSINESS_ID}}'}"
+- business_id: Use "${authContext?.businessId || "{{TEST_BUSINESS_ID}}"}"
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
@@ -354,7 +398,7 @@ ${JSON.stringify(mappingRules)}
 ## INPUT INVOICE DATA TO TRANSFORM:
 ${JSON.stringify(invoice, null, 2)}
 
-${metaContext|| ""}
+${metaContext || ""}
 
 Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON.`;
 };
@@ -366,37 +410,47 @@ Transform the input data to match the FIRS UBL schema exactly. Return only valid
  * @param sourceType - The source ERP type (e.g., SAP, ORACLE, ZOHO)
  */
 export const generateTransformPrompt = async (
-    invoice: any,
-    authContext?: AuthContext,
-    sourceType?: SchemaSourceType | string,
-    sourceSchema?: ISchemaField[] | undefined,
-     metaContext?: string
+  invoice: any,
+  authContext?: AuthContext,
+  sourceType?: SchemaSourceType | string,
+  sourceSchema?: ISchemaField[] | undefined,
+  metaContext?: string,
 ): Promise<string> => {
-    const transformService = new TransformWorkflowService();
+  const transformService = new TransformWorkflowService();
 
-    //let sourceSchema: ISchemaField[] = [];
-    let mappingRules: Array<Record<string, any>> = [];
-    let firsSchema: ISchemaField[] = [];
+  //let sourceSchema: ISchemaField[] = [];
+  let mappingRules: Array<Record<string, any>> = [];
+  let firsSchema: ISchemaField[] = [];
 
-    try {
-        // Fetch source ERP schema if source type is provided
-        if (!sourceSchema && sourceType) {
-            const sourceSchemaDoc = await transformService.getInvoiceSchema(sourceType);
-            if (sourceSchemaDoc) {
-                sourceSchema = sourceSchemaDoc.fields;
-                mappingRules = sourceSchemaDoc.mapping_rules || []
-            }
-        }  
-
-        // Fetch FIRS UBL schema
-        const firsSchemaDoc = await transformService.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
-        if (firsSchemaDoc) {
-            firsSchema = firsSchemaDoc.fields;
-        }
-    } catch (error) {
-        console.error('Error fetching schemas for prompt generation:', error);
-        // Continue with empty schemas - prompt will use defaults
+  try {
+    // Fetch source ERP schema if source type is provided
+    if (!sourceSchema && sourceType) {
+      const sourceSchemaDoc =
+        await transformService.getInvoiceSchema(sourceType);
+      if (sourceSchemaDoc) {
+        sourceSchema = sourceSchemaDoc.fields;
+        mappingRules = sourceSchemaDoc.mapping_rules || [];
+      }
     }
 
-    return SYSTEM_PROMPT_V2(invoice, authContext, sourceSchema, firsSchema, mappingRules, metaContext);
+    // Fetch FIRS UBL schema
+    const firsSchemaDoc = await transformService.getInvoiceSchema(
+      SchemaSourceType.FIRS_UBL,
+    );
+    if (firsSchemaDoc) {
+      firsSchema = firsSchemaDoc.fields;
+    }
+  } catch (error) {
+    console.error("Error fetching schemas for prompt generation:", error);
+    // Continue with empty schemas - prompt will use defaults
+  }
+
+  return SYSTEM_PROMPT_V2(
+    invoice,
+    authContext,
+    sourceSchema,
+    firsSchema,
+    mappingRules,
+    metaContext,
+  );
 };
