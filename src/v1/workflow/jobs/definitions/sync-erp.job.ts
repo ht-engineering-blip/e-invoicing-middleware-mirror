@@ -77,13 +77,14 @@ function applyQueryParams(
 
   if (
     queryParams instanceof Map ||
-    (typeof queryParams.entries === "function" && typeof queryParams.get === "function")
+    (typeof queryParams.entries === "function" &&
+      typeof queryParams.get === "function")
   ) {
     entries = Array.from(queryParams.entries());
   } else if (typeof queryParams === "object") {
     // Safely exclude internal Mongoose properties like $__parent, $__path
     entries = Object.entries(queryParams).filter(
-      ([k]) => !k.startsWith("$__")
+      ([k]) => !k.startsWith("$__"),
     ) as [string, string][];
   }
 
@@ -139,7 +140,7 @@ function applyResponseMapping(
 
 export function registerSyncErpJob(): void {
   agenda.define("workflow:sync-erp", async (job: Job<JobChainData>) => {
-    const { tenantId, context, jobChainId } = job.attrs.data;
+    const { tenantId, context, jobChainId, eventType } = job.attrs.data;
 
     logger.info("[Job:sync-erp] Starting", { jobChainId, tenantId });
 
@@ -191,12 +192,28 @@ export function registerSyncErpJob(): void {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
+      let derivedInvoiceType = "380";
+
+      if (!derivedInvoiceType && eventType) {
+        const typeStr = String(eventType).toLowerCase();
+        if (typeStr.includes("creditnote") || typeStr.includes("credit_note")) {
+          derivedInvoiceType = "381";
+        } else if (
+          typeStr.includes("debitnote") ||
+          typeStr.includes("debit_note")
+        ) {
+          derivedInvoiceType = "384";
+        } else {
+          derivedInvoiceType = "380";
+        }
+      }
+
       const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
         ...context,
         tenantId,
         jobChainId,
         qrCode,
-        invoiceType: context.transformedInvoice?.invoice_type_code,
+        invoiceType: derivedInvoiceType || "380",
       });
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)
