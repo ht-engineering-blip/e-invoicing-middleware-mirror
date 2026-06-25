@@ -77,13 +77,14 @@ function applyQueryParams(
 
   if (
     queryParams instanceof Map ||
-    (typeof queryParams.entries === "function" && typeof queryParams.get === "function")
+    (typeof queryParams.entries === "function" &&
+      typeof queryParams.get === "function")
   ) {
     entries = Array.from(queryParams.entries());
   } else if (typeof queryParams === "object") {
     // Safely exclude internal Mongoose properties like $__parent, $__path
     entries = Object.entries(queryParams).filter(
-      ([k]) => !k.startsWith("$__")
+      ([k]) => !k.startsWith("$__"),
     ) as [string, string][];
   }
 
@@ -139,7 +140,7 @@ function applyResponseMapping(
 
 export function registerSyncErpJob(): void {
   agenda.define("workflow:sync-erp", async (job: Job<JobChainData>) => {
-    const { tenantId, context, jobChainId } = job.attrs.data;
+    const { tenantId, context, jobChainId, eventType } = job.attrs.data;
 
     logger.info("[Job:sync-erp] Starting", { jobChainId, tenantId });
 
@@ -191,12 +192,37 @@ export function registerSyncErpJob(): void {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
+      let derivedInvoiceType = "";
+
+      const typeStr = (eventType ? String(eventType) : "").toLowerCase();
+      const payloadType = String(
+        context.originalPayload?.invoice?.type ?? 
+        context.originalPayload?.type ?? 
+        ""
+      ).toLowerCase();
+      
+      const combined = `${typeStr} ${payloadType}`;
+
+      if (combined.includes("creditnote") || combined.includes("credit_note") || combined.includes("credit note")) {
+        derivedInvoiceType = "381"; // Credit Note
+      } else if (combined.includes("debitnote") || combined.includes("debit_note") || combined.includes("debit note")) {
+        derivedInvoiceType = "384"; // Debit Note
+      } else if (combined.includes("self") && combined.includes("bill")) {
+        derivedInvoiceType = "385"; // Self Billed Invoice
+      } else if (combined.includes("factor")) {
+        derivedInvoiceType = "386"; // Factored Invoice
+      } else if (combined.includes("statement")) {
+        derivedInvoiceType = "388"; // Statement of Account
+      } else {
+        derivedInvoiceType = "380"; // Commercial Invoice
+      }
+
       const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
         ...context,
         tenantId,
         jobChainId,
         qrCode,
-        invoiceType: context.transformedInvoice?.invoice_type_code,
+        invoiceType: derivedInvoiceType || "380",
       });
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)
