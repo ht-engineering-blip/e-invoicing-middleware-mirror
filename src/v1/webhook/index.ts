@@ -434,30 +434,12 @@ export const webhookRoutes = new Elysia({
           getNestedValue(body, idKeyMap[safeEventType]) ?? "",
         ).trim();
       } else {
-        // Legacy fallback to prevent breaking existing integrations
         const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";
-        if (
-          eventType === "erp.creditnote.issued" ||
-          eventType === "credit_note.created"
-        ) {
-          erpInvoiceId = String(
-            getNestedValue(body, "creditNoteId") ??
-              getNestedValue(body, "credit_note_id") ??
-              getNestedValue(body, invoiceIdKey) ??
-              "",
-          ).trim();
-        } else {
-          erpInvoiceId = String(
-            getNestedValue(body, invoiceIdKey) ?? "",
-          ).trim();
-        }
+        erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
       }
 
-      if (!erpInvoiceId) {
-        erpInvoiceId = generateRandomString(10);
-      }
+      if (!erpInvoiceId) erpInvoiceId = generateRandomString(10);
 
-      console.log({ erpInvoiceId });
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
