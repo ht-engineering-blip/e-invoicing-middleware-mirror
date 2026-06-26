@@ -12,7 +12,11 @@ import { scheduleJobChain } from "../workflow/jobs/orchestrator";
 import { OutboundInvoiceSource } from "../workflow/models/outbound-invoice.model";
 import { OutboundInvoiceRepository } from "../workflow/repos/outbound-invoice.repo";
 import { generateIRN } from "../workflow/utils/transformer/utils";
-import { WebhookDeliveryStatus, WebhookEventType } from "./models";
+import {
+  ErpEventType,
+  WebhookDeliveryStatus,
+  WebhookEventType,
+} from "./models";
 import { WebhookEventRepository } from "./repos/webhook-event.repo";
 import { WebhookNonceRepository } from "./repos/webhook-nonce.repo";
 
@@ -428,8 +432,10 @@ export const webhookRoutes = new Elysia({
 
       let erpInvoiceId = "";
 
+      const useIdKeyMap = [ErpEventType.CREDIT_NOTE_ISSUED];
+
       const safeEventType = eventType.replace(/\./g, "_");
-      if (idKeyMap && idKeyMap[safeEventType]) {
+      if (useIdKeyMap.includes(eventType)) {
         erpInvoiceId = String(
           getNestedValue(body, idKeyMap[safeEventType]) ?? "",
         ).trim();
