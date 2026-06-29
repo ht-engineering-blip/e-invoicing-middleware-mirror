@@ -10,6 +10,7 @@ import { tenantRoutes, teamPublicRoutes } from './tenants';
 import { adminModuleRoutes } from './admin';
 import openapi from '@elysiajs/openapi'; 
 import qrMgmtRoutes from './invoicing/routes/qr.routes';
+import { eventsRoutes } from './events';
 
 export const v1Routes = new Elysia({ prefix: '/v1' })
   .use
@@ -19,7 +20,28 @@ export const v1Routes = new Elysia({ prefix: '/v1' })
         documentation: {
           info: {
             title: 'E-Invoicing Middleware API',
-            description: 'Middleware for HT Invoicing - NRS SI & APP connection',
+            description: `Middleware for HT Invoicing - NRS SI & APP connection
+
+## WebSocket Real-time Events
+To receive real-time workflow updates, connect to the WebSocket endpoint:
+- **URL:** \`ws://<host>/v1/events/ws\`
+
+After connecting, send the following JSON message to subscribe to invoice events:
+\`\`\`json
+{
+  "action": "subscribe",
+  "topic": "invoice-events"
+}
+\`\`\`
+
+You will receive updates in the following format:
+\`\`\`json
+{
+  "type": "WORKFLOW_STEP_COMPLETED",
+  "data": { "irn": "123...", "step": "VALIDATED" }
+}
+\`\`\`
+`,
             version: '1.0.1',
           },
          
@@ -60,4 +82,5 @@ export const v1Routes = new Elysia({ prefix: '/v1' })
   .use(webhookRoutes)
   .use(webhookEventRoutes)
   .use(auditRoutes)
-  .use(qrMgmtRoutes);
+  .use(qrMgmtRoutes)
+  .use(eventsRoutes);
