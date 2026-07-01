@@ -334,6 +334,8 @@ export class OutboundInvoiceRepository {
       const query: any = { irn };
       if (tenantId) query.tenantId = tenantId;
       const doc = await this.outboundInvoiceModel.findOne(query).exec();
+      console.log({ doc, irn });
+
       return doc;
     } catch (error) {
       console.error("Error fetching outbound invoice:", error);
@@ -606,12 +608,14 @@ export class OutboundInvoiceRepository {
       if (!invoice) return null;
 
       const eventIds: string[] = invoice.webhookEvents ?? [];
-      const webhookEvents =
-        eventIds.length > 0
-          ? await WebhookEventModel.find({ eventId: { $in: eventIds } })
-              .sort({ createdAt: 1 })
-              .exec()
-          : [];
+      let webhookEvents: any[] = [];
+      if (eventIds.length > 0) {
+        webhookEvents = await WebhookEventModel.find({
+          eventId: { $in: eventIds },
+        })
+          .sort({ createdAt: 1 })
+          .exec();
+      }
 
       return { invoice, webhookEvents };
     } catch (error) {

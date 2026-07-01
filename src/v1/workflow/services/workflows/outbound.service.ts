@@ -3,6 +3,7 @@ import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { generateUniqueHsnCode } from "../../utils/transformer/utils";
+import { WorkflowEventType } from "../../../../@lib/constants";
 
 export class OutboundWorkflowService {
   private tenantService: TenantService;
@@ -53,9 +54,10 @@ export class OutboundWorkflowService {
     const firsService = new FIRSService();
 
     // Load persisted workflow state so we can resume from the last success point
-    const stored = invoice.irn
-      ? await this.outboundRepo.findByIrn(invoice.irn).catch(() => null)
-      : null;
+    let stored = null;
+    if (invoice.irn) {
+      stored = await this.outboundRepo.findByIrn(invoice.irn).catch(() => null);
+    }
 
     const wf = stored?.workflowState ?? {
       transformed: false,
@@ -132,7 +134,6 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           validated: true,
         });
-
         wf.validated = true;
       }
 
@@ -151,7 +152,6 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           signed: true,
         });
-
         wf.signed = true;
       }
 
@@ -161,8 +161,6 @@ export class OutboundWorkflowService {
         const confirmedInvoice = await firsService.confirmSignedInvoice(
           invoice.irn,
         );
-
-        console.log({ confirmedInvoice });
 
         if (confirmedInvoice.data.code !== 200) {
           throw new Error("Invoice confirmation failed");
@@ -177,7 +175,6 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           transmitted: true,
         });
-
         wf.transmitted = true;
       }
 
@@ -223,7 +220,7 @@ export class OutboundWorkflowService {
       }
 
       return encryptedData;
-    } catch (error) {
+    } catch (error: any) {
       await this.outboundRepo.update(invoice.irn, {
         status: OutboundInvoiceStatus.FAILED,
       });

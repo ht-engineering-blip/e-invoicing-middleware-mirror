@@ -107,7 +107,6 @@ function renderBody(
 ): string | undefined {
   if (!bodyTemplate) return undefined;
   try {
-    logger.info("[Job:sync-erp] Rendering body template", { bodyTemplate });
     const compiled = Handlebars.compile(bodyTemplate, { noEscape: true });
     return compiled(data);
   } catch (err: any) {
