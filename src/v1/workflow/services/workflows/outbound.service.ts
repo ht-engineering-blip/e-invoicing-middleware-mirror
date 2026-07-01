@@ -3,8 +3,7 @@ import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { generateUniqueHsnCode } from "../../utils/transformer/utils";
-import { EventsService } from "../../../events/service";
-import { WorkflowEventType, EventsTopic } from "../../../../@lib/constants";
+import { WorkflowEventType } from "../../../../@lib/constants";
 
 export class OutboundWorkflowService {
   private tenantService: TenantService;
@@ -55,9 +54,10 @@ export class OutboundWorkflowService {
     const firsService = new FIRSService();
 
     // Load persisted workflow state so we can resume from the last success point
-    const stored = invoice.irn
-      ? await this.outboundRepo.findByIrn(invoice.irn).catch(() => null)
-      : null;
+    let stored = null;
+    if (invoice.irn) {
+      stored = await this.outboundRepo.findByIrn(invoice.irn).catch(() => null);
+    }
 
     const wf = stored?.workflowState ?? {
       transformed: false,
@@ -134,16 +134,7 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           validated: true,
         });
-
         wf.validated = true;
-        EventsService.publish(
-          EventsTopic.INVOICE_EVENTS,
-          WorkflowEventType.STEP_COMPLETED,
-          {
-            irn: invoice.irn,
-            step: "VALIDATED",
-          },
-        );
       }
 
       // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
@@ -161,16 +152,7 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           signed: true,
         });
-
         wf.signed = true;
-        EventsService.publish(
-          EventsTopic.INVOICE_EVENTS,
-          WorkflowEventType.STEP_COMPLETED,
-          {
-            irn: invoice.irn,
-            step: "SIGNED",
-          },
-        );
       }
 
       // Step 3: Confirm
@@ -193,16 +175,7 @@ export class OutboundWorkflowService {
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           transmitted: true,
         });
-
         wf.transmitted = true;
-        EventsService.publish(
-          EventsTopic.INVOICE_EVENTS,
-          WorkflowEventType.STEP_COMPLETED,
-          {
-            irn: invoice.irn,
-            step: "TRANSMITTED",
-          },
-        );
       }
 
       // Step 4: Generate QR code
@@ -229,16 +202,6 @@ export class OutboundWorkflowService {
         });
       }
 
-      EventsService.publish(
-        EventsTopic.INVOICE_EVENTS,
-        WorkflowEventType.STEP_COMPLETED,
-        {
-          irn: invoice.irn,
-          step: "QR_CODE_GENERATED",
-          data: encryptedData,
-        },
-      );
-
       try {
         // Step 5: Transmit
         if (transmit && (toTransmit || !wf.transmitted)) {
@@ -251,32 +214,15 @@ export class OutboundWorkflowService {
           await this.outboundRepo.updateWorkflowState(invoice.irn, {
             delivered: true,
           });
-
-          EventsService.publish(
-            EventsTopic.INVOICE_EVENTS,
-            WorkflowEventType.STEP_COMPLETED,
-            {
-              irn: invoice.irn,
-              step: "DELIVERED",
-            },
-          );
         }
       } catch (error) {
         // Fail gracefully
       }
 
-      EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.COMPLETED, {
-        irn: invoice.irn,
-        data: encryptedData,
-      });
       return encryptedData;
     } catch (error: any) {
       await this.outboundRepo.update(invoice.irn, {
         status: OutboundInvoiceStatus.FAILED,
-      });
-      EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.FAILED, {
-        irn: invoice.irn,
-        error: error?.message || "Unknown error",
       });
       throw error;
     }

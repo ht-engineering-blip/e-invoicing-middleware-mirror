@@ -10,7 +10,7 @@ import { errorHandlerMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
 import { connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
-import { websocket } from "@elysiajs/websocket";
+import { cors } from "@elysiajs/cors";
 
 if (!appConfig) {
   throw new Error("App configuration is not defined");
@@ -32,7 +32,7 @@ const ensureMongoConnection = async () => {
 };
 
 const app = new Elysia()
-  .use(websocket())
+  .use(cors())
   .use(dts("./src/index.ts"))
   // Ensure MongoDB connection on every request
   .onBeforeHandle(async () => {
@@ -132,10 +132,8 @@ const app = new Elysia()
 
 // For local development with Bun
 if (import.meta.env?.DEV || process.env.NODE_ENV === "development") {
-  app.listen({
-    port: appConfig.port,
-    hostname: appConfig.host,
-    idleTimeout: 200,
+  app.listen(appConfig.port, () => {
+    logger.info(`Server is running on port ${appConfig?.port}`);
   });
 
   logger.info(
@@ -143,12 +141,6 @@ if (import.meta.env?.DEV || process.env.NODE_ENV === "development") {
   );
   logger.info(`API Version: ${appConfig.apiVersion}`);
   logger.info(`Environment: ${appConfig.env}`);
-
-  if (app.server) {
-    import("./v1/events/service").then(({ EventsService }) => {
-      EventsService.init(app.server);
-    });
-  }
 }
 
 // Export for Vercel serverless deployment

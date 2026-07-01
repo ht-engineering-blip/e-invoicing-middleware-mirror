@@ -1,8 +1,6 @@
 import { firsConfig } from "../../../../@config";
 import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { TenantService } from "../../../tenants/services/tenant.service";
-import { EventsService } from "../../../events/service";
-import { WorkflowEventType, EventsTopic } from "../../../../@lib/constants";
 
 export class InboundWorkflowService {
   private tenantService: TenantService;
@@ -48,35 +46,19 @@ export class InboundWorkflowService {
           invoice,
           decryptedData,
         });
-        EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.STEP_COMPLETED, {
-          irn,
-          step: "SAVED_TO_DB",
-        });
       }
 
       // Acknowledge invoice receipt
       await firsService.acknowledgeInvoiceReceipt(irn);
-      EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.STEP_COMPLETED, {
-        irn,
-        step: "ACKNOWLEDGED",
-      });
 
       const responseData = {
         status: true,
         data: decryptedData,
       };
 
-      EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.COMPLETED, {
-        irn,
-        data: responseData,
-      });
       return responseData;
     } catch (err: any) {
       console.error("Decryption error:", err);
-      EventsService.publish(EventsTopic.INVOICE_EVENTS, WorkflowEventType.FAILED, {
-        irn,
-        error: err?.message || "Unknown error",
-      });
       return {
         status: false,
         error: err instanceof Error ? err.message : "Unknown decryption error",
