@@ -10,10 +10,19 @@
  * server so both can be scaled independently.
  */
 
+// import dns from 'node:dns';
+
+// // Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
+// dns.setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
+
 import dns from 'node:dns';
 
-// Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
-dns.setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
+// Only override DNS servers if explicitly requested — this breaks MongoDB SRV
+// resolution under Bun's node:dns compat layer in some environments (e.g. Kubernetes
+// with CoreDNS, where default resolution already works correctly).
+if (process.env.FORCE_PUBLIC_DNS === 'true') {
+  dns.setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
+}
 
 import express from 'express';
 import { createExpressMiddleware } from 'agendash';
