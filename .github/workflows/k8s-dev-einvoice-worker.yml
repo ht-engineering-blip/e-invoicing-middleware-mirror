@@ -1,0 +1,50 @@
+name: einvoice-worker
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch:
+env:
+  AWS_REGION: eu-west-1
+  ECR_REGISTRY: 231399651855.dkr.ecr.eu-west-1.amazonaws.com
+  ECR_REPOSITORY: e-invoicing-worker
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.worker
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: [self-hosted, k8s-dev]
+    steps:
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/einvoice-worker \
+            einvoice-worker=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
+            -n einvoice-core
+
+          kubectl rollout status deployment/einvoice-worker -n einvoice-core --timeout=180s
