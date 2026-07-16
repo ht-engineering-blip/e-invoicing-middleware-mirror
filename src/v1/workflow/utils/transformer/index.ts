@@ -568,17 +568,18 @@ export class FIRSInvoiceTransformer {
     for (let i = 0; i < path.length - 1; i++) {
       const key = path[i];
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-        continue;
+        throw new Error("Prototype pollution attempt detected");
       }
-      if (!current[key]) {
+      if (!Object.prototype.hasOwnProperty.call(current, key) || !current[key]) {
         current[key] = {};
       }
       current = current[key];
     }
     const finalKey = path[path.length - 1];
-    if (finalKey !== '__proto__' && finalKey !== 'constructor' && finalKey !== 'prototype') {
-      current[finalKey] = value;
+    if (finalKey === '__proto__' || finalKey === 'constructor' || finalKey === 'prototype') {
+      throw new Error("Prototype pollution attempt detected");
     }
+    current[finalKey] = value;
   }
 
   /**
@@ -588,9 +589,9 @@ export class FIRSInvoiceTransformer {
     let current = obj;
     for (const key of path) {
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-        return undefined;
+        throw new Error("Prototype pollution attempt detected");
       }
-      if (current && typeof current === "object" && key in current) {
+      if (current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, key)) {
         current = current[key];
       } else {
         return undefined;

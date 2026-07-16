@@ -15,7 +15,8 @@ class TemplateEngine {
    * @param context - The variables to interpolate into the template
    */
   render(templateName: string, context: Record<string, any> = {}): string {
-    if (templateName.includes('..') || path.isAbsolute(templateName)) {
+    // Strict validation to prevent path traversal
+    if (!/^[a-zA-Z0-9_-]+$/.test(templateName)) {
       throw new Error(`Invalid template name: ${templateName}`);
     }
 
