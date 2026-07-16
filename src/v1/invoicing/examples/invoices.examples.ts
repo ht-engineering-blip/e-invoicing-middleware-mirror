@@ -47,7 +47,7 @@ export const SAMPLE_INVOICE_BODY = {
   document_currency_code: "NGN",
   tax_currency_code: "NGN",
   accounting_supplier_party: {
-    party_name: faker.company.name(),
+    party_name: "Heirs Technologies",
     party_tax_scheme: { company_id: SAMPLE_SUPPLIER_TIN },
     postal_address: {
       street_name: faker.location.streetAddress(),
@@ -78,7 +78,11 @@ export const SAMPLE_INVOICE_BODY = {
         description: faker.commerce.productName(),
         sellers_item_identification: faker.string.alphanumeric(8),
       },
-      price: { price_amount: SAMPLE_AMOUNT },
+      price: {
+        price_amount: SAMPLE_AMOUNT,
+        base_quantity: 1,
+        price_unit: "EA",
+      },
       tax_total: {
         tax_amount: SAMPLE_VAT,
         tax_subtotals: [

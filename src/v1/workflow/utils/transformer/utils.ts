@@ -161,6 +161,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
     "invoice_type_code": "396",
+    "invoice_kind": "B2B",
     "payment_status": "PENDING",
     "note": "dummy_note (will be encryted in storage)",
     "tax_point_date": "2024-05-14",
@@ -202,7 +203,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
         }
     ],
     "accounting_supplier_party": {
-        "party_name": "Dangote Group",
+        "party_name": "Heirs Technologies",
         "tin": "TIN-0099990001",
         "email": "supplier_business@email.com",
         "telephone": "+23480254099000",
@@ -280,12 +281,13 @@ export const FIRS_SCHEMA_EXAMPLE = `{
             "price": {
                 "price_amount": 10,
                 "base_quantity": 3,
-                "price_unit": "NGN per 1"
+                "price_unit": "EA"
             }
         }
     ],
     "invoice_reference": "INV20251007014"
 }`;
+
 
 export const SYSTEM_PROMPT = (
   invoice_data: any,

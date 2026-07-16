@@ -34,21 +34,36 @@ export function registerUpdatePaymentStatusJob(): void {
         const firsService = await getFirsService();
 
         const vatReportData = context.vatReportData ?? context.originalPayload?.vatReportData;
+        const paymentStatus = context.paymentStatus ?? context.originalPayload?.paymentStatus;
+        const paymentDetails = context.paymentDetails ?? context.originalPayload?.paymentDetails;
 
-        // Submit VAT post-payment report to FIRS
-        const vatResult = await firsService.reportInvoice({
-          irn,
-          businessId: authContext.businessId,
-          ...vatReportData,
-        });
+        let vatResult = null;
 
-        logger.info('[Job:update-payment-status] VAT report submitted', {
-          jobChainId,
-          irn,
-          vatResult,
-        });
+        if (paymentStatus) {
+          await outboundRepo.updatePaymentStatus(irn, paymentStatus, paymentDetails);
+          logger.info('[Job:update-payment-status] Payment status updated in database', {
+            jobChainId,
+            irn,
+            paymentStatus,
+          });
+        }
 
-        await chainNext(job, { vatReportResult: vatResult });
+        if (vatReportData) {
+          // Submit VAT post-payment report to FIRS
+          vatResult = await firsService.reportInvoice({
+            irn,
+            businessId: authContext.businessId,
+            ...vatReportData,
+          });
+
+          logger.info('[Job:update-payment-status] VAT report submitted', {
+            jobChainId,
+            irn,
+            vatResult,
+          });
+        }
+
+        await chainNext(job, { vatReportResult: vatResult, paymentStatusUpdated: !!paymentStatus });
       } catch (err: any) {
         await chainFail(job, err);
         throw err;
