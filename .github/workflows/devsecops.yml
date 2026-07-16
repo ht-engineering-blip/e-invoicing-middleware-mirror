@@ -134,9 +134,15 @@ jobs:
           file: ./Dockerfile.worker
           push: false
           load: true
+          pull: true
           tags: einvoice-worker:scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
+        # pull: true forces a fresh pull of the base image (gcr.io/distroless/base)
+        # on every run, bypassing the GHA layer cache for that FROM layer. If
+        # Google has published patched OS packages since your last build, the
+        # cache would otherwise keep serving the old, vulnerable layer — this
+        # rules that out as the reason Trivy keeps reporting the same CVEs.
 
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
