@@ -334,7 +334,7 @@ export const FIRS_INVOICE_SCHEMA = {
     },
   ],
   accounting_supplier_party: {
-    party_name: "Dangote Group",
+    party_name: "Heirs Technologies",
     tin: "TIN-0099990001",
     email: "supplier_business@email.com",
     telephone: "+23480254099000",
@@ -502,7 +502,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
     },
   ],
   accounting_supplier_party: {
-    party_name: "Dangote Group",
+    party_name: "Heirs Technologies",
     tin: "TIN-0099990001",
     email: "supplier_business@email.com",
     telephone: "+23480254099000",
