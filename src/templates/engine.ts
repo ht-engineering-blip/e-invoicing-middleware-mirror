@@ -15,6 +15,10 @@ class TemplateEngine {
    * @param context - The variables to interpolate into the template
    */
   render(templateName: string, context: Record<string, any> = {}): string {
+    if (templateName.includes('..') || path.isAbsolute(templateName)) {
+      throw new Error(`Invalid template name: ${templateName}`);
+    }
+
     let compiled = this.cache.get(templateName);
 
     if (!compiled) {

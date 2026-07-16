@@ -566,12 +566,19 @@ export class FIRSInvoiceTransformer {
   private setNestedProperty(obj: any, path: string[], value: any): void {
     let current = obj;
     for (let i = 0; i < path.length - 1; i++) {
-      if (!current[path[i]]) {
-        current[path[i]] = {};
+      const key = path[i];
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        continue;
       }
-      current = current[path[i]];
+      if (!current[key]) {
+        current[key] = {};
+      }
+      current = current[key];
     }
-    current[path[path.length - 1]] = value;
+    const finalKey = path[path.length - 1];
+    if (finalKey !== '__proto__' && finalKey !== 'constructor' && finalKey !== 'prototype') {
+      current[finalKey] = value;
+    }
   }
 
   /**
@@ -580,6 +587,9 @@ export class FIRSInvoiceTransformer {
   private getNestedProperty(obj: any, path: string[]): any {
     let current = obj;
     for (const key of path) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        return undefined;
+      }
       if (current && typeof current === "object" && key in current) {
         current = current[key];
       } else {

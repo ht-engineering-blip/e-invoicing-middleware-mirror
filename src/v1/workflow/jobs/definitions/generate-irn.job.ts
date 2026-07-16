@@ -26,9 +26,11 @@ export function registerGenerateIrnJob(): void {
 
         const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
-        console.log(invoiceRef,
-          authContext?.serviceId,
-          context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),)
+        console.log({
+          invoiceRef,
+          serviceId: authContext?.serviceId,
+          issueDate: context?.originalPayload?.invoice?.issueDate ? new Date(context?.originalPayload?.invoice?.issueDate) : new Date(),
+        });
         const irn = existingInvoice || generateIRN(
           invoiceRef,
           authContext?.serviceId,

@@ -47,7 +47,7 @@ async function getTenantRateLimit(tenantId: string): Promise<number> {
     });
     return limit;
   } catch (error) {
-    console.error(`Error resolving rate limit for tenant ${tenantId}:`, error);
+    console.error('Error resolving rate limit for tenant %s:', tenantId, error);
     return DEFAULT_TENANT_LIMIT;
   }
 }
