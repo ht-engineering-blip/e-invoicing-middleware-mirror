@@ -3,10 +3,10 @@
   "version": "1.0.50",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --preload ./src/bun-patch.ts --watch src/index.ts",
+    "dev": "bun run --watch src/index.ts",
     "start": "concurrently \"bun run dev\" \"bun run worker:dev\" --names \"api,worker\" --prefix-colors \"cyan,yellow\"",
-    "worker": "bun run --preload ./src/bun-patch.ts src/worker.ts",
-    "worker:dev": "bun run --preload ./src/bun-patch.ts --watch src/worker.ts"
+    "worker": "bun run src/worker.ts",
+    "worker:dev": "bun run --watch src/worker.ts"
   },
   "dependencies": {
     "@agendajs/mongo-backend": "^4.0.2",
