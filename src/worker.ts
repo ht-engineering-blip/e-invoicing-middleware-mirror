@@ -12,10 +12,8 @@
 
 import "./bun-patch";
 import dns from "node:dns";
-
-if (process.env.FORCE_PUBLIC_DNS === "true") {
-  dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
-}
+// Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
+dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
 
 import express from "express";
 import { createExpressMiddleware } from "agendash";
