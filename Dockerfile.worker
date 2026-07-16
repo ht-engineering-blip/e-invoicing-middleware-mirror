@@ -14,4 +14,6 @@ ENV NODE_ENV=production
 
 EXPOSE 3001
 
+USER nonroot:nonroot
+
 CMD ["bun", "run", "--preload", "./polyfill.js", "src/worker.ts"]
