@@ -49,7 +49,7 @@ export const FIRS_INVOICE_METADATA = {
       description: "optional",
       category: "references",
     },
-    invoice_kind: {
+    invoice_type: {
       required: false,
       description: "optional",
       category: "invoice_type",
@@ -257,7 +257,7 @@ export const FIRS_INVOICE_METADATA = {
       "tax_currency_code",
       "accounting_cost",
       "buyer_reference",
-      "invoice_kind",
+      "invoice_type",
       "invoice_delivery_period",
       "order_reference",
       "billing_reference",
@@ -295,7 +295,7 @@ export const FIRS_INVOICE_SCHEMA = {
   tax_currency_code: "NGN",
   accounting_cost: "2000 NGN",
   buyer_reference: "buyer REF IRN?",
-  invoice_kind: "B2B",
+  invoice_type: "B2B",
   invoice_delivery_period: {
     start_date: "2024-06-14",
     end_date: "2024-06-16",
@@ -422,7 +422,7 @@ export const FIRS_INVOICE_SCHEMA = {
       price: {
         price_amount: 10,
         base_quantity: 3,
-        price_unit: "NGN per 1",
+        price_unit: "EA",
       },
     },
     {
@@ -442,7 +442,7 @@ export const FIRS_INVOICE_SCHEMA = {
       price: {
         price_amount: 20,
         base_quantity: 5,
-        price_unit: "NGN per 1",
+        price_unit: "EA",
       },
     },
   ],
@@ -463,7 +463,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
   tax_currency_code: "NGN",
   accounting_cost: "2000 NGN",
   buyer_reference: "buyer REF IRN?",
-  invoice_kind: "B2B",
+  invoice_type: "B2B",
   invoice_delivery_period: {
     start_date: "2024-06-14",
     end_date: "2024-06-16",
@@ -590,7 +590,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
       price: {
         price_amount: 10,
         base_quantity: 3,
-        price_unit: "NGN per 1",
+        price_unit: "EA",
       },
     },
     {
@@ -610,7 +610,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
       price: {
         price_amount: 20,
         base_quantity: 5,
-        price_unit: "NGN per 1",
+        price_unit: "EA",
       },
     },
   ],

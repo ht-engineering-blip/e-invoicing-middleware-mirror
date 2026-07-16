@@ -356,7 +356,7 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 3. tax_currency_code: default to "NGN" if missing
 4. postal_zone: use "100001" if missing
 5. telephone: ensure it starts with "+" (country code)
-6. invoice_kind: default to "B2B" if missing
+6. invoice_type: default to "B2B" if missing
 
 ## PARTY INFORMATION RULES:
 - accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)

@@ -161,7 +161,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
     "invoice_type_code": "396",
-    "invoice_kind": "B2B",
+    "invoice_type": "B2B",
     "payment_status": "PENDING",
     "note": "dummy_note (will be encryted in storage)",
     "tax_point_date": "2024-05-14",
