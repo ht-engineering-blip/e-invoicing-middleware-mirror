@@ -10,49 +10,43 @@
  * server so both can be scaled independently.
  */
 
-// import dns from 'node:dns';
+import dns from "node:dns";
 
-// // Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
-// dns.setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
-
-import dns from 'node:dns';
-
-// Only override DNS servers if explicitly requested — this breaks MongoDB SRV
-// resolution under Bun's node:dns compat layer in some environments (e.g. Kubernetes
-// with CoreDNS, where default resolution already works correctly).
-if (process.env.FORCE_PUBLIC_DNS === 'true') {
-  dns.setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
+if (process.env.FORCE_PUBLIC_DNS === "true") {
+  dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
 }
 
-import express from 'express';
-import { createExpressMiddleware } from 'agendash';
-import { connectMongo } from './@lib/adapters/mongo';
-import { agenda } from './@lib/queue/agenda';
-import { registerAllJobs } from './v1/workflow/jobs';
-import { logger } from './@lib/logger';
+import express from "express";
+import { createExpressMiddleware } from "agendash";
+import { connectMongo } from "./@lib/adapters/mongo";
+import { agenda } from "./@lib/queue/agenda";
+import { registerAllJobs } from "./v1/workflow/jobs";
+import { logger } from "./@lib/logger";
 
 const AGENDASH_PORT = Number(process.env.AGENDASH_PORT ?? 3001);
 
 async function startWorker() {
-  logger.info('[Worker] Starting job worker...');
+  logger.info("[Worker] Starting job worker...");
 
   // 1. Connect to MongoDB
   await connectMongo();
-  logger.info('[Worker] MongoDB connected');
+  logger.info("[Worker] MongoDB connected");
 
   // 2. Register all job definitions BEFORE agenda.start()
   registerAllJobs();
-  logger.info('[Worker] All job definitions registered');
+  logger.info("[Worker] All job definitions registered");
 
   // 3. Start processing
   await agenda.start();
-  logger.info('[Worker] Agenda started — listening for jobs');
+  logger.info("[Worker] Agenda started — listening for jobs");
 
   // 4. Mount Agendash dashboard on a dedicated Express server
   const dashApp = express();
-  dashApp.use('/', createExpressMiddleware(agenda));
+  dashApp.use("/", createExpressMiddleware(agenda));
   dashApp.listen(AGENDASH_PORT, () => {
-    logger.info(`[Worker] Agendash running at http://localhost:${AGENDASH_PORT}`);
+    logger.info(
+      `[Worker] Agendash running at http://localhost:${AGENDASH_PORT}`,
+    );
   });
 
   // 5. Graceful shutdown
@@ -62,16 +56,16 @@ async function startWorker() {
     process.exit(0);
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 
   // 5. Surface unhandled rejections
-  process.on('unhandledRejection', (reason) => {
-    logger.error('[Worker] Unhandled rejection', { reason });
+  process.on("unhandledRejection", (reason) => {
+    logger.error("[Worker] Unhandled rejection", { reason });
   });
 }
 
 startWorker().catch((err) => {
-  logger.error('[Worker] Failed to start', { err });
+  logger.error("[Worker] Failed to start", { err });
   process.exit(1);
 });
