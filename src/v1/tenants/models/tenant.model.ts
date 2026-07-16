@@ -53,6 +53,8 @@ export interface ITenantConfig {
     serviceId?: string;
     certificate?: string;
     publicKey?: string;
+    apiKey?: string;
+    apiSecret?: string;
   };
   erpSyncConfig?: IERPSyncConfig;
   erpSystem: SchemaSourceType | string;
@@ -152,7 +154,9 @@ const TenantSchema = new Schema<TenantDocument>(
         clientId: { type: String },
         serviceId: { type: String },
         certificate: { type: String },
-        publicKey: { type: String }
+        publicKey: { type: String },
+        apiKey: { type: String },
+        apiSecret: { type: String }
       },
       erpSyncConfig: {
         name: { type: String },

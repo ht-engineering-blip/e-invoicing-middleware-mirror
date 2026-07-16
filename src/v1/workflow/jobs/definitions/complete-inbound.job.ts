@@ -27,10 +27,10 @@ export function registerCompleteInboundJob(): void {
     try {
       if (!irn) throw new Error("IRN is required for complete-inbound step");
 
-      const result = await inboundService.handleInboundWorkflow({ irn });
+      const result = await inboundService.handleInboundWorkflow({ irn, tenant_id: tenantId });
 
       if (!result.status) {
-        throw new Error(result.error ?? "Inbound workflow failed");
+        throw new Error(('error' in result ? result.error : undefined) ?? "Inbound workflow failed");
       }
 
       logger.info("[Job:complete-inbound] Done", { jobChainId });

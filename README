@@ -1,1 +1,11 @@
 # HT E-INVOICING MIDDLEWARE
+
+## Important Notice: Taxpayer Credentials
+As of the latest updates, the middleware requires **Taxpayers to configure their own FIRS API Key and Secret** for all invoice-specific operations (e.g., validate, sign, transmit, report). 
+
+The system **no longer falls back to the System Integrator API key** for these operations.
+
+### What you need to do:
+1. Ensure that each tenant/taxpayer in the system provides their FIRS credentials.
+2. Save these credentials in the database under the `TenantModel`, specifically inside the `config.firsCredentials.apiKey` and `config.firsCredentials.apiSecret` fields.
+3. If these credentials are missing, any invoicing operation performed by that tenant will fail with: `FIRS credentials (API Key and Secret) are not configured for tenant`.

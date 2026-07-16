@@ -19,7 +19,7 @@ export const v1Routes = new Elysia({ prefix: '/v1' })
         documentation: {
           info: {
             title: 'E-Invoicing Middleware API',
-            description: 'Middleware for HT Invoicing - NRS SI & APP connection',
+            description: 'Middleware for HT Invoicing - NRS SI & APP connection.\\n\\n**IMPORTANT NOTICES**:\\n- **Taxpayer Credentials**: Taxpayers must configure their own FIRS API Key and Secret via their Tenant configuration. The system no longer falls back to the System Integrator credentials for invoice-specific operations (e.g., validate, sign, transmit).',
             version: '1.0.1',
           },
          

@@ -50,7 +50,7 @@ export function registerUpdatePaymentStatusJob(): void {
 
         if (vatReportData) {
           // Submit VAT post-payment report to FIRS
-          vatResult = await firsService.reportInvoice({
+          vatResult = await firsService.reportInvoice(tenantId, {
             irn,
             businessId: authContext.businessId,
             ...vatReportData,

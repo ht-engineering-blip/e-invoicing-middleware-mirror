@@ -40,6 +40,8 @@ interface FIRSCredentialsInput {
     serviceId?: string;
     certificate?: string;
     publicKey?: string;
+    apiKey?: string;
+    apiSecret?: string;
 }
 
 interface CreateApiKeyInput {

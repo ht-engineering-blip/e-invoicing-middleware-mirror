@@ -396,10 +396,12 @@ export class TenantRepository {
   async updateFIRSCredentials(
     tenantId: string,
     credentials: {
-      clientId: string;
-      serviceId: string;
-      certificate: string;
-      publicKey: string;
+      clientId?: string;
+      serviceId?: string;
+      certificate?: string;
+      publicKey?: string;
+      apiKey?: string;
+      apiSecret?: string;
     },
   ): Promise<TenantDocument> {
     try {
@@ -408,10 +410,12 @@ export class TenantRepository {
           { tenantId },
           {
             $set: {
-              "config.firsCredentials.clientId": credentials.clientId,
-              "config.firsCredentials.serviceId": credentials.serviceId,
-              "config.firsCredentials.certificate": credentials.certificate,
-              "config.firsCredentials.publicKey": credentials.publicKey,
+              ...(credentials.clientId && { "config.firsCredentials.clientId": credentials.clientId }),
+              ...(credentials.serviceId && { "config.firsCredentials.serviceId": credentials.serviceId }),
+              ...(credentials.certificate && { "config.firsCredentials.certificate": credentials.certificate }),
+              ...(credentials.publicKey && { "config.firsCredentials.publicKey": credentials.publicKey }),
+              ...(credentials.apiKey && { "config.firsCredentials.apiKey": credentials.apiKey }),
+              ...(credentials.apiSecret && { "config.firsCredentials.apiSecret": credentials.apiSecret }),
             },
           },
           { new: true },

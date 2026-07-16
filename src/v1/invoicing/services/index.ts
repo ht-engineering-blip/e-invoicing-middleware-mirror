@@ -101,7 +101,7 @@ export class InvoiceWorkflowService {
 
       // Call FIRS validation API
       const validationResult: any =
-        await this.firsService.validateInvoice(invoice);
+        await this.firsService.validateInvoice(businessId, invoice);
 
       if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
         return {
@@ -153,7 +153,7 @@ export class InvoiceWorkflowService {
       };
       // Call FIRS sign API
       const signResult: any =
-        await this.firsService.signInvoice(invoiceWithCert);
+        await this.firsService.signInvoice(authContext.tenantId, invoiceWithCert);
 
       if (signResult?.code !== 200 || !signResult?.data?.ok) {
         return {
@@ -241,7 +241,7 @@ export class InvoiceWorkflowService {
       }
 
       // Call FIRS transmit API
-      const transmitResult: any = await this.firsService.transmitInvoice(irn);
+      const transmitResult: any = await this.firsService.transmitInvoice(authContext.tenantId, irn);
 
       // Update stored invoice if exists
       if (invoice) {
@@ -273,7 +273,7 @@ export class InvoiceWorkflowService {
     try {
       // Download invoice from FIRS
       const { data: invoiceResponse }: any =
-        await this.firsService.downloadInvoice(irn);
+        await this.firsService.downloadInvoice(authContext.tenantId, irn);
       const encryptedInvoice = invoiceResponse?.data;
 
       if (!encryptedInvoice) {
@@ -325,7 +325,7 @@ export class InvoiceWorkflowService {
     try {
       // Call FIRS acknowledge API
       const ackResult: any =
-        await this.firsService.acknowledgeInvoiceReceipt(irn);
+        await this.firsService.acknowledgeInvoiceReceipt(businessId, irn);
 
       // Update inbound invoice if exists
       const inboundInvoice = await this.inboundRepo.findByIRN(irn);
@@ -428,7 +428,7 @@ export class InvoiceWorkflowService {
     try {
       // Call FIRS VAT post-payment API
       const reportResult: any =
-        await this.firsService.reportVATPostPayment(reportData);
+        await this.firsService.reportVATPostPayment(reportData.integrator_service_id || reportData.agent_tin, reportData);
 
       // Update invoice with report status
       const invoice = await this.outboundRepo.findByIrn(reportData.irn);
@@ -461,6 +461,7 @@ export class InvoiceWorkflowService {
       // Search for invoice on FIRS
       const searchResult: any = await this.firsService.searchInvoice(
         businessId,
+        businessId,
         irn,
       );
 
@@ -477,7 +478,7 @@ export class InvoiceWorkflowService {
 
       // Confirm signed invoice status
       const confirmResult: any =
-        await this.firsService.confirmSignedInvoice(irn);
+        await this.firsService.confirmSignedInvoice(businessId, irn);
 
       return {
         success: true,
