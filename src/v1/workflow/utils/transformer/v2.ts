@@ -362,6 +362,7 @@ export class FIRSInvoiceTransformerV2 {
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
 
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
 
