@@ -9,6 +9,7 @@ import { generateQRCode } from "./generateQR";
 
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
+import { TenantModel } from "../../../v1/tenants/models/tenant.model";
 
 export interface FIRSUserInfo {
   code: number;
@@ -87,13 +88,13 @@ export interface VATPostPaymentReportData {
 }
 
 export default class FIRSClient extends RestClient {
-  constructor() {
+  constructor(apiKey?: string, apiSecret?: string) {
     super({
       baseURL: firsConfig?.baseUrl,
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": firsConfig?.apiKey,
-        "x-api-secret": firsConfig?.apiSecret,
+        "x-api-key": apiKey || firsConfig?.apiKey,
+        "x-api-secret": apiSecret || firsConfig?.apiSecret,
       },
     });
   }
@@ -162,16 +163,45 @@ export default class FIRSClient extends RestClient {
   };
 }
 
+import { decryptSensitiveData } from "../../../@lib/crypto";
+
 export class FIRSService {
-  private client: FIRSClient;
+  private appClient: FIRSClient;
   private inboundInvoiceRepository: InboundInvoiceRepository;
-  constructor(client?: FIRSClient) {
-    this.client = client || new FIRSClient();
+  constructor() {
+    this.appClient = new FIRSClient(firsConfig?.apiKey, firsConfig?.apiSecret);
     this.inboundInvoiceRepository = new InboundInvoiceRepository();
   }
 
+  /**
+   * Dynamically gets a FIRS client scoped to a specific tenant's FIRS credentials
+   */
+  public async getTaxpayerClient(tenantId: string): Promise<FIRSClient> {
+    if (firsConfig?.useTestTaxpayer && firsConfig?.testTaxpayerApiKey) {
+      return new FIRSClient(
+        firsConfig.testTaxpayerApiKey,
+        firsConfig.testTaxpayerApiSecret,
+      );
+    }
+
+    const tenant = await TenantModel.findOne({ tenantId });
+    if (!tenant) throw new Error(`Tenant not found: ${tenantId}`);
+
+    const firsCredentials = tenant.config?.firsCredentials;
+    if (!firsCredentials?.apiKey || !firsCredentials?.apiSecret) {
+      throw new Error(
+        `FIRS credentials (API Key and Secret) are not configured for tenant: ${tenantId}`,
+      );
+    }
+
+    const decryptedApiKey = decryptSensitiveData(firsCredentials.apiKey);
+    const decryptedApiSecret = decryptSensitiveData(firsCredentials.apiSecret);
+
+    return new FIRSClient(decryptedApiKey, decryptedApiSecret);
+  }
+
   public async authenticate(credentials: { email: string; password: string }) {
-    const response = await this.client.post<FIRSAuthResponse>(
+    const response = await this.appClient.post<FIRSAuthResponse>(
       "/api/v1/utilities/authenticate",
       credentials,
     );
@@ -206,7 +236,7 @@ export class FIRSService {
    */
   async getFIRSUserInfo(entity_id: string): Promise<FIRSUserInfo> {
     try {
-      const response = await this.client.get<FIRSUserInfo>(
+      const response = await this.appClient.get<FIRSUserInfo>(
         `/api/v1/entity/${entity_id}`,
       );
 
@@ -230,65 +260,42 @@ export class FIRSService {
     }
   }
 
-  public async validateInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("api/v1/invoice/validate", invoice);
+  public async validateInvoice(tenantId: string, invoice: any) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
   }
 
-  public async searchInvoice(business_id: string, irn: string) {
-    return this.client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
+  public async searchInvoice(
+    tenantId: string,
+    business_id: string,
+    irn: string,
+  ) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
       params: { irn },
     });
   }
 
-  public async signInvoice(invoice: any) {
-    return this.client.post<OkayResponse>("api/v1/invoice/sign", invoice);
+  public async signInvoice(tenantId: string, invoice: any) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
   }
 
-  public async transmitInvoice(irn: string) {
-    return this.client.post(`api/v1/invoice/transmit/${irn}`, {});
+  public async transmitInvoice(tenantId: string, irn: string) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.post(`api/v1/invoice/transmit/${irn}`, {});
   }
-  public async downloadInvoice(irn: string) {
-    return this.client.get(`api/v1/invoice/download/${irn}`, {});
+  public async downloadInvoice(tenantId: string, irn: string) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.get(`api/v1/invoice/download/${irn}`, {});
   }
 
-  public async confirmSignedInvoice(irn: string) {
-    return this.client.get<{ data: ConfirmResponse }>(
+  public async confirmSignedInvoice(tenantId: string, irn: string) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.get<{ data: ConfirmResponse }>(
       `api/v1/invoice/confirm/${irn}`,
     );
   }
-
-  /*  public async generateQRCode(irn: any):  Promise<{ qrCode: string, data: string } | any> {
-         try {
-             const keys = {
-                 public_key: PUB_KEY,
-                 certificate: CERTIFICATE
-             };
- 
-             const { encryptedData } = encryptIRNAndCertificate(
-                 keys,
-                 irn,
-                 keys.certificate
-             );
-             // Generate QRcode
-             let qrCode = await QRCode.toDataURL(encryptedData, {
-                 type: "image/png",
-                 size: 300,
-                 fgColor: "#000000",
-                 bgColor: "#00FFFFaa",
-                 logo: "https://heirstechnologies.com/wp-content/uploads/2020/02/icon.png",
-                 logoSizeRatio: 0.2,
-             });
- 
- 
-             return {
-                 qrCode: qrCode as any,
-                 data: encryptedData
-             }
-         } catch (error: any) {
-             console.error("Encryption/Decryption failed:", error.message);
-         }
- 
-     } */
 
   public async generateQRCodeV2(
     irn: any,
@@ -333,8 +340,9 @@ export class FIRSService {
     }
   }
 
-  public async acknowledgeInvoiceReceipt(irn: string) {
-    return this.client.execute(
+  public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.execute(
       `invoice/transmit/${irn}`,
       {
         message: "ACKNOWLEDGED",
@@ -349,24 +357,32 @@ export class FIRSService {
    *
    * @param reportData - VAT post-payment report data (see VATPostPaymentReportData interface)
    */
-  public async reportVATPostPayment(reportData: VATPostPaymentReportData) {
-    return this.client.post("/api/v1/vat/postpayment", reportData);
+  public async reportVATPostPayment(
+    tenantId: string,
+    reportData: VATPostPaymentReportData,
+  ) {
+    const client = await this.getTaxpayerClient(tenantId);
+    return client.post("/api/v1/vat/postpayment", reportData);
   }
 
   /**
    * Update invoice payment status on FIRS
    * PATCH /api/v1/invoice/update/:irn
    */
-  public async reportInvoice(input: {
-    irn: string;
-    payment_status: "PENDING" | "PAID" | "CANCELED";
-    reference?: string;
-    [key: string]: any;
-  }) {
+  public async reportInvoice(
+    tenantId: string,
+    input: {
+      irn: string;
+      payment_status: "PENDING" | "PAID" | "CANCELED";
+      reference?: string;
+      [key: string]: any;
+    },
+  ) {
+    const client = await this.getTaxpayerClient(tenantId);
     const { irn, payment_status, reference } = input;
     const body: Record<string, any> = { payment_status };
     if (reference !== undefined) body.reference = reference;
-    return this.client.execute(`api/v1/invoice/update/${irn}`, body, {
+    return client.execute(`api/v1/invoice/update/${irn}`, body, {
       verb: "patch",
     });
   }

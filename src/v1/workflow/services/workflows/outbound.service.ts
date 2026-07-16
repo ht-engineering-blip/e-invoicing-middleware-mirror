@@ -79,6 +79,7 @@ export class OutboundWorkflowService {
 
       if (!skipSigning) {
         const searchedInvoice = await firsService.searchInvoice(
+          invoice.tenant_id,
           invoice.business_id,
           invoice.irn,
         );
@@ -94,7 +95,7 @@ export class OutboundWorkflowService {
 
         while (attempts < maxAttempts) {
           try {
-            validatedInvoice = await firsService.validateInvoice(invoice);
+            validatedInvoice = await firsService.validateInvoice(invoice.tenant_id, invoice);
             break;
           } catch (error: any) {
             attempts++;
@@ -139,7 +140,7 @@ export class OutboundWorkflowService {
 
       // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
       if (!skipSigning && !wf.signed) {
-        const signedInvoice = await firsService.signInvoice(invoice);
+        const signedInvoice = await firsService.signInvoice(invoice.tenant_id, invoice);
 
         if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
           throw new Error("Invoice signing failed");
@@ -159,6 +160,7 @@ export class OutboundWorkflowService {
       let toTransmit = false;
       if (!wf.transmitted) {
         const confirmedInvoice = await firsService.confirmSignedInvoice(
+          invoice.tenant_id,
           invoice.irn,
         );
 
@@ -205,7 +207,7 @@ export class OutboundWorkflowService {
       try {
         // Step 5: Transmit
         if (transmit && (toTransmit || !wf.transmitted)) {
-          await firsService.transmitInvoice(invoice.irn);
+          await firsService.transmitInvoice(invoice.tenant_id, invoice.irn);
 
           await this.outboundRepo.update(invoice.irn, {
             status: OutboundInvoiceStatus.DELIVERED,

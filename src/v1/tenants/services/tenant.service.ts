@@ -466,6 +466,12 @@ export class TenantService extends BaseService {
     if (credentials.clientId) {
       updateData["clientId"] = encryptSensitiveData(credentials.clientId);
     }
+    if (credentials.apiKey) {
+      updateData["apiKey"] = encryptSensitiveData(credentials.apiKey);
+    }
+    if (credentials.apiSecret) {
+      updateData["apiSecret"] = encryptSensitiveData(credentials.apiSecret);
+    }
     console.log({ updateData });
     const updatedTenant = await this.tenantRepo.updateFIRSCredentials(
       tenantId,

@@ -27,14 +27,15 @@ export class InboundWorkflowService {
     try {
       // Step 0: Download the invoice from FIRS
       const { data: invoiceResponse } = (await firsService.downloadInvoice(
+        invoice.tenant_id,
         irn,
       )) as any;
-      const invoice = invoiceResponse.data;
+      const invoiceData = invoiceResponse.data;
 
       const decryptedData = await firsService.decryptInvoice({
-        iv_hex: invoice.iv_hex,
-        pub: invoice.pub,
-        ciphertext: invoice.data,
+        iv_hex: invoiceData.iv_hex,
+        pub: invoiceData.pub,
+        ciphertext: invoiceData.data,
         api_key: firsConfig?.apiKey,
       });
       let { business_id } = decryptedData;
@@ -49,7 +50,7 @@ export class InboundWorkflowService {
       }
 
       // Acknowledge invoice receipt
-      await firsService.acknowledgeInvoiceReceipt(irn);
+      await firsService.acknowledgeInvoiceReceipt(invoice.tenant_id, irn);
 
       const responseData = {
         status: true,
