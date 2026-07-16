@@ -10,7 +10,6 @@
  * server so both can be scaled independently.
  */
 
-import "./bun-patch";
 import dns from "node:dns";
 // Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
 dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
