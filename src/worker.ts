@@ -10,6 +10,7 @@
  * server so both can be scaled independently.
  */
 
+import "./bun-patch";
 import dns from "node:dns";
 
 if (process.env.FORCE_PUBLIC_DNS === "true") {
