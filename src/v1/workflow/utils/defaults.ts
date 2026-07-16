@@ -280,7 +280,7 @@ export const FIRS_INVOICE_METADATA = {
 };
 
 export const FIRS_INVOICE_SCHEMA = {
-  business_id: firsConfig?.useTestEntity
+  business_id: firsConfig?.useTestTaxpayer
     ? firsConfig?.testBusinessId
     : "{{TEST_BUSINESS_ID}}",
   irn: "IRN",
@@ -448,7 +448,7 @@ export const FIRS_INVOICE_SCHEMA = {
   ],
 };
 export const FIRS_INVOICE_SCHEMA_V2 = {
-  business_id: firsConfig?.useTestEntity
+  business_id: firsConfig?.useTestTaxpayer
     ? firsConfig?.testBusinessId
     : "BUSINESS_ID",
   irn: "IRN",

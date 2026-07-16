@@ -177,10 +177,10 @@ export class FIRSService {
    * Dynamically gets a FIRS client scoped to a specific tenant's FIRS credentials
    */
   public async getTaxpayerClient(tenantId: string): Promise<FIRSClient> {
-    if (firsConfig?.useTestEntity && firsConfig?.testEntityApiKey) {
+    if (firsConfig?.useTestTaxpayer && firsConfig?.testTaxpayerApiKey) {
       return new FIRSClient(
-        firsConfig.testEntityApiKey,
-        firsConfig.testEntityApiSecret,
+        firsConfig.testTaxpayerApiKey,
+        firsConfig.testTaxpayerApiSecret,
       );
     }
 
