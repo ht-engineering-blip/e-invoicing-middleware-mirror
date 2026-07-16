@@ -300,7 +300,7 @@ export class WebhookService {
         await this.deliverWebhook(event.eventId);
       } catch (error) {
         // Log error but continue processing other events
-        console.error(`Failed to deliver webhook ${event.eventId}:`, error);
+        console.error('Failed to deliver webhook %s:', event.eventId, error);
       }
     }
   }

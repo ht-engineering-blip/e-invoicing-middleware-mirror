@@ -353,15 +353,24 @@ export class FIRSInvoiceTransformerV2 {
       const key = keys[i];
       const nextKey = keys[i + 1];
 
-      if (current[key] == null) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        throw new Error("Prototype pollution attempt detected");
+      }
+
+      if (current[key] == null || typeof current[key] !== 'object') {
         // Create array if next key is numeric, otherwise create object
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
 
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
 
     const last = keys[keys.length - 1];
+
+    if (last === '__proto__' || last === 'constructor' || last === 'prototype') {
+      throw new Error("Prototype pollution attempt detected");
+    }
 
     if (last === "*") {
       // Wildcard: apply value to every element of the current array
@@ -393,6 +402,10 @@ export class FIRSInvoiceTransformerV2 {
     if (current == null) return undefined;
 
     const [head, ...rest] = keys;
+
+    if (head === '__proto__' || head === 'constructor' || head === 'prototype') {
+      throw new Error("Prototype pollution attempt detected");
+    }
 
     if (head === "*") {
       if (!Array.isArray(current)) return undefined;
@@ -629,7 +642,7 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 3. tax_currency_code: default to "NGN" if missing
 4. postal_zone: use "100001" if missing
 5. telephone: ensure it starts with "+" (country code)
-6. invoice_type: default to "B2B" if missing
+6. invoice_kind: default to "B2B" if missing
 
 ## PARTY INFORMATION RULES:
 - accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
@@ -827,7 +840,7 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 3. tax_currency_code: default to "NGN" if missing
 4. postal_zone: use "100001" if missing
 5. telephone: ensure it starts with "+" (country code)
-6. invoice_type: default to "B2B" if missing
+6. invoice_kind: default to "B2B" if missing
 
 ## PARTY INFORMATION RULES:
 - accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)

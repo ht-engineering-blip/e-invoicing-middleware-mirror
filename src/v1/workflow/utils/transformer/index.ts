@@ -566,12 +566,21 @@ export class FIRSInvoiceTransformer {
   private setNestedProperty(obj: any, path: string[], value: any): void {
     let current = obj;
     for (let i = 0; i < path.length - 1; i++) {
-      if (!current[path[i]]) {
-        current[path[i]] = {};
+      const key = path[i];
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        throw new Error("Prototype pollution attempt detected");
       }
-      current = current[path[i]];
+      if (!Object.prototype.hasOwnProperty.call(current, key) || !current[key]) {
+        current[key] = {};
+      }
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
+      current = current[key];
     }
-    current[path[path.length - 1]] = value;
+    const finalKey = path[path.length - 1];
+    if (finalKey === '__proto__' || finalKey === 'constructor' || finalKey === 'prototype') {
+      throw new Error("Prototype pollution attempt detected");
+    }
+    current[finalKey] = value;
   }
 
   /**
@@ -580,7 +589,11 @@ export class FIRSInvoiceTransformer {
   private getNestedProperty(obj: any, path: string[]): any {
     let current = obj;
     for (const key of path) {
-      if (current && typeof current === "object" && key in current) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        throw new Error("Prototype pollution attempt detected");
+      }
+      if (current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, key)) {
+        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
         current = current[key];
       } else {
         return undefined;

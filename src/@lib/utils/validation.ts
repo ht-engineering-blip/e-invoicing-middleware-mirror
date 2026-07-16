@@ -22,6 +22,7 @@ export function escapeRegExp(string: string): string {
  */
 export function safeSearchRegExp(query: string, flags: string = 'i'): RegExp {
   const escaped = escapeRegExp(query);
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   return new RegExp('^' + escaped, flags);
 }
 
