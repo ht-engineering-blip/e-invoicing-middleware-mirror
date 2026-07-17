@@ -93,8 +93,8 @@ export default class FIRSClient extends RestClient {
       baseURL: firsConfig?.baseUrl,
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey || firsConfig?.apiKey,
-        "x-api-secret": apiSecret || firsConfig?.apiSecret,
+        "x-api-key": apiKey,
+        "x-api-secret": apiSecret,
       },
     });
   }
@@ -166,39 +166,16 @@ export default class FIRSClient extends RestClient {
 import { decryptSensitiveData } from "../../../@lib/crypto";
 
 export class FIRSService {
-  private appClient: FIRSClient;
+  public appClient: FIRSClient;
+  public siClient: FIRSClient;
   private inboundInvoiceRepository: InboundInvoiceRepository;
   constructor() {
-    this.appClient = new FIRSClient(firsConfig?.apiKey, firsConfig?.apiSecret);
+    this.siClient = new FIRSClient(firsConfig?.siApiKey, firsConfig?.siApiSecret);
+    this.appClient = new FIRSClient(firsConfig?.appApiKey, firsConfig?.appApiSecret);
     this.inboundInvoiceRepository = new InboundInvoiceRepository();
   }
 
-  /**
-   * Dynamically gets a FIRS client scoped to a specific tenant's FIRS credentials
-   */
-  public async getTaxpayerClient(tenantId: string): Promise<FIRSClient> {
-    if (firsConfig?.useTestTaxpayer && firsConfig?.testTaxpayerApiKey) {
-      return new FIRSClient(
-        firsConfig.testTaxpayerApiKey,
-        firsConfig.testTaxpayerApiSecret,
-      );
-    }
 
-    const tenant = await TenantModel.findOne({ tenantId });
-    if (!tenant) throw new Error(`Tenant not found: ${tenantId}`);
-
-    const firsCredentials = tenant.config?.firsCredentials;
-    if (!firsCredentials?.apiKey || !firsCredentials?.apiSecret) {
-      throw new Error(
-        `FIRS credentials (API Key and Secret) are not configured for tenant: ${tenantId}`,
-      );
-    }
-
-    const decryptedApiKey = decryptSensitiveData(firsCredentials.apiKey);
-    const decryptedApiSecret = decryptSensitiveData(firsCredentials.apiSecret);
-
-    return new FIRSClient(decryptedApiKey, decryptedApiSecret);
-  }
 
   public async authenticate(credentials: { email: string; password: string }) {
     const response = await this.appClient.post<FIRSAuthResponse>(
@@ -236,6 +213,7 @@ export class FIRSService {
    */
   async getFIRSUserInfo(entity_id: string): Promise<FIRSUserInfo> {
     try {
+
       const response = await this.appClient.get<FIRSUserInfo>(
         `/api/v1/entity/${entity_id}`,
       );
@@ -261,7 +239,7 @@ export class FIRSService {
   }
 
   public async validateInvoice(tenantId: string, invoice: any) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.siClient;
     return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
   }
 
@@ -270,28 +248,28 @@ export class FIRSService {
     business_id: string,
     irn: string,
   ) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
       params: { irn },
     });
   }
 
   public async signInvoice(tenantId: string, invoice: any) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.siClient;
     return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
   }
 
   public async transmitInvoice(tenantId: string, irn: string) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.post(`api/v1/invoice/transmit/${irn}`, {});
   }
   public async downloadInvoice(tenantId: string, irn: string) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.get(`api/v1/invoice/download/${irn}`, {});
   }
 
   public async confirmSignedInvoice(tenantId: string, irn: string) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.get<{ data: ConfirmResponse }>(
       `api/v1/invoice/confirm/${irn}`,
     );
@@ -341,7 +319,7 @@ export class FIRSService {
   }
 
   public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.execute(
       `invoice/transmit/${irn}`,
       {
@@ -361,7 +339,7 @@ export class FIRSService {
     tenantId: string,
     reportData: VATPostPaymentReportData,
   ) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     return client.post("/api/v1/vat/postpayment", reportData);
   }
 
@@ -378,7 +356,7 @@ export class FIRSService {
       [key: string]: any;
     },
   ) {
-    const client = await this.getTaxpayerClient(tenantId);
+    const client = this.appClient;
     const { irn, payment_status, reference } = input;
     const body: Record<string, any> = { payment_status };
     if (reference !== undefined) body.reference = reference;
