@@ -36,7 +36,7 @@ export class InboundWorkflowService {
         iv_hex: invoiceData.iv_hex,
         pub: invoiceData.pub,
         ciphertext: invoiceData.data,
-        api_key: firsConfig?.apiKey,
+        api_key: firsConfig?.appApiKey,
       });
       let { business_id } = decryptedData;
       if (irn && business_id) {
