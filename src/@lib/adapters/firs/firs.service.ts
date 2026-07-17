@@ -170,12 +170,16 @@ export class FIRSService {
   public siClient: FIRSClient;
   private inboundInvoiceRepository: InboundInvoiceRepository;
   constructor() {
-    this.siClient = new FIRSClient(firsConfig?.siApiKey, firsConfig?.siApiSecret);
-    this.appClient = new FIRSClient(firsConfig?.appApiKey, firsConfig?.appApiSecret);
+    this.siClient = new FIRSClient(
+      firsConfig?.siApiKey,
+      firsConfig?.siApiSecret,
+    );
+    this.appClient = new FIRSClient(
+      firsConfig?.appApiKey,
+      firsConfig?.appApiSecret,
+    );
     this.inboundInvoiceRepository = new InboundInvoiceRepository();
   }
-
-
 
   public async authenticate(credentials: { email: string; password: string }) {
     const response = await this.appClient.post<FIRSAuthResponse>(
@@ -213,7 +217,6 @@ export class FIRSService {
    */
   async getFIRSUserInfo(entity_id: string): Promise<FIRSUserInfo> {
     try {
-
       const response = await this.appClient.get<FIRSUserInfo>(
         `/api/v1/entity/${entity_id}`,
       );
@@ -239,7 +242,7 @@ export class FIRSService {
   }
 
   public async validateInvoice(tenantId: string, invoice: any) {
-    const client = this.siClient;
+    const client = this.appClient;
     return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
   }
 
