@@ -285,7 +285,7 @@ export class InvoiceWorkflowService {
         iv_hex: encryptedInvoice.iv_hex,
         pub: encryptedInvoice.pub,
         ciphertext: encryptedInvoice.data,
-        api_key: firsConfig?.apiKey,
+        api_key: firsConfig?.appApiKey,
       });
 
       // Scope decryption to invoices owned by the authenticated tenant
