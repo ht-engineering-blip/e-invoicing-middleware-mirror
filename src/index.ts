@@ -31,9 +31,19 @@ const ensureMongoConnection = async () => {
   }
 };
 
+// elysia-remote-dts pulls in the full TypeScript compiler via a CJS require()
+// inside an ESM async hook, which crashes on Bun in production (Vercel) with
+// "Requested module is not instantiated yet". It's a dev-only convenience
+// (serves live .d.ts types), so only wire it in outside production. Passing
+// an empty Elysia() as a no-op keeps this a single unbroken method chain.
+const dtsPlugin =
+  process.env.NODE_ENV !== "production"
+    ? dts("./src/index.ts")
+    : new Elysia();
+
 const app = new Elysia()
   .use(cors())
-  .use(dts("./src/index.ts"))
+  .use(dtsPlugin)
   // Ensure MongoDB connection on every request
   .onBeforeHandle(async () => {
     await ensureMongoConnection();
