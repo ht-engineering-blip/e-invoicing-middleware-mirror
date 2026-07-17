@@ -27,7 +27,7 @@ export const SAMPLE_AMOUNT = faker.number.float({
 export const SAMPLE_VAT = parseFloat((SAMPLE_AMOUNT * 0.075).toFixed(2));
 export const SAMPLE_TOTAL = parseFloat((SAMPLE_AMOUNT + SAMPLE_VAT).toFixed(2));
 export const SAMPLE_PAYMENT_REF = `TRF-${faker.date.recent().toISOString().split("T")[0].replace(/-/g, "")}-${faker.string.alphanumeric(6).toUpperCase()}`;
-export const SAMPLE_BUSINESS_ID = faker.string.uuid();
+export const SAMPLE_BUSINESS_ID = "8f8b8e88-6b83-4a34-934d-1a8684bb57f2";
 export const SAMPLE_INVOICE_KIND = `B2B`;
 
 // ── Invoice body (shared across transform / validate / sign) ──────────────────
@@ -43,7 +43,7 @@ export const SAMPLE_INVOICE_BODY = {
   due_date: SAMPLE_DUE_DATE,
   business_id: SAMPLE_BUSINESS_ID,
   invoice_type_code: "380",
-  invoice_type: SAMPLE_INVOICE_KIND,
+  invoice_kind: SAMPLE_INVOICE_KIND,
   document_currency_code: "NGN",
   tax_currency_code: "NGN",
   accounting_supplier_party: {
@@ -81,7 +81,7 @@ export const SAMPLE_INVOICE_BODY = {
       price: {
         price_amount: SAMPLE_AMOUNT,
         base_quantity: 1,
-        price_unit: "EA",
+        price_unit: "H87",
       },
       tax_total: {
         tax_amount: SAMPLE_VAT,

@@ -16,7 +16,7 @@ const sampleInvoice = {
   issue_date: issueDate,
   due_date: faker.date.soon({ days: 30 }).toISOString().split("T")[0],
   invoice_type_code: "380",
-  invoice_type: "B2B",
+  invoice_kind: "B2B",
   document_currency_code: "NGN",
   accounting_supplier_party: {
     party_name: "Heirs Technologies",
@@ -42,7 +42,7 @@ const sampleInvoice = {
       invoiced_quantity: faker.number.int({ min: 1, max: 5 }),
       line_extension_amount: amount,
       item: { description: faker.commerce.productName() },
-      price: { price_amount: amount, base_quantity: 1, price_unit: "EA" },
+      price: { price_amount: amount, base_quantity: 1, price_unit: "H87" },
     },
   ],
   tax_total: { tax_amount: vat },
