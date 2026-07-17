@@ -49,9 +49,9 @@ export const FIRS_INVOICE_METADATA = {
       description: "optional",
       category: "references",
     },
-    invoice_type: {
-      required: false,
-      description: "optional",
+    invoice_kind: {
+      required: true,
+      description: "invoice kind (e.g. B2B, B2C)",
       category: "invoice_type",
     },
     invoice_delivery_period: {
@@ -199,10 +199,10 @@ export const FIRS_INVOICE_METADATA = {
       category: "financial",
     },
     tax_total: {
-      required: false,
-      description: "optional array, additional elements optional",
+      required: true,
+      description: "mandatory array, additional elements optional",
       array_rules: {
-        min_items: 0,
+        min_items: 1,
         max_items: null,
         optional_elements: "second and beyond",
       },
@@ -241,11 +241,13 @@ export const FIRS_INVOICE_METADATA = {
       "issue_date",
       "invoice_type_code",
       "document_currency_code",
+      "invoice_kind",
       "accounting_supplier_party.tin",
       "accounting_supplier_party.email",
       "accounting_customer_party.tin",
       "accounting_customer_party.email",
       "legal_monetary_total",
+      "tax_total",
       "invoice_line",
     ],
     optional_fields: [
