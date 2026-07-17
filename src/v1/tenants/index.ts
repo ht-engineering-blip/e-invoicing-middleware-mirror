@@ -46,31 +46,36 @@ const authOnboardingRoutes = new Elysia()
           certificate: body.certificate,
           publicKey: body.publicKey,
         };
-        if (!auth?.isAdmin) {
+        let targetTenantId = params.tenantId;
+        if (targetTenantId === 'me' && auth?.tenantId) {
+          targetTenantId = auth.tenantId;
+        }
+
+        if (auth?.tenantId !== targetTenantId && auth?.businessId !== targetTenantId && !auth?.isAdmin) {
           throw new UnauthorizedError("Invalid token used for this tenant");
         }
 
-        const tenant = await tenantService.getTenantById(params.tenantId);
+        const tenant = await tenantService.getTenantById(targetTenantId);
         if (tenant) {
           const tenantUpdateResp = await tenantService.updateFIRSCredentials(
-            params.tenantId,
+            targetTenantId,
             credentials,
           );
 
           // Automatically update onboarding step - mark FIRS provisioning as complete
           try {
             const onboarding = await tenantService.getOnboardingStatus(
-              params.tenantId,
+              targetTenantId,
             );
             if (onboarding && !onboarding.steps?.firsProvisioning?.completed) {
               await tenantService.completeOnboardingStep(
-                params.tenantId,
+                targetTenantId,
                 "firsProvisioning",
               );
 
               // Update status to in_progress if still pending
               if (onboarding.status === "pending") {
-                await tenantService.updateOnboarding(params.tenantId, {
+                await tenantService.updateOnboarding(targetTenantId, {
                   status: "in_progress",
                 });
               }
