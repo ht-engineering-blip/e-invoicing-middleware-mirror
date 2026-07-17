@@ -1,3 +1,4 @@
+import "./bun-v8-polyfill";
 import dns from "node:dns";
 
 // Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues

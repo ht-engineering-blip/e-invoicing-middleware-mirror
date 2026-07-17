@@ -1,3 +1,4 @@
+import "./bun-v8-polyfill";
 /**
  * Job Worker Process
  *
