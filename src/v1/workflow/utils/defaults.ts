@@ -282,9 +282,7 @@ export const FIRS_INVOICE_METADATA = {
 };
 
 export const FIRS_INVOICE_SCHEMA = {
-  business_id: firsConfig?.useTestTaxpayer
-    ? firsConfig?.testBusinessId
-    : "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
+  business_id: "{{BUSINESS_ID}}",
   irn: "IRN",
   issue_date: "2024-05-14",
   due_date: "2024-06-14",
@@ -450,9 +448,7 @@ export const FIRS_INVOICE_SCHEMA = {
   ],
 };
 export const FIRS_INVOICE_SCHEMA_V2 = {
-  business_id: firsConfig?.useTestTaxpayer
-    ? firsConfig?.testBusinessId
-    : "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
+  business_id: "{{BUSINESS_ID}}",
   irn: "IRN",
   issue_date: "2024-05-14",
   due_date: "2024-06-14",
