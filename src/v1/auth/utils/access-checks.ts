@@ -1,9 +1,9 @@
-﻿import { ForbiddenError, UnauthorizedError } from "../../../@lib";
+import { ForbiddenError, UnauthorizedError } from "../../../@lib";
 import { AuthContext } from "../../../middlewares";
 
 export const onlySelf = (auth: AuthContext, tenantId: string) => {
   // Verify the user has access to this tenant
-  if (auth?.tenantId !== tenantId && !auth?.isAdmin) {
+  if (auth?.tenantId !== tenantId && auth?.businessId !== tenantId && !auth?.isAdmin) {
     throw new ForbiddenError('Forbidden: You do not have access to this tenant')
   }
 
@@ -20,7 +20,7 @@ export const onlyTenantAdmin = (auth: AuthContext, tenantId: string) => {
   if (auth?.isAdmin) {
     return; // Global admin is allowed
   }
-  if (auth?.tenantId !== tenantId) {
+  if (auth?.tenantId !== tenantId && auth?.businessId !== tenantId) {
     throw new ForbiddenError('Forbidden: You do not have access to this tenant');
   }
   if (auth?.isTeamMember) {

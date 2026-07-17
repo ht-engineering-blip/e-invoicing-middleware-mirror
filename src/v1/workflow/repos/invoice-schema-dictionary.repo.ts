@@ -263,7 +263,7 @@ export class InvoiceSchemaDictionaryRepository {
         .findOneAndUpdate(
           { schema_id: schemaId },
           { $set: input },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -295,7 +295,7 @@ export class InvoiceSchemaDictionaryRepository {
             $push: { fields: { $each: fields } },
             $set: { updated_by: updatedBy },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -332,7 +332,7 @@ export class InvoiceSchemaDictionaryRepository {
         .findOneAndUpdate(
           { schema_id: schemaId, "fields.field_id": fieldId },
           { $set: updateFields },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -364,7 +364,7 @@ export class InvoiceSchemaDictionaryRepository {
             $pull: { fields: { field_id: fieldId } },
             $set: { updated_by: updatedBy },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -396,7 +396,7 @@ export class InvoiceSchemaDictionaryRepository {
             $push: { mapping_rules: { $each: rules } },
             $set: { updated_by: updatedBy },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -425,7 +425,7 @@ export class InvoiceSchemaDictionaryRepository {
         .findOneAndUpdate(
           { schema_id: schemaId },
           { $set: { status, updated_by: updatedBy } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -466,7 +466,7 @@ export class InvoiceSchemaDictionaryRepository {
         .findOneAndUpdate(
           { schema_id: schemaId },
           { $set: { is_default: true, updated_by: updatedBy } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -613,7 +613,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       const doc = await this.model
-        .findOneAndUpdate({ schema_id: schemaId }, updateQuery, { new: true })
+        .findOneAndUpdate({ schema_id: schemaId }, updateQuery, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {

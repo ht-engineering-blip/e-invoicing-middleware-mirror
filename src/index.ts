@@ -133,6 +133,7 @@ const app = new Elysia()
 
     // Default error handler
     const errorObj = error as any;
+    logger.error(`[Unhandled Error - ${code}]:`, error);
     set.status = errorObj.statusCode || errorObj.status || 500;
     return {
       success: false,

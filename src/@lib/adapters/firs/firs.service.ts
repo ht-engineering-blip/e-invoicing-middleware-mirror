@@ -258,7 +258,7 @@ export class FIRSService {
   }
 
   public async signInvoice(tenantId: string, invoice: any) {
-    const client = this.siClient;
+    const client = this.appClient;
     return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
   }
 

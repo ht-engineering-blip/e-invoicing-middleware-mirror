@@ -138,7 +138,7 @@ export class ApiKeyRepository {
         .findByIdAndUpdate(
           keyId,
           { $set: updateData },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -273,7 +273,7 @@ export class ApiKeyRepository {
               revokedReason: reason,
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
