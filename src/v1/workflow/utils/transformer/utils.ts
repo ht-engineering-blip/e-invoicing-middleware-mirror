@@ -155,13 +155,13 @@ export function generateIRN(
 }
 
 export const FIRS_SCHEMA_EXAMPLE = `{
-    "business_id": "{{TEST_BUSINESS_ID}}",
+    "business_id": "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
     "irn": "IRN",
     "issue_date": "2024-05-14",
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
     "invoice_type_code": "396",
-    "invoice_type": "B2B",
+    "invoice_kind": "B2B",
     "payment_status": "PENDING",
     "note": "dummy_note (will be encryted in storage)",
     "tax_point_date": "2024-05-14",
@@ -281,7 +281,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
             "price": {
                 "price_amount": 10,
                 "base_quantity": 3,
-                "price_unit": "EA"
+                "price_unit": "H87"
             }
         }
     ],
@@ -303,6 +303,7 @@ MANDATORY FIELDS (MUST BE PRESENT):
 - irn: Generate a unique invoice reference if not provided (format: INVYYYYMMDDXXX)
 - issue_date: REQUIRED, use today (${today}) if not provided
 - invoice_type_code: REQUIRED, default to "396" if not specified
+- invoice_kind: REQUIRED, default to "B2B" if not specified
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address

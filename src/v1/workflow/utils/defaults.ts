@@ -282,12 +282,13 @@ export const FIRS_INVOICE_METADATA = {
 export const FIRS_INVOICE_SCHEMA = {
   business_id: firsConfig?.useTestTaxpayer
     ? firsConfig?.testBusinessId
-    : "{{TEST_BUSINESS_ID}}",
+    : "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
   irn: "IRN",
   issue_date: "2024-05-14",
   due_date: "2024-06-14",
   issue_time: "17:59:04",
   invoice_type_code: "396",
+  invoice_kind: "B2B",
   payment_status: "PENDING",
   note: "dummy_note (will be encryted in storage)",
   tax_point_date: "2024-05-14",
@@ -295,7 +296,6 @@ export const FIRS_INVOICE_SCHEMA = {
   tax_currency_code: "NGN",
   accounting_cost: "2000 NGN",
   buyer_reference: "buyer REF IRN?",
-  invoice_type: "B2B",
   invoice_delivery_period: {
     start_date: "2024-06-14",
     end_date: "2024-06-16",
@@ -422,7 +422,7 @@ export const FIRS_INVOICE_SCHEMA = {
       price: {
         price_amount: 10,
         base_quantity: 3,
-        price_unit: "EA",
+        price_unit: "H87",
       },
     },
     {
@@ -442,7 +442,7 @@ export const FIRS_INVOICE_SCHEMA = {
       price: {
         price_amount: 20,
         base_quantity: 5,
-        price_unit: "EA",
+        price_unit: "H87",
       },
     },
   ],
@@ -450,12 +450,13 @@ export const FIRS_INVOICE_SCHEMA = {
 export const FIRS_INVOICE_SCHEMA_V2 = {
   business_id: firsConfig?.useTestTaxpayer
     ? firsConfig?.testBusinessId
-    : "BUSINESS_ID",
+    : "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
   irn: "IRN",
   issue_date: "2024-05-14",
   due_date: "2024-06-14",
   issue_time: "17:59:04",
   invoice_type_code: "396",
+  invoice_kind: "B2B",
   payment_status: "PENDING",
   note: "dummy_note (will be encryted in storage)",
   tax_point_date: "2024-05-14",
@@ -463,7 +464,6 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
   tax_currency_code: "NGN",
   accounting_cost: "2000 NGN",
   buyer_reference: "buyer REF IRN?",
-  invoice_type: "B2B",
   invoice_delivery_period: {
     start_date: "2024-06-14",
     end_date: "2024-06-16",
@@ -590,7 +590,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
       price: {
         price_amount: 10,
         base_quantity: 3,
-        price_unit: "EA",
+        price_unit: "H87",
       },
     },
     {
@@ -610,7 +610,7 @@ export const FIRS_INVOICE_SCHEMA_V2 = {
       price: {
         price_amount: 20,
         base_quantity: 5,
-        price_unit: "EA",
+        price_unit: "H87",
       },
     },
   ],
