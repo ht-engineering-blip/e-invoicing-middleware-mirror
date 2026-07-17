@@ -192,7 +192,7 @@ export class OutboundInvoiceRepository {
             webhookEvents: [],
           },
         },
-        { upsert: true, new: true, runValidators: true },
+        { upsert: true, returnDocument: 'after', runValidators: true },
       );
 
       return doc!;
@@ -229,7 +229,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           query,
           { $set: updateData },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -390,7 +390,7 @@ export class OutboundInvoiceRepository {
   ): Promise<OutboundInvoiceDocument> {
     try {
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: { status } }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: { status } }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -428,7 +428,7 @@ export class OutboundInvoiceRepository {
       });
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateFields }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: updateFields }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -468,7 +468,7 @@ export class OutboundInvoiceRepository {
             },
             $inc: { validationAttempts: 1 },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -498,7 +498,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           { irn },
           { $addToSet: { webhookEvents: eventId } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -578,7 +578,7 @@ export class OutboundInvoiceRepository {
       if (paymentDetails) update.paymentDetails = paymentDetails;
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: update }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: update }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) throw new AppError(404, "Outbound invoice not found");

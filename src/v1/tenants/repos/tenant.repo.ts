@@ -163,7 +163,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: updateData },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -193,7 +193,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.INACTIVE } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -345,7 +345,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.ACTIVE } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -372,7 +372,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.SUSPENDED } },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -418,7 +418,7 @@ export class TenantRepository {
               ...(credentials.apiSecret && { "config.firsCredentials.apiSecret": credentials.apiSecret }),
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 

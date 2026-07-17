@@ -144,27 +144,25 @@ export function registerSyncErpJob(): void {
 
     logger.info("[Job:sync-erp] Starting", { jobChainId, tenantId });
 
-    // Load and decrypt ERP sync config
-    const erpSyncConfig = await tenantService.getERPSyncConfig(tenantId);
-
-    if (!erpSyncConfig) {
-      const err = new Error(`No ERP sync config found for tenant ${tenantId}`);
-      await chainFail(job, err);
-      throw err;
-    }
-
-    if (!erpSyncConfig.enabled) {
-      logger.info("[Job:sync-erp] ERP sync is disabled for tenant — skipping", {
-        tenantId,
-      });
-      // Skip gracefully without failing the chain
-      await chainNext(job, {
-        erpSyncResult: { skipped: true, reason: "disabled" },
-      });
-      return;
-    }
-
     try {
+      // Load and decrypt ERP sync config
+      const erpSyncConfig = await tenantService.getERPSyncConfig(tenantId);
+
+      if (!erpSyncConfig) {
+        throw new Error(`No ERP sync config found for tenant ${tenantId}`);
+      }
+
+      if (!erpSyncConfig.enabled) {
+        logger.info("[Job:sync-erp] ERP sync is disabled for tenant — skipping", {
+          tenantId,
+        });
+        // Skip gracefully without failing the chain
+        await chainNext(job, {
+          erpSyncResult: { skipped: true, reason: "disabled" },
+        });
+        return;
+      }
+
       // Build URL
       let url = `${erpSyncConfig.baseUrl.replace(/\/$/, "")}/${erpSyncConfig.endpoint.replace(/^\//, "")}`;
       url = applyQueryParams(url, erpSyncConfig.queryParams);

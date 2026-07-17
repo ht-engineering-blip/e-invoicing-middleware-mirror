@@ -163,7 +163,7 @@ export class InboundInvoiceRepository {
       }, {} as any);
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateData }, { new: true, runValidators: true })
+        .findOneAndUpdate({ irn }, { $set: updateData }, { returnDocument: 'after', runValidators: true })
         .exec();
 
       if (!doc) {
@@ -293,7 +293,7 @@ export class InboundInvoiceRepository {
   ): Promise<InboundInvoiceDocument> {
     try {
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: { status } }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: { status } }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -330,7 +330,7 @@ export class InboundInvoiceRepository {
       });
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateFields }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: updateFields }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -368,7 +368,7 @@ export class InboundInvoiceRepository {
       }
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateData }, { new: true })
+        .findOneAndUpdate({ irn }, { $set: updateData }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -405,7 +405,7 @@ export class InboundInvoiceRepository {
               rejectedAt: new Date(),
             },
           },
-          { new: true }
+          { returnDocument: 'after' }
         )
         .exec();
 
@@ -445,7 +445,7 @@ export class InboundInvoiceRepository {
               webhookEvents: event,
             },
           },
-          { new: true }
+          { returnDocument: 'after' }
         )
         .exec();
 

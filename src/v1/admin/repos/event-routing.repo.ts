@@ -17,7 +17,7 @@ export class EventRoutingRepository {
       const doc = await EventRoutingModel.findOneAndUpdate(
         { tenantId },
         { $set: { routes } },
-        { new: true, upsert: true, runValidators: true }
+        { returnDocument: 'after', upsert: true, runValidators: true }
       ).exec();
       return doc!;
     } catch {
@@ -31,7 +31,7 @@ export class EventRoutingRepository {
       const doc = await EventRoutingModel.findOneAndUpdate(
         { tenantId },
         { $push: { routes: { ...route, routeId } } },
-        { new: true, upsert: true }
+        { returnDocument: 'after', upsert: true }
       ).exec();
       return doc!;
     } catch {
@@ -52,7 +52,7 @@ export class EventRoutingRepository {
       return await EventRoutingModel.findOneAndUpdate(
         { tenantId, 'routes.routeId': routeId },
         { $set: setFields },
-        { new: true }
+        { returnDocument: 'after' }
       ).exec();
     } catch {
       throw new AppError(500, 'Failed to update event route');
@@ -64,7 +64,7 @@ export class EventRoutingRepository {
       return await EventRoutingModel.findOneAndUpdate(
         { tenantId },
         { $pull: { routes: { routeId } } },
-        { new: true }
+        { returnDocument: 'after' }
       ).exec();
     } catch {
       throw new AppError(500, 'Failed to remove event route');

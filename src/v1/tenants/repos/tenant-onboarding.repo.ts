@@ -146,7 +146,7 @@ export class TenantOnboardingRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: updateData },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -221,7 +221,7 @@ export class TenantOnboardingRepository {
   ): Promise<TenantOnboardingDocument> {
     try {
       const doc = await this.onboardingModel
-        .findOneAndUpdate({ tenantId }, { $set: { status } }, { new: true })
+        .findOneAndUpdate({ tenantId }, { $set: { status } }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
@@ -260,7 +260,7 @@ export class TenantOnboardingRepository {
               [`steps.${step}.completedAt`]: new Date(),
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -296,7 +296,7 @@ export class TenantOnboardingRepository {
               approvedAt: new Date(),
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -332,7 +332,7 @@ export class TenantOnboardingRepository {
               approvedAt: new Date(),
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 

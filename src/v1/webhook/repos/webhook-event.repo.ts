@@ -167,7 +167,7 @@ export class WebhookEventRepository {
         .findOneAndUpdate(
           { eventId },
           { $set: updateData },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
@@ -342,7 +342,7 @@ export class WebhookEventRepository {
   ): Promise<WebhookEventDocument | null> {
     try {
       const doc = await this.webhookEventModel
-        .findOneAndUpdate({ eventId }, { $set: { status } }, { new: true })
+        .findOneAndUpdate({ eventId }, { $set: { status } }, { returnDocument: 'after' })
         .exec();
       return doc;
     } catch (error) {
@@ -413,7 +413,7 @@ export class WebhookEventRepository {
               deliveryAttempts: attempt,
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -452,7 +452,7 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -493,7 +493,7 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
@@ -554,7 +554,7 @@ export class WebhookEventRepository {
               nextRetryAt,
             },
           },
-          { new: true },
+          { returnDocument: 'after' },
         )
         .exec();
 
