@@ -375,7 +375,7 @@ Each invoice_line must contain:
 - invoiced_quantity: quantity (number)
 - line_extension_amount: line total before tax
 - item: object with name, description
-- price: object with price_amount, base_quantity, price_unit
+- price: object with price_amount (number), base_quantity (number, usually 1), price_unit (UN/ECE unit code — NOT a currency; use H87=piece, XBG=bag, KGM=kg, LTR=litre, TNE=tonne, XBX=box, XCT=carton; default H87 if unsure — NEVER use "NGN", "USD" or similar currency codes)
 
 ## IMPORTANT INSTRUCTIONS:
 1. Return ONLY valid JSON in the exact FIRS schema format

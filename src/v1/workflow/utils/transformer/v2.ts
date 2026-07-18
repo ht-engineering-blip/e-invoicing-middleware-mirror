@@ -10,7 +10,9 @@ import {
   generateIRN,
   sanitizeInvoiceIRNs,
   sanitizeHsnCode,
+  sanitizePriceUnit,
 } from "./utils";
+
 import { FIRS_INVOICE_METADATA } from "../defaults";
 import {
   FIRS_INVOICE_TYPES,
@@ -229,7 +231,7 @@ export class FIRSInvoiceTransformerV2 {
         logger.info("completed", completed);
       }
 
-      // Deterministic HSN code sanitization
+      // Deterministic HSN code and price_unit sanitization
       if (Array.isArray(completed.invoice_line)) {
         for (const line of completed.invoice_line) {
           if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -237,6 +239,9 @@ export class FIRSInvoiceTransformerV2 {
             if (sanitized !== undefined) {
               line.hsn_code = sanitized;
             }
+          }
+          if (line.price && line.price.price_unit !== undefined) {
+            line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
           }
         }
       }
@@ -251,7 +256,7 @@ export class FIRSInvoiceTransformerV2 {
           authContext,
           sourceSchema,
         );
-        // Deterministic HSN code sanitization post-repair
+        // Deterministic HSN code and price_unit sanitization post-repair
         if (Array.isArray(completed.invoice_line)) {
           for (const line of completed.invoice_line) {
             if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -259,6 +264,9 @@ export class FIRSInvoiceTransformerV2 {
               if (sanitized !== undefined) {
                 line.hsn_code = sanitized;
               }
+            }
+            if (line.price && line.price.price_unit !== undefined) {
+              line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
             }
           }
         }
@@ -353,11 +361,11 @@ export class FIRSInvoiceTransformerV2 {
       const key = keys[i];
       const nextKey = keys[i + 1];
 
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
         throw new Error("Prototype pollution attempt detected");
       }
 
-      if (current[key] == null || typeof current[key] !== 'object') {
+      if (current[key] == null || typeof current[key] !== "object") {
         // Create array if next key is numeric, otherwise create object
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
@@ -368,7 +376,11 @@ export class FIRSInvoiceTransformerV2 {
 
     const last = keys[keys.length - 1];
 
-    if (last === '__proto__' || last === 'constructor' || last === 'prototype') {
+    if (
+      last === "__proto__" ||
+      last === "constructor" ||
+      last === "prototype"
+    ) {
       throw new Error("Prototype pollution attempt detected");
     }
 
@@ -403,7 +415,11 @@ export class FIRSInvoiceTransformerV2 {
 
     const [head, ...rest] = keys;
 
-    if (head === '__proto__' || head === 'constructor' || head === 'prototype') {
+    if (
+      head === "__proto__" ||
+      head === "constructor" ||
+      head === "prototype"
+    ) {
       throw new Error("Prototype pollution attempt detected");
     }
 
@@ -662,7 +678,7 @@ Each invoice_line must contain:
 - invoiced_quantity: quantity (number)
 - line_extension_amount: line total before tax
 - item: object with name, description
-- price: object with price_amount, base_quantity, price_unit
+- price: object with price_amount (number), base_quantity (number, usually 1), price_unit (UN/ECE unit code — NOT a currency; use H87=piece, XBG=bag, KGM=kg, LTR=litre, TNE=tonne, XBX=box, XCT=carton; default H87 if unsure — NEVER use "NGN", "USD" or similar currency codes)
 
 ## IMPORTANT INSTRUCTIONS:
 1. Return ONLY valid JSON in the exact FIRS schema format
