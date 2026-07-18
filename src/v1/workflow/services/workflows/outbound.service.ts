@@ -109,7 +109,14 @@ export class OutboundWorkflowService {
               if (Array.isArray((invoice as any).invoice_line)) {
                 const usedHsnCodes = new Set<string>();
                 for (const line of (invoice as any).invoice_line) {
-                  line.hsn_code = generateUniqueHsnCode(usedHsnCodes);
+                  // Use product_category or service_category or item description for smart WCO HSN lookup
+                  const lineDesc =
+                    line.product_category ||
+                    line.service_category ||
+                    line.item?.description ||
+                    line.item?.name ||
+                    undefined;
+                  line.hsn_code = generateUniqueHsnCode(usedHsnCodes, lineDesc);
                 }
               }
               // Wait 1 second before retrying

@@ -7,7 +7,11 @@ import {
   FIRSService,
   FIRSUserInfoBusiness,
 } from "../../@lib/adapters/firs/firs.service";
-import { InternalServerError, UnauthorizedError, ValidationError } from "../../@lib/errors";
+import {
+  InternalServerError,
+  UnauthorizedError,
+  ValidationError,
+} from "../../@lib/errors";
 import { hashString, verifyHash } from "../../@lib/utils/encryption";
 import { requireAuth } from "../../middlewares/auth";
 import { TeamMemberService } from "../tenants/services/team-member.service";
@@ -45,7 +49,11 @@ const authRoutes = new Elysia()
         logger.info("Login attempt", { email: body.email });
 
         // Find tenant by contact email
-        const tenant = await tenantService.getTenantByEmail(body.email, false, true);
+        const tenant = await tenantService.getTenantByEmail(
+          body.email,
+          false,
+          true,
+        );
 
         if (!tenant) {
           throw new UnauthorizedError("Invalid credentials");
@@ -91,7 +99,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401
+        set.status = 401;
         logger.error("Login failed", {
           email: body.email,
           error: error.message,
@@ -103,7 +111,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    loginRouteValidation
+    loginRouteValidation,
   )
 
   /**
@@ -145,7 +153,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400
+        set.status = 400;
         logger.error("Team member login failed", {
           email: body.email,
           error: error.message,
@@ -157,7 +165,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    teamMemberLoginRouteValidation
+    teamMemberLoginRouteValidation,
   )
 
   /**
@@ -206,15 +214,15 @@ const authRoutes = new Elysia()
               data: FIRSUserInfoBusiness;
             };
           } catch (firsError: any) {
-            set.status = 401
+            set.status = 401;
             logger.error("FIRS API error", {
               status: firsError.message.response?.data?.code,
               message: firsError.message.response?.data?.data?.message,
             });
             throw new UnauthorizedError(
               firsError.message.response?.data?.data?.message ||
-              firsError.response?.data?.message ||
-              "FIRS authentication failed",
+                firsError.response?.data?.message ||
+                "FIRS authentication failed",
             );
           }
         }
@@ -258,7 +266,7 @@ const authRoutes = new Elysia()
             });
           }
         } else {
-          set.status = 400
+          set.status = 400;
           return {
             success: false,
             error: "Your TIN have not been registered on our system.",
@@ -306,7 +314,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 500
+        set.status = 500;
         logger.error("FIRS OAuth failed", { error: error.message });
         return {
           success: false,
@@ -315,7 +323,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    firsOAuthRouteValidation
+    firsOAuthRouteValidation,
   )
 
   /**
@@ -335,7 +343,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
-        set.status = 500
+        set.status = 500;
         logger.error("Password reset request failed", {
           email: body.email,
           error: error.message,
@@ -347,7 +355,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    forgotPasswordRouteValidation
+    forgotPasswordRouteValidation,
   )
 
   /**
@@ -370,7 +378,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
-        set.status = 400
+        set.status = 400;
         logger.error("Password reset failed", { error: error.message });
         return {
           success: false,
@@ -379,7 +387,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    resetPasswordRouteValidation
+    resetPasswordRouteValidation,
   )
 
   /**
@@ -393,7 +401,7 @@ const authRoutes = new Elysia()
         const result = await authService.validateResetToken(params.token);
 
         if (!result.valid) {
-          set.status = 400
+          set.status = 400;
           return {
             success: false,
             error: "Invalid or expired reset token",
@@ -409,7 +417,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400
+        set.status = 400;
         return {
           success: false,
           error: error.message || "Failed to validate token",
@@ -417,7 +425,7 @@ const authRoutes = new Elysia()
         };
       }
     },
-    validateResetTokenRouteValidation
+    validateResetTokenRouteValidation,
   );
 
 /**
@@ -472,7 +480,7 @@ const protectedAuthRoutes = new Elysia()
                 id: tenant.tenantId,
                 businessName: tenant.businessName,
                 status: tenant.status,
-                erpSystem: tenant.erpSystem,
+                erpSystem: tenant.config?.erpSystem,
               },
             },
           };
@@ -516,14 +524,14 @@ const protectedAuthRoutes = new Elysia()
             tin: tenant.tin,
             contactEmail: tenant.contactEmail,
             contactPhone: tenant.contactPhone,
-            erpSystem: tenant.erpSystem,
+            erpSystem: tenant.config?.erpSystem,
             status: tenant.status,
             createdAt: tenant.createdAt,
             config: {
               firs: {
                 serviceId: tenant.config?.firsCredentials?.serviceId,
-                clientId: tenant.config?.firsCredentials?.clientId,
-                publicKey: tenant.config?.firsCredentials?.publicKey,
+                clientId: "[REDACTED]",
+                publicKey: "[REDACTED]",
               },
               features: tenant.config?.features,
               limits: tenant.config?.limits,
@@ -533,17 +541,17 @@ const protectedAuthRoutes = new Elysia()
             },
             onboarding: onboarding
               ? {
-                status: onboarding.status,
-                progress: onboardingProgress,
-                steps: onboarding.steps,
-                approvedAt: onboarding.approvedAt,
-              }
+                  status: onboarding.status,
+                  progress: onboardingProgress,
+                  steps: onboarding.steps,
+                  approvedAt: onboarding.approvedAt,
+                }
               : null,
             metadata: showMeta,
           },
         };
       } catch (error: any) {
-        set.status = 500
+        set.status = 500;
         logger.error("Failed to fetch user details", {
           tenantId: auth?.tenantId,
           userId: auth?.userId,
@@ -556,7 +564,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    meRouteValidation
+    meRouteValidation,
   )
 
   /**
@@ -573,7 +581,9 @@ const protectedAuthRoutes = new Elysia()
 
         const tenant = await tenantService.getTenantById(auth.tenantId);
         if (tenant.metadata?.activationCompleted) {
-          throw new ValidationError("Account has already been activated. Password cannot be set again.");
+          throw new ValidationError(
+            "Account has already been activated. Password cannot be set again.",
+          );
         }
 
         let { password } = body;
@@ -630,7 +640,7 @@ const protectedAuthRoutes = new Elysia()
           );
         }
       } catch (error: any) {
-        set.status = 401
+        set.status = 401;
         return {
           success: false,
           error: error.message || "Token refresh failed",
@@ -638,7 +648,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    setPasswordRouteValidation
+    setPasswordRouteValidation,
   )
   /**
    * POST /auth/refresh
@@ -661,7 +671,7 @@ const protectedAuthRoutes = new Elysia()
           type: "tenant",
         };
 
-        const jwtSecret = jwtConfig?.secret || '';
+        const jwtSecret = jwtConfig?.secret || "";
         const jwtExpiry = jwtConfig?.expiry || "24h";
         const jwtAlgorithm = (jwtConfig?.algorithm || "HS256") as jwt.Algorithm;
 
@@ -682,7 +692,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401
+        set.status = 401;
         return {
           success: false,
           error: error.message || "Token refresh failed",
@@ -690,7 +700,7 @@ const protectedAuthRoutes = new Elysia()
         };
       }
     },
-    refreshTokenRouteValidation
+    refreshTokenRouteValidation,
   );
 
 /**
