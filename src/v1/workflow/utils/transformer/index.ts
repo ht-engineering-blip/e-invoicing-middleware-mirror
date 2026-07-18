@@ -4,7 +4,7 @@ import { InternalServerError } from "../../../../@lib";
 import { generateTransformPrompt } from "../../../../@lib/adapters/llm/prompts";
 import { AuthContext } from "../../../../middlewares";
 import { SchemaSourceType } from "../../models";
-import { generateIRN, sanitizeInvoiceIRNs, sanitizeHsnCode } from "./utils";
+import { generateIRN, sanitizeHsnCode, sanitizeInvoiceIRNs, sanitizePriceUnit } from "./utils";
 // ============= SCHEMA VALIDATION =============
 
 // Simplified validation schemas for critical fields
@@ -354,7 +354,7 @@ export class FIRSInvoiceTransformer {
         sourceType,
       );
 
-      // Deterministic HSN code sanitization
+      // Deterministic HSN code and price_unit sanitization
       if (Array.isArray(transformedData.invoice_line)) {
         for (const line of transformedData.invoice_line) {
           if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -362,6 +362,9 @@ export class FIRSInvoiceTransformer {
             if (sanitized !== undefined) {
               line.hsn_code = sanitized;
             }
+          }
+          if (line.price && line.price.price_unit !== undefined) {
+            line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
           }
         }
       }
@@ -442,7 +445,7 @@ export class FIRSInvoiceTransformer {
           fixedData.accounting_supplier_party.tin = expectedSupplierTIN;
         }
 
-        // Deterministic HSN code sanitization post-autofix
+        // Deterministic HSN code and price_unit sanitization post-autofix
         if (Array.isArray(fixedData.invoice_line)) {
           for (const line of fixedData.invoice_line) {
             if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -450,6 +453,9 @@ export class FIRSInvoiceTransformer {
               if (sanitized !== undefined) {
                 line.hsn_code = sanitized;
               }
+            }
+            if (line.price && line.price.price_unit !== undefined) {
+              line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
             }
           }
         }
