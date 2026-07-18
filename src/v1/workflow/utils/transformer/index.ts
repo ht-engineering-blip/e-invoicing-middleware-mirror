@@ -24,6 +24,8 @@ const AddressSchema = z.object({
   city_name: z.string(),
   postal_zone: z.string(),
   country: z.string(),
+  lga: z.string().optional(),
+  state: z.string().optional(),
 });
 
 const PartySchema = z.object({
@@ -64,12 +66,14 @@ const InvoiceLineSchema = z.object({
       .transform((val) => {
         if (!val) return "";
         const sanitized = sanitizeHsnCode(val);
-        if (sanitized) return sanitized;
+        if (sanitized !== undefined) return sanitized;
         return val;
       })
       .optional(),
   ),
-  product_category: z.string(),
+  isic_code: z.string().optional(),
+  product_category: z.string().optional(),
+  service_category: z.string().optional(),
   invoiced_quantity: z.number(),
   line_extension_amount: z.number(),
   item: z.object({
@@ -95,6 +99,7 @@ export const FIRSInvoiceSchema = z
     irn: z.string(),
     issue_date: DateSchema,
     invoice_type_code: z.string(),
+    invoice_kind: z.string(),
     document_currency_code: z.string(),
     accounting_supplier_party: PartySchema,
     accounting_customer_party: PartySchema,
@@ -108,7 +113,7 @@ export const FIRSInvoiceSchema = z
     payment_status: z.string().optional(),
     note: z.string().optional(),
     tax_point_date: DateSchema.optional(),
-    tax_currency_code: z.string(),
+    tax_currency_code: z.string().optional(),
     accounting_cost: z.string().optional(),
     buyer_reference: z.string().optional(),
     invoice_delivery_period: z
@@ -176,6 +181,11 @@ export const FIRSInvoiceSchema = z
         }),
       )
       .optional(),
+    // Optional party fields
+    payee_party: PartySchema.optional(),
+    bill_party: PartySchema.optional(),
+    ship_party: PartySchema.optional(),
+    tax_representative_party: PartySchema.optional(),
     invoice_reference: z.string().optional(),
   })
   .refine(
