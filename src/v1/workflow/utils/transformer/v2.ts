@@ -5,7 +5,6 @@ import { TransformWorkflowService } from "../../services";
 import { FIRSInvoiceSchema, TransformationResult } from ".";
 import { InternalServerError, logger } from "../../../../@lib";
 import {
-  FIRS_SCHEMA_EXAMPLE,
   generateDatestamp,
   generateIRN,
   sanitizeInvoiceIRNs,
