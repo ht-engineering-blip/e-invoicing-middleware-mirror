@@ -431,10 +431,15 @@ export const webhookRoutes = new Elysia({
 
       const safeEventType = eventType.replace(/\./g, "_");
       if (useIdKeyMap.includes(eventType)) {
-        const idKeyMap = config?.idKeyMap;
-        const invoiceIdKey = typeof idKeyMap?.get === "function"
-          ? idKeyMap.get(safeEventType)
-          : (idKeyMap as any)?.[safeEventType];
+        const idKeyMap: any = config?.idKeyMap;
+        let invoiceIdKey;
+        if (idKeyMap) {
+          if (typeof idKeyMap.get === "function") {
+            invoiceIdKey = idKeyMap.get(safeEventType);
+          } else {
+            invoiceIdKey = idKeyMap[safeEventType];
+          }
+        }
 
         erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
       } else {
