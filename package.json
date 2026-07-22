@@ -1,6 +1,6 @@
 {
   "name": "e-invoicing-middleware",
-  "version": "1.0.52",
+  "version": "1.0.53",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
@@ -20,7 +20,7 @@
     "elysia": "^1.4.29",
     "elysia-remote-dts": "^1.0.3",
     "express": "^5.2.1",
-    "firs-einvoicing": "1.0.14",
+    "firs-einvoicing": "1.0.13",
     "handlebars": "^4.7.9",
     "json-spread": "^1.0.1",
     "jsonwebtoken": "^9.0.3",
