@@ -29,6 +29,7 @@ export function registerCompleteOutboundJob(): void {
         let irn = context.irn;
         let qrCode: string | undefined;
         let firsSignedData: any;
+        let source = context.source as OutboundInvoiceSource;
 
         if (!context.transformedInvoice) {
           // ── Full-pipeline mode ────────────────────────────────────────────────
@@ -57,9 +58,7 @@ export function registerCompleteOutboundJob(): void {
               tenantId: authContext?.tenantId ?? tenantId,
               erpSystem: authContext?.tenantERP,
               createdBy: authContext?.tenantId,
-              source:
-                (context.source as OutboundInvoiceSource) ??
-                OutboundInvoiceSource.API,
+              source: source ?? OutboundInvoiceSource.API,
               erpInvoiceId: context.erpInvoiceId,
               metadata: { transformedInvoice: transformed },
             });
@@ -84,10 +83,11 @@ export function registerCompleteOutboundJob(): void {
             irn,
           });
 
-          if (!irn)
+          if (!irn) {
             throw new Error(
               "IRN is required for complete-outbound finalize step",
             );
+          }
 
           const result = await outboundService.generateQRCode(irn, businessId);
           qrCode = result.qrCode!;
