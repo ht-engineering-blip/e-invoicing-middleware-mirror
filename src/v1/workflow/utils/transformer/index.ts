@@ -4,7 +4,12 @@ import { InternalServerError } from "../../../../@lib";
 import { generateTransformPrompt } from "../../../../@lib/adapters/llm/prompts";
 import { AuthContext } from "../../../../middlewares";
 import { SchemaSourceType } from "../../models";
-import { generateIRN, sanitizeHsnCode, sanitizeInvoiceIRNs, sanitizePriceUnit } from "./utils";
+import {
+  generateIRN,
+  sanitizeHsnCode,
+  sanitizeInvoiceIRNs,
+  sanitizePriceUnit,
+} from "./utils";
 // ============= SCHEMA VALIDATION =============
 
 // Simplified validation schemas for critical fields
@@ -583,17 +588,24 @@ export class FIRSInvoiceTransformer {
     let current = obj;
     for (let i = 0; i < path.length - 1; i++) {
       const key = path[i];
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
         throw new Error("Prototype pollution attempt detected");
       }
-      if (!Object.prototype.hasOwnProperty.call(current, key) || !current[key]) {
+      if (
+        !Object.prototype.hasOwnProperty.call(current, key) ||
+        !current[key]
+      ) {
         current[key] = {};
       }
       // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
     const finalKey = path[path.length - 1];
-    if (finalKey === '__proto__' || finalKey === 'constructor' || finalKey === 'prototype') {
+    if (
+      finalKey === "__proto__" ||
+      finalKey === "constructor" ||
+      finalKey === "prototype"
+    ) {
       throw new Error("Prototype pollution attempt detected");
     }
     current[finalKey] = value;
@@ -605,10 +617,14 @@ export class FIRSInvoiceTransformer {
   private getNestedProperty(obj: any, path: string[]): any {
     let current = obj;
     for (const key of path) {
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
         throw new Error("Prototype pollution attempt detected");
       }
-      if (current && typeof current === "object" && Object.prototype.hasOwnProperty.call(current, key)) {
+      if (
+        current &&
+        typeof current === "object" &&
+        Object.prototype.hasOwnProperty.call(current, key)
+      ) {
         // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
         current = current[key];
       } else {

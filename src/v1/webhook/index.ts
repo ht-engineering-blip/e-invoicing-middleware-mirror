@@ -425,20 +425,23 @@ export const webhookRoutes = new Elysia({
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
       const config = tenant.config;
-      const idKeyMap =
-        config?.idKeyMap instanceof Map
-          ? Object.fromEntries(config.idKeyMap)
-          : config?.idKeyMap;
-
       let erpInvoiceId = "";
 
       const useIdKeyMap = [ErpEventType.CREDIT_NOTE_ISSUED];
 
       const safeEventType = eventType.replace(/\./g, "_");
       if (useIdKeyMap.includes(eventType)) {
-        erpInvoiceId = String(
-          getNestedValue(body, idKeyMap[safeEventType]) ?? "",
-        ).trim();
+        const idKeyMap: any = config?.idKeyMap;
+        let invoiceIdKey;
+        if (idKeyMap) {
+          if (typeof idKeyMap.get === "function") {
+            invoiceIdKey = idKeyMap.get(safeEventType);
+          } else {
+            invoiceIdKey = idKeyMap[safeEventType];
+          }
+        }
+
+        erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
       } else {
         const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";
         erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
