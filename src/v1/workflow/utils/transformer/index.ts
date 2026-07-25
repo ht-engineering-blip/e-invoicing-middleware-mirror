@@ -195,7 +195,8 @@ export const FIRSInvoiceSchema = z
   })
   .refine(
     (data) => {
-      if (data.invoice_type_code === "381") {
+      const adjustmentCodes = ["381", "383", "384", "393", "395"];
+      if (adjustmentCodes.includes(data.invoice_type_code)) {
         return (
           Array.isArray(data.billing_reference) &&
           data.billing_reference.length > 0
@@ -205,7 +206,7 @@ export const FIRSInvoiceSchema = z
     },
     {
       message:
-        "billing_reference is required and must link to the original invoice when invoice_type_code is '381' (Credit Note)",
+        "billing_reference is required and must link to the original invoice when invoice_type_code is a Credit Note (381, 393, 395) or Debit Note (383, 384)",
       path: ["billing_reference"],
     },
   );

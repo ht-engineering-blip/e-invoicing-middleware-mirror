@@ -257,10 +257,11 @@ export const SYSTEM_PROMPT_V2 = (
   )
     .toString()
     .padStart(3, "0")}`;
-  let irn = generateIRN(
+  const invoiceDate = invoice?.date || invoice?.issue_date || invoice?.issueDate;
+  let irn = invoice?.irn || generateIRN(
     invoiceRef,
     authContext?.serviceId,
-    invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+    invoiceDate ? new Date(invoiceDate) : undefined,
   );
   // Build source schema section
   let sourceSchemaSection = "";
@@ -292,10 +293,10 @@ FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
   // Build business context section
   let businessContext = "";
   if (authContext) {
-    irn = generateIRN(
+    irn = invoice?.irn || generateIRN(
       invoiceRef,
       authContext?.serviceId,
-      invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+      invoiceDate ? new Date(invoiceDate) : undefined,
     );
     businessContext = `
             ## BUSINESS CONTEXT:
@@ -321,8 +322,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note), default to "396" if not specified. NOTE: "381" represents a Credit Note, which requires "billing_reference".
-- billing_reference: REQUIRED for Credit Notes (invoice_type_code = "381"). Must contain an array of objects linking the credit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
