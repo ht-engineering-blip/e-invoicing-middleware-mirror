@@ -1,3 +1,4 @@
+console.log("POLYFILL: Initializing...");
 if (
   typeof process !== "undefined" &&
   typeof process.getBuiltinModule === "function"
