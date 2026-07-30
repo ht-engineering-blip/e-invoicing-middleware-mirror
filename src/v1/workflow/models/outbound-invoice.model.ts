@@ -1,27 +1,27 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import { SchemaSourceType } from './invoice-schema-dictionary.model';
+import mongoose, { Schema, Document } from "mongoose";
+import { SchemaSourceType } from "./invoice-schema-dictionary.model";
 /**
  * Outbound Invoice Status
  */
 export enum OutboundInvoiceStatus {
-  CREATED = 'CREATED',
-  VALIDATED = 'VALIDATED',
-  SIGNED = 'SIGNED',
-  TRANSMITTED = 'TRANSMITTED',
-  DELIVERED = 'DELIVERED',
-  FAILED = 'FAILED',
+  CREATED = "CREATED",
+  VALIDATED = "VALIDATED",
+  SIGNED = "SIGNED",
+  TRANSMITTED = "TRANSMITTED",
+  DELIVERED = "DELIVERED",
+  FAILED = "FAILED",
 }
 
 export enum OutboundPaymentStatus {
-  PENDING = 'PENDING',
-  PAID = 'PAID',
-  PARTIAL = 'PARTIAL',
-  OVERDUE = 'OVERDUE',
+  PENDING = "PENDING",
+  PAID = "PAID",
+  PARTIAL = "PARTIAL",
+  OVERDUE = "OVERDUE",
 }
 
 export enum OutboundInvoiceSource {
-  WEBHOOK = 'webhook',
-  API = 'api',
+  WEBHOOK = "webhook",
+  API = "api",
 }
 
 /**
@@ -56,8 +56,6 @@ export interface IValidationError {
   fixed: boolean;
 }
 
-
-
 /**
  * Last job failure recorded on the invoice for quick display
  */
@@ -83,7 +81,7 @@ export interface IOutboundPaymentDetails {
 export interface OutboundInvoiceDocument extends Document {
   tenantId: string;
   irn: string;
-  erpInvoiceId?: string;       // raw ID extracted from ERP payload
+  erpInvoiceId?: string; // raw ID extracted from ERP payload
   source: OutboundInvoiceSource;
 
   // Status & Workflow
@@ -106,7 +104,7 @@ export interface OutboundInvoiceDocument extends Document {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
-  webhookEvents: string[];     // array of WebhookEvent.eventId references
+  webhookEvents: string[]; // array of WebhookEvent.eventId references
 
   // Metadata
   erpSystem: SchemaSourceType | string;
@@ -128,7 +126,7 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
       required: true,
     },
     erpInvoiceId: {
-      type: String, 
+      type: String,
     },
     source: {
       type: String,
@@ -206,15 +204,21 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
   },
   {
     timestamps: true,
-    collection: 'outbound_invoices',
+    collection: "outbound_invoices",
     suppressReservedKeysWarning: true,
-  }
+  },
 );
 
 // Compound Indexes for performance
 OutboundInvoiceSchema.index({ tenantId: 1, status: 1 });
 OutboundInvoiceSchema.index({ irn: 1 }, { unique: true });
-OutboundInvoiceSchema.index({ tenantId: 1, erpInvoiceId: 1 }, { unique: true, sparse: true });
+OutboundInvoiceSchema.index(
+  { tenantId: 1, erpInvoiceId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { erpInvoiceId: { $type: "string" } },
+  },
+);
 OutboundInvoiceSchema.index({ createdAt: -1 });
 OutboundInvoiceSchema.index({ source: 1 });
 
@@ -223,4 +227,7 @@ OutboundInvoiceSchema.index({ source: 1 });
  */
 export const OutboundInvoiceModel =
   mongoose.models.OutboundInvoice ||
-  mongoose.model<OutboundInvoiceDocument>('OutboundInvoice', OutboundInvoiceSchema);
+  mongoose.model<OutboundInvoiceDocument>(
+    "OutboundInvoice",
+    OutboundInvoiceSchema,
+  );
