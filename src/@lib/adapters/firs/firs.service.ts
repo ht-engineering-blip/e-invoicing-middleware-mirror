@@ -115,7 +115,7 @@ export default class FIRSClient extends RestClient {
     //   message: error.message
     // }
     let foundError = error?.response?.data?.error;
-    console.log("Resp error:", { foundError });
+    console.log("Resp error:", { error });
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status,
       foundError?.public_message + " - " + foundError?.details ||
@@ -252,9 +252,12 @@ export class FIRSService {
     irn: string,
   ) {
     const client = this.appClient;
-    return client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
-      params: { irn },
-    });
+    return client.get<{ data: SearchResponse }>(
+      `api/v1/invoice/${business_id}`,
+      {
+        params: { irn },
+      },
+    );
   }
 
   public async signInvoice(tenantId: string, invoice: any) {
@@ -366,6 +369,24 @@ export class FIRSService {
     return client.execute(`api/v1/invoice/update/${irn}`, body, {
       verb: "patch",
     });
+  }
+
+  /**
+   * Fetch a reference resource list from FIRS
+   * GET /api/v1/invoice/resources/:resourceName
+   *
+   * @param resourceName - The resource endpoint name (e.g. "payment-means", "tax-categories")
+   */
+  public async getResource<T>(resourceName: string): Promise<T[]> {
+    const client = this.appClient;
+    const response: any = await client.get(
+      `api/v1/invoice/resources/${resourceName}`,
+    );
+    // FIRSClient.get() returns the AxiosResponse (via _handleResponse interceptor)
+    // .data gives us the FIRS body { code: 200, data: [...] }
+    // .data.data gives us the actual array
+    const body = response?.data ?? response;
+    return Array.isArray(body) ? body : (body?.data ?? body);
   }
 
   // Database operations

@@ -10,6 +10,7 @@ import { tenantRoutes, teamPublicRoutes } from './tenants';
 import { adminModuleRoutes } from './admin';
 import openapi from '@elysiajs/openapi'; 
 import qrMgmtRoutes from './invoicing/routes/qr.routes';
+import resourcesRoutes from './invoicing/routes/resources.routes';
 
 export const v1Routes = new Elysia({ prefix: '/v1' })
   .use
@@ -60,4 +61,5 @@ export const v1Routes = new Elysia({ prefix: '/v1' })
   .use(webhookRoutes)
   .use(webhookEventRoutes)
   .use(auditRoutes)
-  .use(qrMgmtRoutes);
+  .use(qrMgmtRoutes)
+  .use(resourcesRoutes);

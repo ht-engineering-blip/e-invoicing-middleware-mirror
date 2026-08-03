@@ -176,7 +176,19 @@ describe("FIRS Invoice Type Integration and Validation", () => {
       authContext.tenantId,
       transformed,
     );
+    console.log("Validation Response Code:", response.code);
+    console.log("Validation Response Data:", JSON.stringify(response.data, null, 2));
     expect(response.code).toBe(200);
     expect(response.data?.ok).toBe(true);
-  }, 30000);
+
+    // Verify it successfully signs the invoice against FIRS staging API
+    const signResponse = await firsService.signInvoice(
+      authContext.tenantId,
+      transformed,
+    );
+    console.log("Sign Response Code:", signResponse.code);
+    console.log("Sign Response Data:", JSON.stringify(signResponse.data, null, 2));
+    expect(signResponse.code).toBe(201);
+    expect(signResponse.data?.ok).toBe(true);
+  }, 60000);
 });

@@ -84,7 +84,7 @@ export class OutboundWorkflowService {
           invoice.irn,
         );
 
-        skipSigning = (searchedInvoice?.data?.items?.length ?? 0) > 0;
+        skipSigning = (searchedInvoice?.data?.data?.items?.length ?? 0) > 0;
       }
 
       // Step 1: Validate

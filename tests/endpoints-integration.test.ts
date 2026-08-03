@@ -78,6 +78,7 @@ import { connectMongo } from "../src/@lib/adapters/mongo";
 import { FIRSService } from "../src/@lib/adapters/firs/firs.service";
 import { TransformWorkflowService } from "../src/v1/workflow/services/workflows/transform.service";
 import { AuditService } from "../src/v1/audit/services/audit.service";
+import { OutboundInvoiceRepository } from "../src/v1/workflow/repos/outbound-invoice.repo";
 import { v1Routes } from "../src/v1";
 import { errorHandlerMiddleware } from "../src/middlewares";
 
@@ -96,6 +97,19 @@ describe("E2E API Endpoints by Modules", () => {
   beforeAll(async () => {
     // Connect to database to avoid query buffering/timeouts
     await connectMongo();
+
+    // Mock OutboundInvoiceRepository methods to bypass database writes during tests
+    spyOn(OutboundInvoiceRepository.prototype, "update").mockImplementation(
+      async () => {
+        return {} as any;
+      },
+    );
+    spyOn(
+      OutboundInvoiceRepository.prototype,
+      "updateWorkflowState",
+    ).mockImplementation(async () => {
+      return {} as any;
+    });
 
     // Generate valid authorization token using real secret and real tenant credentials
     mockToken = jwt.sign(
@@ -233,7 +247,11 @@ describe("E2E API Endpoints by Modules", () => {
                 hsn_code: "1234.00",
                 invoiced_quantity: 1,
                 line_extension_amount: 1000,
-                price: { price_amount: 1000, base_quantity: 1, price_unit: "H87" },
+                price: {
+                  price_amount: 1000,
+                  base_quantity: 1,
+                  price_unit: "H87",
+                },
                 item: { name: "Item 1" },
               },
             ],
@@ -263,6 +281,33 @@ describe("E2E API Endpoints by Modules", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({}),
+        }),
+      );
+      // Elysia's resolve() errors bypass onError middleware, yielding 500
+      expect(res.status).toBe(500);
+    }, 10000);
+
+    it("GET /v1/invoicing/document-types (Positive Scenario)", async () => {
+      const res = await app.handle(
+        new Request("http://localhost/v1/invoicing/document-types", {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${mockToken}`,
+          },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(Array.isArray(json.data)).toBe(true);
+      expect(json.data.length).toBe(20);
+      expect(json.data[0]).toEqual({ code: "380", value: "Credit Note" });
+    }, 10000);
+
+    it("GET /v1/invoicing/document-types (Negative Scenario - Missing authorization)", async () => {
+      const res = await app.handle(
+        new Request("http://localhost/v1/invoicing/document-types", {
+          method: "GET",
         }),
       );
       // Elysia's resolve() errors bypass onError middleware, yielding 500
@@ -312,7 +357,11 @@ describe("E2E API Endpoints by Modules", () => {
                   hsn_code: "1234.00",
                   invoiced_quantity: 1,
                   line_extension_amount: 1000,
-                  price: { price_amount: 1000, base_quantity: 1, price_unit: "H87" },
+                  price: {
+                    price_amount: 1000,
+                    base_quantity: 1,
+                    price_unit: "H87",
+                  },
                   item: { name: "Item 1" },
                 },
               ],
@@ -365,4 +414,34 @@ describe("E2E API Endpoints by Modules", () => {
       expect(res.status).toBe(500);
     }, 10000);
   });
+
+  describe("5. Resource Endpoints", () => {
+    const endpoints = [
+      { path: "payment_means", count: 12 },
+      { path: "tax-categories", count: 27 },
+      { path: "currencies", count: 118 },
+      { path: "invoice-quantity-codes", count: 2162 },
+      { path: "hs-codes", count: 5612 },
+      { path: "services-codes", count: 419 },
+      { path: "lgas", count: 776 },
+      { path: "states", count: 37 },
+      { path: "countries", count: 249 },
+    ];
+
+    for (const ep of endpoints) {
+      it(`GET /v1/invoice/resources/${ep.path} should return successfully`, async () => {
+        const res = await app.handle(
+          new Request(`http://localhost/v1/invoice/resources/${ep.path}`, {
+            method: "GET",
+          }),
+        );
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.success).toBe(true);
+        expect(Array.isArray(json.data)).toBe(true);
+        expect(json.data.length).toBe(ep.count);
+      }, 10000);
+    }
+  });
 });
+
