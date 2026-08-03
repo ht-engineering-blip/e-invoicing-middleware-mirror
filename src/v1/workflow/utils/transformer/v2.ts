@@ -10,17 +10,25 @@ import {
   sanitizeInvoiceIRNs,
   sanitizeHsnCode,
   sanitizePriceUnit,
+  sanitizeLineItemDescriptions,
+  setDynamicQuantityCodes,
+  setDynamicHsCodes,
 } from "./utils";
 
 import { FIRS_INVOICE_METADATA } from "../defaults";
 import {
-  FIRS_INVOICE_TYPES,
-  FIRS_TAX_CATEGORIES,
   formatSchemaFields,
   generateTransformPrompt,
   getOptionalFields,
   getRequiredFields,
 } from "../../../../@lib/adapters/llm/prompts";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import {
+  TaxCategory,
+  InvoiceType,
+  QuantityCode,
+  HsCode,
+} from "../../../../@lib/adapters/firs/types";
 import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples";
 
 /* -----------------------------------------------------
@@ -122,6 +130,25 @@ export class FIRSInvoiceTransformerV2 {
     firsZodSchema: z.ZodSchema,
   ) {
     try {
+      const firsService = new FIRSService();
+      let taxCategories: TaxCategory[] = [];
+      let invoiceTypes: InvoiceType[] = [];
+      try {
+        const [taxCatRes, invoiceTypeRes, qtyCodesRes, hsCodesRes] =
+          await Promise.all([
+            firsService.getResource<TaxCategory>("tax-categories"),
+            firsService.getResource<InvoiceType>("invoice-types"),
+            firsService.getResource<QuantityCode>("invoice-quantity-codes"),
+            firsService.getResource<HsCode>("hs-codes"),
+          ]);
+        taxCategories = taxCatRes || [];
+        invoiceTypes = invoiceTypeRes || [];
+        if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
+        if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
+      } catch (e) {
+        console.error("Failed to fetch FIRS resources:", e);
+      }
+
       const schemaGraph = this.buildSchemaGraph(firsSchema);
       //logger.info("Schema Graph", schemaGraph)
 
@@ -174,6 +201,8 @@ export class FIRSInvoiceTransformerV2 {
           sourceSchema,
           firsSchema,
           missing,
+          taxCategories,
+          invoiceTypes,
         );
         //logger.info("prompt", prompt)
         const response = await this.callLLM(prompt);
@@ -230,7 +259,8 @@ export class FIRSInvoiceTransformerV2 {
         logger.info("completed", completed);
       }
 
-      // Deterministic HSN code and price_unit sanitization
+      // Deterministic HSN code, price_unit, and item description sanitization
+      sanitizeLineItemDescriptions(completed);
       if (Array.isArray(completed.invoice_line)) {
         for (const line of completed.invoice_line) {
           if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -254,8 +284,11 @@ export class FIRSInvoiceTransformerV2 {
           validation.errors,
           authContext,
           sourceSchema,
+          taxCategories,
+          invoiceTypes,
         );
-        // Deterministic HSN code and price_unit sanitization post-repair
+        // Deterministic HSN code, price_unit, and item description sanitization post-repair
+        sanitizeLineItemDescriptions(completed);
         if (Array.isArray(completed.invoice_line)) {
           for (const line of completed.invoice_line) {
             if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -541,6 +574,8 @@ export class FIRSInvoiceTransformerV2 {
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
     missingFields: string[],
+    taxCategories: TaxCategory[],
+    invoiceTypes: InvoiceType[],
   ) {
     const requiredFields = firsSchema
       .filter(
@@ -640,10 +675,10 @@ Ensure all keys above are not changed
   * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
 
 ## VALID TAX CATEGORIES:
-${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
+${JSON.stringify(taxCategories, null, 2)}
 
 ## VALID INVOICE TYPES:
-${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
+${JSON.stringify(invoiceTypes, null, 2)}
 
 ## DATE/TIME FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
@@ -692,9 +727,11 @@ Each invoice_line must contain:
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
-13. Extract nexted keys in payload to match the valid FIRS schema
-14. optional fields should not be included if not provided by invoice input! [allowance_charge]
-15. Descriptions and should have default values derived from product
+13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
+14. Map ERP standard invoice_type_code 380 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note.
+15. Extract nexted keys in payload to match the valid FIRS schema
+16. optional fields should not be included if not provided by invoice input! [allowance_charge]
+17. Descriptions and should have default values derived from product
  
 FIRS SCHEMA EXAMPLE (Use this only as an example for a valid invoice payload):
 ${SAMPLE_INVOICE_BODY}
@@ -786,6 +823,8 @@ Complete the missing fields also generate emails here missing currency should de
     errors: any,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
+    taxCategories: TaxCategory[],
+    invoiceTypes: InvoiceType[],
   ) {
     const expectedBusinessId = authContext?.businessId || json.business_id;
     const expectedSupplierTIN =
@@ -838,10 +877,10 @@ Ensure all keys above are not changed
   * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
 
 ## VALID TAX CATEGORIES:
-${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
+${JSON.stringify(taxCategories, null, 2)}
 
 ## VALID INVOICE TYPES:
-${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
+${JSON.stringify(invoiceTypes, null, 2)}
 
 ## DATE/TIME FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")

@@ -18,6 +18,7 @@ import {
   updateInvoiceStatusValidation,
   reportVATValidation,
   confirmInvoiceStatusValidation,
+  getDocumentTypesValidation,
 } from "../validations/invoices.validation";
 
 /**
@@ -504,6 +505,43 @@ const invoiceMgmtRoutes = new Elysia()
       }
     },
     confirmInvoiceStatusValidation,
+  )
+
+  /**
+   * GET /api/v1/invoicing/document-types
+   * Return all valid document types and their codes
+   */
+  .get(
+    "/document-types",
+    () => {
+      return {
+        success: true,
+        data: [
+          { code: "380", value: "Credit Note" },
+          { code: "381", value: "Commercial Invoice" },
+          { code: "384", value: "Debit Note" },
+          { code: "385", value: "Self Billed Invoice" },
+          { code: "386", value: "Factored Invoice" },
+          { code: "388", value: "Statement of Account" },
+          { code: "389", value: "Purchase Order" },
+          { code: "390", value: "Proforma Invoice" },
+          { code: "392", value: "Consignment Invoice" },
+          { code: "393", value: "Self-billed Credit Note" },
+          { code: "394", value: "Self-billed Invoice" },
+          { code: "395", value: "Credit Note Request" },
+          { code: "396", value: "Invoice Request" },
+          { code: "397", value: "Final Settlement" },
+          { code: "399", value: "Bill of Lading" },
+          { code: "400", value: "Waybill" },
+          { code: "402", value: "Shipping Instructions" },
+          { code: "404", value: "Certificate of Origin" },
+          { code: "406", value: "Customs Declaration" },
+          { code: "408", value: "Packing List" },
+        ],
+      };
+    },
+    getDocumentTypesValidation,
   );
 
 export default invoiceMgmtRoutes;
+

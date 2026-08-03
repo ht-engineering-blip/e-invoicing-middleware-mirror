@@ -94,32 +94,39 @@ export class InvoiceWorkflowService {
    */
   async validateInvoice(businessId: string, invoice: any): Promise<any> {
     try {
-      // Ensure business_id is set
-      invoice.business_id = businessId;
+      const targetInvoice = invoice?.data || invoice?.invoice || invoice;
+      targetInvoice.business_id = businessId;
 
-      console.log(JSON.stringify({ invoice }, undefined, 2));
+      console.log(JSON.stringify({ invoice: targetInvoice }, undefined, 2));
 
       // Call FIRS validation API
-      const validationResult: any =
-        await this.firsService.validateInvoice(businessId, invoice);
+      const validationResult = await this.firsService.validateInvoice(
+        businessId,
+        targetInvoice,
+      );
+
+      console.log({ validationResult });
 
       if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
         return {
           success: false,
           valid: false,
-          errors: validationResult?.data?.errors || ["Validation failed"],
+          errors: validationResult.code || ["Validation failed"],
           workflowState: { validated: false },
         };
       }
 
-      // If we have an IRN, update the stored invoice
-      if (invoice.irn) {
-        await this.outboundRepo.update(invoice.irn, {
-          status: OutboundInvoiceStatus.VALIDATED,
-        });
-        await this.outboundRepo.updateWorkflowState(invoice.irn, {
-          validated: true,
-        });
+      // If we have an IRN, update the stored invoice if it exists in DB
+      if (targetInvoice.irn) {
+        const existing = await this.outboundRepo.findByIrn(targetInvoice.irn);
+        if (existing) {
+          await this.outboundRepo.update(targetInvoice.irn, {
+            status: OutboundInvoiceStatus.VALIDATED,
+          });
+          await this.outboundRepo.updateWorkflowState(targetInvoice.irn, {
+            validated: true,
+          });
+        }
       }
 
       return {
@@ -140,22 +147,19 @@ export class InvoiceWorkflowService {
    */
   async signInvoice(authContext: AuthContext, invoice: any): Promise<any> {
     try {
-      // Get FIRS credentials for signing
-      const credentials = await this.tenantService.getFIRSCredentials(
-        authContext.tenantId,
-      );
-
+      const targetInvoice = invoice?.data || invoice?.invoice || invoice;
       // Prepare invoice with certificate
       const invoiceWithCert = {
-        ...invoice,
+        ...targetInvoice,
         business_id: authContext.businessId,
-        //certificate: credentials.certificate,
       };
       // Call FIRS sign API
-      const signResult: any =
-        await this.firsService.signInvoice(authContext.tenantId, invoiceWithCert);
+      const signResult = await this.firsService.signInvoice(
+        authContext.tenantId,
+        invoiceWithCert,
+      );
 
-      if (signResult?.code !== 200 || !signResult?.data?.ok) {
+      if (!signResult?.data?.ok) {
         return {
           success: false,
           signed: false,
@@ -164,14 +168,19 @@ export class InvoiceWorkflowService {
         };
       }
 
-      // Update stored invoice if IRN exists
-      if (invoice.irn) {
-        await this.outboundRepo.update(invoice.irn, {
-          status: OutboundInvoiceStatus.SIGNED,
-        });
-        await this.outboundRepo.updateWorkflowState(invoice.irn, {
-          signed: true,
-        });
+      console.log({ signResult });
+
+      // Update stored invoice if IRN exists and is in DB
+      if (targetInvoice.irn) {
+        const existing = await this.outboundRepo.findByIrn(targetInvoice.irn);
+        if (existing) {
+          await this.outboundRepo.update(targetInvoice.irn, {
+            status: OutboundInvoiceStatus.SIGNED,
+          });
+          await this.outboundRepo.updateWorkflowState(targetInvoice.irn, {
+            signed: true,
+          });
+        }
       }
 
       return {
@@ -241,7 +250,10 @@ export class InvoiceWorkflowService {
       }
 
       // Call FIRS transmit API
-      const transmitResult: any = await this.firsService.transmitInvoice(authContext.tenantId, irn);
+      const transmitResult: any = await this.firsService.transmitInvoice(
+        authContext.tenantId,
+        irn,
+      );
 
       // Update stored invoice if exists
       if (invoice) {
@@ -324,8 +336,10 @@ export class InvoiceWorkflowService {
   ): Promise<any> {
     try {
       // Call FIRS acknowledge API
-      const ackResult: any =
-        await this.firsService.acknowledgeInvoiceReceipt(businessId, irn);
+      const ackResult: any = await this.firsService.acknowledgeInvoiceReceipt(
+        businessId,
+        irn,
+      );
 
       // Update inbound invoice if exists
       const inboundInvoice = await this.inboundRepo.findByIRN(irn);
@@ -427,8 +441,10 @@ export class InvoiceWorkflowService {
   async reportInvoice(reportData: VATPostPaymentReportData): Promise<any> {
     try {
       // Call FIRS VAT post-payment API
-      const reportResult: any =
-        await this.firsService.reportVATPostPayment(reportData.integrator_service_id || reportData.agent_tin, reportData);
+      const reportResult: any = await this.firsService.reportVATPostPayment(
+        reportData.integrator_service_id || reportData.agent_tin,
+        reportData,
+      );
 
       // Update invoice with report status
       const invoice = await this.outboundRepo.findByIrn(reportData.irn);
@@ -459,13 +475,15 @@ export class InvoiceWorkflowService {
   async confirmInvoiceStatus(businessId: string, irn: string): Promise<any> {
     try {
       // Search for invoice on FIRS
-      const searchResult: any = await this.firsService.searchInvoice(
+      const searchResult = await this.firsService.searchInvoice(
         businessId,
         businessId,
         irn,
       );
 
-      if (!searchResult?.data?.items || searchResult.data.items.length === 0) {
+      const result = searchResult.data;
+
+      if (!result?.data?.items || result.data.items.length === 0) {
         return {
           success: true,
           irn,
@@ -474,11 +492,13 @@ export class InvoiceWorkflowService {
         };
       }
 
-      const firsInvoice = searchResult.data.items[0];
+      const firsInvoice = result.data.items[0];
 
       // Confirm signed invoice status
-      const confirmResult: any =
-        await this.firsService.confirmSignedInvoice(businessId, irn);
+      const confirmResult: any = await this.firsService.confirmSignedInvoice(
+        businessId,
+        irn,
+      );
 
       return {
         success: true,

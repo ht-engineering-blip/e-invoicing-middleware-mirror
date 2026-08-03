@@ -45,11 +45,11 @@ export abstract class RestClient {
     // Request interceptor
     this.client.interceptors.request.use(
       config => {
-        console.debug('Outgoing request:', {
+        console.debug('Outgoing request:', JSON.stringify({
           method: config.method,
           url: config.url,
           data: config.data
-        });
+        }, null, 2));
         return config;
       },
       error => {

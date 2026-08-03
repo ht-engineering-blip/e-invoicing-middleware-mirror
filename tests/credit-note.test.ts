@@ -4,6 +4,8 @@ import {
   FIRSInvoiceTransformer,
 } from "../src/v1/workflow/utils/transformer";
 import { AuthContext } from "../src/middlewares";
+import { connectMongo } from "../src/@lib/adapters/mongo";
+import mongoose from "mongoose";
 
 const definitions: Record<string, Function> = {};
 mock.module("../src/@lib/queue/agenda", () => {
@@ -49,6 +51,13 @@ mock.module("../src/v1/workflow/repos/outbound-invoice.repo", () => {
 
 
 describe("FIRS Credit Note Invoicing and Validation", () => {
+  beforeAll(async () => {
+    await connectMongo();
+  });
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+  });
   const validSupplier = {
     party_name: "Okeke Technologies Ltd",
     tin: "12345678-0001",

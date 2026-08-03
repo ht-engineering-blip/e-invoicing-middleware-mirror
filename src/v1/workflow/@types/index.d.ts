@@ -1,6 +1,6 @@
 interface OkayResponse {
   code: number;
-  data: { ok: boolean };
+  data: { ok: boolean; errors?: string[] };
 }
 
 interface ConfirmResponse {
