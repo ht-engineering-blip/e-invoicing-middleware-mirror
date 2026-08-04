@@ -302,27 +302,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         return {
           success: true,
-          data: invoices.map((inv) => ({
-            irn: inv.irn,
-            erpInvoiceId: inv.erpInvoiceId,
-            source: inv.source,
-            invoiceNumber:
-              inv.metadata?.invoiceNumber || inv.metadata?.InvoiceNumber,
-            status: inv.status,
-            paymentStatus: inv.paymentStatus,
-            qrCode: inv.qrCode,
-            erp: inv.erpSystem,
-            workflowState: inv.workflowState,
-            lastJobError: inv.lastJobError,
-            customerName:
-              inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]
-                ?.Name,
-            totalAmount: inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value,
-            currency: inv.metadata?.DocumentCurrencyCode,
-            webhookEventCount: (inv.webhookEvents ?? []).length,
-            createdAt: inv.createdAt,
-            updatedAt: inv.updatedAt,
-          })),
+          data: invoices.map(formatOutboundInvoiceItem),
           pagination: {
             page,
             limit,
@@ -876,19 +856,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         return {
           success: true,
-          data: invoices.map((inv) => ({
-            irn: inv.irn,
-            invoiceNumber: inv.invoiceNumber,
-            supplierName: inv.supplierName,
-            supplierTIN: inv.supplierTIN,
-            status: inv.status,
-            paymentStatus: inv.paymentStatus,
-            totalAmount: inv.totalAmount,
-            currency: inv.currency,
-            issueDate: inv.issueDate,
-            dueDate: inv.dueDate,
-            receivedAt: inv.createdAt,
-          })),
+          data: invoices.map(formatInboundInvoiceItem),
           pagination: {
             page,
             limit,
