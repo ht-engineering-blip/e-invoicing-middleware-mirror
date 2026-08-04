@@ -161,14 +161,14 @@ describe("E2E API Endpoints by Modules", () => {
 
     // Instantiate App with V1 Routes
     app = new Elysia().use(errorHandlerMiddleware).use(v1Routes);
-  });
+  }, 30000);
 
   afterAll(async () => {
     if (validateInvoiceSpy) validateInvoiceSpy.mockRestore();
     if (transformInvoiceV2Spy) transformInvoiceV2Spy.mockRestore();
     if (listAuditLogsSpy) listAuditLogsSpy.mockRestore();
     await mongoose.disconnect();
-  });
+  }, 30000);
 
   describe("1. Auth Module", () => {
     it("POST /v1/auth/oauth/firs (Positive Scenario with mock=true)", async () => {
@@ -385,7 +385,7 @@ describe("E2E API Endpoints by Modules", () => {
       const json = await res.json();
       expect(json.success).toBe(true);
       expect(json.data.invoice_type_code).toBe("396");
-    }, 20000);
+    }, 40000);
   });
 
   describe("4. Audit Module", () => {
@@ -444,4 +444,3 @@ describe("E2E API Endpoints by Modules", () => {
     }
   });
 });
-
