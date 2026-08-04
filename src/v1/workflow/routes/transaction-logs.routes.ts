@@ -22,12 +22,13 @@ import {
   resendFailedInvoiceValidation,
   listInboundInvoicesValidation,
   getInboundInvoiceValidation,
+  listAllInvoicesValidation,
 } from "../validations/transaction-logs.validation";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { decryptSensitiveData } from "../../../@lib/crypto";
 
 /**
- * Transaction Logs Routes
+ * Transaction Logs & Invoices Routes
  */
 export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
   .use(requireAuth)
@@ -37,6 +38,443 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
   .decorate("webhookEventRepo", new WebhookEventRepository())
   .decorate("outboundService", new OutboundWorkflowService())
   .decorate("tenantRepo", new TenantRepository())
+
+  // ==================== UNIFIED INVOICES (INBOUND + OUTBOUND + FUTURE TYPES) ====================
+
+  /**
+   * GET /workflow/invoices
+   * GET /workflow/invoices/all
+   * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
+   */
+  .get(
+    "/",
+    async ({ query, auth, outboundRepo, inboundRepo, set }) => {
+      try {
+        const page = parseInt(query.page || "1");
+        const limit = Math.min(parseInt(query.limit || "20"), 100);
+        const offset = (page - 1) * limit;
+
+        const requestedType = (
+          query.type ||
+          query.direction ||
+          "all"
+        ).toLowerCase();
+        const statusFilter = query.status;
+        const paymentStatusFilter = query.paymentStatus;
+        const searchTerm = query.search;
+        const fromDate = query.from;
+        const toDate = query.to;
+
+        // Build base filters
+        const baseFilter: any = {};
+        if (!auth?.isAdmin) {
+          baseFilter.tenantId = auth!.tenantId;
+          if (auth!.businessId) {
+            baseFilter.businessId = auth!.businessId;
+          }
+        }
+        if (statusFilter) {
+          baseFilter.status = statusFilter;
+        }
+        if (paymentStatusFilter) {
+          baseFilter.paymentStatus = paymentStatusFilter;
+        }
+
+        if (searchTerm) {
+          baseFilter.search = searchTerm;
+        }
+
+        if (fromDate || toDate) {
+          baseFilter.issueDate = {};
+          if (fromDate) baseFilter.issueDate._gte = fromDate;
+          if (toDate) baseFilter.issueDate._lte = toDate;
+        }
+
+        const countsByType: Record<string, number> = {
+          outbound: 0,
+          inbound: 0,
+        };
+
+        const fetchOutbound =
+          requestedType === "all" || requestedType === "outbound";
+        const fetchInbound =
+          requestedType === "all" || requestedType === "inbound";
+
+        const tasks: Promise<any>[] = [];
+
+        if (fetchOutbound) {
+          tasks.push(
+            (async () => {
+              const where: any = { ...baseFilter };
+              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
+              if (where.businessId)
+                where.businessId = { _eq: where.businessId };
+              if (where.status) where.status = { _eq: where.status };
+              if (where.paymentStatus)
+                where.paymentStatus = { _eq: where.paymentStatus };
+
+              const docs = await outboundRepo.findMany(
+                where,
+                undefined,
+                1000,
+                0,
+              );
+              const formatted = docs.map((doc: any) => ({
+                id: doc._id?.toString() || doc.id,
+                direction: "OUTBOUND",
+                type: "outbound",
+                irn: doc.irn,
+                invoiceNumber: doc.invoiceNumber,
+                invoiceTypeCode: doc.invoiceTypeCode,
+                issueDate: doc.issueDate,
+                dueDate: doc.dueDate,
+                status: doc.status,
+                paymentStatus:
+                  doc.payment?.paymentStatus || doc.paymentStatus || "PENDING",
+                supplier: {
+                  name:
+                    doc.supplierName ||
+                    doc.accounting_supplier_party?.party_name,
+                  tin: doc.supplierTIN || doc.accounting_supplier_party?.tin,
+                  email:
+                    doc.supplierEmail || doc.accounting_supplier_party?.email,
+                },
+                customer: {
+                  name:
+                    doc.customerName ||
+                    doc.accounting_customer_party?.party_name,
+                  tin: doc.customerTIN || doc.accounting_customer_party?.tin,
+                  email:
+                    doc.customerEmail || doc.accounting_customer_party?.email,
+                },
+                totalAmount:
+                  doc.legal_monetary_total?.payable_amount ||
+                  doc.totalAmount ||
+                  0,
+                currency: doc.document_currency_code || doc.currency || "NGN",
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                raw: doc,
+              }));
+
+              countsByType.outbound = formatted.length;
+              return formatted;
+            })(),
+          );
+        }
+
+        if (fetchInbound) {
+          tasks.push(
+            (async () => {
+              const where: any = { ...baseFilter };
+              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
+              if (where.businessId)
+                where.businessId = { _eq: where.businessId };
+              if (where.status) where.status = { _eq: where.status };
+              if (where.paymentStatus)
+                where.paymentStatus = { _eq: where.paymentStatus };
+
+              const docs = await inboundRepo.findMany(
+                where,
+                undefined,
+                1000,
+                0,
+              );
+              const formatted = docs.map((doc: any) => ({
+                id: doc._id?.toString() || doc.id,
+                direction: "INBOUND",
+                type: "inbound",
+                irn: doc.irn,
+                invoiceNumber: doc.invoiceNumber,
+                invoiceTypeCode: doc.invoiceTypeCode,
+                issueDate: doc.issueDate,
+                dueDate: doc.dueDate,
+                status: doc.status,
+                paymentStatus:
+                  doc.payment?.paymentStatus || doc.paymentStatus || "PENDING",
+                supplier: {
+                  name:
+                    doc.supplierName ||
+                    doc.accounting_supplier_party?.party_name,
+                  tin: doc.supplierTIN || doc.accounting_supplier_party?.tin,
+                  email:
+                    doc.supplierEmail || doc.accounting_supplier_party?.email,
+                },
+                customer: {
+                  name:
+                    doc.customerName ||
+                    doc.accounting_customer_party?.party_name,
+                  tin: doc.customerTIN || doc.accounting_customer_party?.tin,
+                  email:
+                    doc.customerEmail || doc.accounting_customer_party?.email,
+                },
+                totalAmount:
+                  doc.legal_monetary_total?.payable_amount ||
+                  doc.totalAmount ||
+                  0,
+                currency: doc.document_currency_code || doc.currency || "NGN",
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                raw: doc,
+              }));
+
+              countsByType.inbound = formatted.length;
+              return formatted;
+            })(),
+          );
+        }
+
+        const results = await Promise.all(tasks);
+        const combinedInvoices = results.flat();
+
+        combinedInvoices.sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.issueDate).getTime();
+          const dateB = new Date(b.createdAt || b.issueDate).getTime();
+          return dateB - dateA;
+        });
+
+        const totalCount = combinedInvoices.length;
+        const paginatedData = combinedInvoices.slice(offset, offset + limit);
+
+        return {
+          success: true,
+          data: paginatedData,
+          meta: {
+            total: totalCount,
+            page,
+            limit,
+            pages: Math.ceil(totalCount / limit) || 1,
+            countsByType,
+          },
+        };
+      } catch (error: any) {
+        logger.error("Failed to list unified invoices stream", {
+          error: error.message,
+        });
+        set.status = 500;
+        return {
+          success: false,
+          error: "Failed to retrieve unified invoice stream",
+          statusCode: 500,
+        };
+      }
+    },
+    listAllInvoicesValidation,
+  )
+  .get(
+    "/all",
+    async ({ query, auth, outboundRepo, inboundRepo, set }) => {
+      try {
+        const page = parseInt(query.page || "1");
+        const limit = Math.min(parseInt(query.limit || "20"), 100);
+        const offset = (page - 1) * limit;
+
+        const requestedType = (
+          query.type ||
+          query.direction ||
+          "all"
+        ).toLowerCase();
+        const statusFilter = query.status;
+        const paymentStatusFilter = query.paymentStatus;
+        const searchTerm = query.search;
+        const fromDate = query.from;
+        const toDate = query.to;
+
+        const baseFilter: any = {};
+        if (!auth?.isAdmin) {
+          baseFilter.tenantId = auth!.tenantId;
+          if (auth!.businessId) {
+            baseFilter.businessId = auth!.businessId;
+          }
+        }
+        if (statusFilter) {
+          baseFilter.status = statusFilter;
+        }
+        if (paymentStatusFilter) {
+          baseFilter.paymentStatus = paymentStatusFilter;
+        }
+
+        if (searchTerm) {
+          baseFilter.search = searchTerm;
+        }
+
+        if (fromDate || toDate) {
+          baseFilter.issueDate = {};
+          if (fromDate) baseFilter.issueDate._gte = fromDate;
+          if (toDate) baseFilter.issueDate._lte = toDate;
+        }
+
+        const countsByType: Record<string, number> = {
+          outbound: 0,
+          inbound: 0,
+        };
+
+        const fetchOutbound =
+          requestedType === "all" || requestedType === "outbound";
+        const fetchInbound =
+          requestedType === "all" || requestedType === "inbound";
+
+        const tasks: Promise<any>[] = [];
+
+        if (fetchOutbound) {
+          tasks.push(
+            (async () => {
+              const where: any = { ...baseFilter };
+              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
+              if (where.businessId)
+                where.businessId = { _eq: where.businessId };
+              if (where.status) where.status = { _eq: where.status };
+              if (where.paymentStatus)
+                where.paymentStatus = { _eq: where.paymentStatus };
+
+              const docs = await outboundRepo.findMany(
+                where,
+                undefined,
+                1000,
+                0,
+              );
+              const formatted = docs.map((doc: any) => ({
+                id: doc._id?.toString() || doc.id,
+                direction: "OUTBOUND",
+                type: "outbound",
+                irn: doc.irn,
+                invoiceNumber: doc.invoiceNumber,
+                invoiceTypeCode: doc.invoiceTypeCode,
+                issueDate: doc.issueDate,
+                dueDate: doc.dueDate,
+                status: doc.status,
+                paymentStatus:
+                  doc.payment?.paymentStatus || doc.paymentStatus || "PENDING",
+                supplier: {
+                  name:
+                    doc.supplierName ||
+                    doc.accounting_supplier_party?.party_name,
+                  tin: doc.supplierTIN || doc.accounting_supplier_party?.tin,
+                  email:
+                    doc.supplierEmail || doc.accounting_supplier_party?.email,
+                },
+                customer: {
+                  name:
+                    doc.customerName ||
+                    doc.accounting_customer_party?.party_name,
+                  tin: doc.customerTIN || doc.accounting_customer_party?.tin,
+                  email:
+                    doc.customerEmail || doc.accounting_customer_party?.email,
+                },
+                totalAmount:
+                  doc.legal_monetary_total?.payable_amount ||
+                  doc.totalAmount ||
+                  0,
+                currency: doc.document_currency_code || doc.currency || "NGN",
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                raw: doc,
+              }));
+
+              countsByType.outbound = formatted.length;
+              return formatted;
+            })(),
+          );
+        }
+
+        if (fetchInbound) {
+          tasks.push(
+            (async () => {
+              const where: any = { ...baseFilter };
+              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
+              if (where.businessId)
+                where.businessId = { _eq: where.businessId };
+              if (where.status) where.status = { _eq: where.status };
+              if (where.paymentStatus)
+                where.paymentStatus = { _eq: where.paymentStatus };
+
+              const docs = await inboundRepo.findMany(
+                where,
+                undefined,
+                1000,
+                0,
+              );
+              const formatted = docs.map((doc: any) => ({
+                id: doc._id?.toString() || doc.id,
+                direction: "INBOUND",
+                type: "inbound",
+                irn: doc.irn,
+                invoiceNumber: doc.invoiceNumber,
+                invoiceTypeCode: doc.invoiceTypeCode,
+                issueDate: doc.issueDate,
+                dueDate: doc.dueDate,
+                status: doc.status,
+                paymentStatus:
+                  doc.payment?.paymentStatus || doc.paymentStatus || "PENDING",
+                supplier: {
+                  name:
+                    doc.supplierName ||
+                    doc.accounting_supplier_party?.party_name,
+                  tin: doc.supplierTIN || doc.accounting_supplier_party?.tin,
+                  email:
+                    doc.supplierEmail || doc.accounting_supplier_party?.email,
+                },
+                customer: {
+                  name:
+                    doc.customerName ||
+                    doc.accounting_customer_party?.party_name,
+                  tin: doc.customerTIN || doc.accounting_customer_party?.tin,
+                  email:
+                    doc.customerEmail || doc.accounting_customer_party?.email,
+                },
+                totalAmount:
+                  doc.legal_monetary_total?.payable_amount ||
+                  doc.totalAmount ||
+                  0,
+                currency: doc.document_currency_code || doc.currency || "NGN",
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                raw: doc,
+              }));
+
+              countsByType.inbound = formatted.length;
+              return formatted;
+            })(),
+          );
+        }
+
+        const results = await Promise.all(tasks);
+        const combinedInvoices = results.flat();
+
+        combinedInvoices.sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.issueDate).getTime();
+          const dateB = new Date(b.createdAt || b.issueDate).getTime();
+          return dateB - dateA;
+        });
+
+        const totalCount = combinedInvoices.length;
+        const paginatedData = combinedInvoices.slice(offset, offset + limit);
+
+        return {
+          success: true,
+          data: paginatedData,
+          meta: {
+            total: totalCount,
+            page,
+            limit,
+            pages: Math.ceil(totalCount / limit) || 1,
+            countsByType,
+          },
+        };
+      } catch (error: any) {
+        logger.error("Failed to list unified invoices stream", {
+          error: error.message,
+        });
+        set.status = 500;
+        return {
+          success: false,
+          error: "Failed to retrieve unified invoice stream",
+          statusCode: 500,
+        };
+      }
+    },
+    listAllInvoicesValidation,
+  )
 
   // ==================== OUTBOUND INVOICES ====================
 
