@@ -242,9 +242,12 @@ ${JSON.stringify(invoiceTypes, null, 2)}
 5. telephone: ensure it starts with "+" (country code)
 6. invoice_type: default to "B2B" if missing
 
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
+## PARTY INFORMATION RULES (STRICT NESTING REQUIRED):
+- accounting_supplier_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- accounting_customer_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- All supplier information MUST be nested EXCLUSIVELY inside the accounting_supplier_party object.
+- All customer/buyer information MUST be nested EXCLUSIVELY inside the accounting_customer_party object.
+- NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
 - TIN format should be preserved from source

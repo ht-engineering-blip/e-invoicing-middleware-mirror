@@ -336,7 +336,7 @@ export class InvoiceWorkflowService {
   ): Promise<any> {
     try {
       // Call FIRS acknowledge API
-      const ackResult: any = await this.firsService.acknowledgeInvoiceReceipt(
+      const ackResult = await this.firsService.acknowledgeInvoiceReceipt(
         businessId,
         irn,
       );
@@ -402,12 +402,15 @@ export class InvoiceWorkflowService {
       };
 
       if (metadata?.paymentDate) updateData.paymentDate = metadata.paymentDate;
-      if (metadata?.paymentAmount)
+      if (metadata?.paymentAmount) {
         updateData.paymentAmount = metadata.paymentAmount;
-      if (metadata?.paymentReference)
+      }
+      if (metadata?.paymentReference) {
         updateData.paymentReference = metadata.paymentReference;
-      if (metadata?.rejectionReason)
+      }
+      if (metadata?.rejectionReason) {
         updateData.rejectionReason = metadata.rejectionReason;
+      }
 
       if (invoiceType === "outbound") {
         await this.outboundRepo.update(irn, updateData);

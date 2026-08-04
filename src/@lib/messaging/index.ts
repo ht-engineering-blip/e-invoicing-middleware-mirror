@@ -1,103 +1,98 @@
-import { templateEngine } from "../../templates/engine";
 import Handlebars from "handlebars";
+import { templateEngine } from "../../templates/engine";
 
-// const twilio = require("twilio"); 
+// const twilio = require("twilio");
 // import twilio from "twilio";
 
+import nodemailer from "nodemailer";
 
-
-import SMTPTransport from "nodemailer/lib/smtp-transport";
-import nodemailer from "nodemailer"
-
-import { v4 as uuidv4 } from "uuid";
-import { LOGO } from "../constants";
 import { messagingConfig } from "../../@config";
+import { LOGO } from "../constants";
 // import twilio from "twilio";
 
 interface SMSClient {
-    send(message: Message): Promise<any>
+  send(message: Message): Promise<any>;
 }
 
 function stripCRLF(val: string | undefined): string | undefined {
-    if (!val) return val;
-    return val.replace(/[\r\n]/g, '');
+  if (!val) return val;
+  return val.replace(/[\r\n]/g, "");
 }
 
 export interface MailContent {
-    from?: string;
-    to?: string;
-    replyTo?: string;
-    subject: string;
-    html: string;
-    text?: string;
-    attachment?: string[]
+  from?: string;
+  to?: string;
+  replyTo?: string;
+  subject: string;
+  html: string;
+  text?: string;
+  attachment?: string[];
 }
 
-
-
 interface MailClient {
-    send(message: MailContent): Promise<boolean>
+  send(message: MailContent): Promise<boolean>;
 }
 
 interface Message {
-    body?: string,
-    from: string,
-    to: string,
-    type?: string
+  body?: string;
+  from: string;
+  to: string;
+  type?: string;
 }
 
 interface MailCredential {
-    user: string
-    pass: string
+  user: string;
+  pass: string;
 }
 
-
 export class NodeMailerClient implements MailClient {
-    client?: any
+  client?: any;
 
-    constructor(user?: any) {
-        if (this.client == undefined) {
-
-            console.log(messagingConfig)
-            let transporter = nodemailer.createTransport({
-                host: messagingConfig?.smtpHost,
-                port: parseInt(messagingConfig?.smtpPort as string),
-                secure: false, // true for 465, false for other ports
-                tls: {
-                    rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
-                },
-                // secure: true, // true for 465, false for other ports
-                auth: {
-                    user: user?.user || messagingConfig?.smtpUser, // generated ethereal user
-                    pass: user?.pass || messagingConfig?.smtpPassword, // generated ethereal password
-                },
-            });
-            this.client = transporter
-
-        }
+  constructor(user?: any) {
+    if (this.client == undefined) {
+      console.log(messagingConfig);
+      let transporter = nodemailer.createTransport({
+        host: messagingConfig?.smtpHost,
+        port: parseInt(messagingConfig?.smtpPort as string),
+        secure: false, // true for 465, false for other ports
+        tls: {
+          rejectUnauthorized:
+            process.env.NODE_ENV === "production" ? true : false,
+        },
+        // secure: true, // true for 465, false for other ports
+        auth: {
+          user: user?.user || messagingConfig?.smtpUser, // generated ethereal user
+          pass: user?.pass || messagingConfig?.smtpPassword, // generated ethereal password
+        },
+      });
+      this.client = transporter;
     }
+  }
 
-    async send(message: MailContent): Promise<boolean> {
-        if (this.client != undefined) {
-            const from = stripCRLF(message.from || messagingConfig?.mailFrom || "HT Invoicing <support@htinvoicing.com>");
-            const to = stripCRLF(message.to);
-            const replyTo = stripCRLF(message.replyTo);
-            const subject = stripCRLF(message.subject);
+  async send(message: MailContent): Promise<boolean> {
+    if (this.client != undefined) {
+      const from = stripCRLF(
+        message.from ||
+          messagingConfig?.mailFrom ||
+          "HT Invoicing <support@htinvoicing.com>",
+      );
+      const to = stripCRLF(message.to);
+      const replyTo = stripCRLF(message.replyTo);
+      const subject = stripCRLF(message.subject);
 
-            const sent = await this.client.sendMail({
-                ...message,
-                from,
-                to,
-                replyTo,
-                subject: subject || '',
-                sender: "HT Invoicing"
-            });
-            console.log(sent.messageId)
-            return sent.messageId != undefined
-        }
-        return false
-
+      const sent = await this.client.sendMail({
+        ...message,
+        from,
+        to,
+        replyTo,
+        subject: subject || "",
+        sender: "HT Invoicing",
+      });
+      console.log(sent.messageId);
+      return sent.messageId != undefined;
     }
+    return false;
+  }
 }
 
 // export class TwilioSMSClient implements SMSClient {
@@ -135,13 +130,15 @@ export class NodeMailerClient implements MailClient {
 //     }
 // }
 
-export const sendSMSUsing = async (client: SMSClient, message: Message) => await client.send(message).then(sent_or_not => sent_or_not)
-export const sendMailUsing = async (client: MailClient, message: MailContent) => await client.send(message).then(sent_or_not => sent_or_not)
+export const sendSMSUsing = async (client: SMSClient, message: Message) =>
+  await client.send(message).then((sent_or_not) => sent_or_not);
+export const sendMailUsing = async (client: MailClient, message: MailContent) =>
+  await client.send(message).then((sent_or_not) => sent_or_not);
 export const withTemplate = (content: string) => {
-    let logo = LOGO
-    return templateEngine.renderInline(
-        'defaultEmailTemplate',
-        messagingConfig?.defaultEmailTemplate || '',
-        { logo, content: new Handlebars.SafeString(content) }
-    );
-}
+  let logo = LOGO;
+  return templateEngine.renderInline(
+    "defaultEmailTemplate",
+    messagingConfig?.defaultEmailTemplate || "",
+    { logo, content: new Handlebars.SafeString(content) },
+  );
+};
