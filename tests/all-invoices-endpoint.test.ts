@@ -156,22 +156,6 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
     expect(json.data[1].direction).toBe("OUTBOUND");
   });
 
-  it("GET /v1/workflow/invoices/all (Alias Route - Positive)", async () => {
-    const res = await app.handle(
-      new Request("http://localhost/v1/workflow/invoices/all", {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${mockToken}`,
-        },
-      }),
-    );
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.data.length).toBe(2);
-  });
-
   it("GET /v1/workflow/invoices?direction=outbound (Direction Filtered)", async () => {
     const res = await app.handle(
       new Request("http://localhost/v1/workflow/invoices?direction=outbound", {

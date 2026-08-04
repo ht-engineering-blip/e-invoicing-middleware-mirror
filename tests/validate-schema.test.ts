@@ -8,11 +8,11 @@ import crypto from "crypto";
 describe("FIRS Invoice Type Integration and Validation", () => {
   beforeAll(async () => {
     await connectMongo();
-  });
+  }, 30000);
 
   afterAll(async () => {
     await mongoose.disconnect();
-  });
+  }, 30000);
 
   it("should transform invoice_type_code 380 to 396 and validate successfully against FIRS", async () => {
     const uniqueId = crypto.randomUUID();
