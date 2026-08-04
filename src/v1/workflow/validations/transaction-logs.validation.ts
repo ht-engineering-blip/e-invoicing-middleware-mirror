@@ -118,6 +118,9 @@ export const listAllInvoicesValidation = {
   query: t.Object({
     page: t.Optional(t.String()),
     limit: t.Optional(t.String()),
+    businessId: t.Optional(t.String()),
+    source: t.Optional(t.String()),
+    erpInvoiceId: t.Optional(t.String()),
     type: t.Optional(
       t.String({
         description:

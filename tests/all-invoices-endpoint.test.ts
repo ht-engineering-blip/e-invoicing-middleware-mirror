@@ -55,6 +55,9 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
   let app: any;
   let mockToken: string;
 
+  let outboundCountSpy: any;
+  let inboundCountSpy: any;
+
   beforeAll(async () => {
     await connectMongo();
 
@@ -67,6 +70,16 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
       jwtConfig?.secret!,
       { algorithm: jwtConfig?.algorithm as jwt.Algorithm },
     );
+
+    outboundCountSpy = spyOn(
+      OutboundInvoiceRepository.prototype,
+      "count",
+    ).mockImplementation(async () => 1);
+
+    inboundCountSpy = spyOn(
+      InboundInvoiceRepository.prototype,
+      "count",
+    ).mockImplementation(async () => 1);
 
     outboundFindManySpy = spyOn(
       OutboundInvoiceRepository.prototype,
@@ -124,6 +137,8 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
   afterAll(async () => {
     if (outboundFindManySpy) outboundFindManySpy.mockRestore();
     if (inboundFindManySpy) inboundFindManySpy.mockRestore();
+    if (outboundCountSpy) outboundCountSpy.mockRestore();
+    if (inboundCountSpy) inboundCountSpy.mockRestore();
     await mongoose.disconnect();
   }, 30000);
 

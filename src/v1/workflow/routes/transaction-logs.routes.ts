@@ -28,42 +28,76 @@ import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { decryptSensitiveData } from "../../../@lib/crypto";
 
 /**
- * Normalizes outbound, inbound, or future invoice documents into a clean, unified schema.
+ * Format outbound invoice document matching standard outbound schema
  */
-function normalizeInvoiceDocument(
-  doc: any,
-  direction: "OUTBOUND" | "INBOUND" | string,
-): any {
-  const supplierParty = doc.accounting_supplier_party ?? {};
-  const customerParty = doc.accounting_customer_party ?? {};
-  const monetaryTotal = doc.legal_monetary_total ?? {};
-
+function formatOutboundInvoiceItem(inv: any): any {
   return {
-    id: String(doc._id ?? doc.id ?? ""),
-    direction: direction.toUpperCase(),
-    type: direction.toLowerCase(),
-    irn: doc.irn ?? "",
-    invoiceNumber: doc.invoiceNumber ?? "",
-    invoiceTypeCode: doc.invoiceTypeCode ?? "",
-    issueDate: doc.issueDate ?? "",
-    dueDate: doc.dueDate ?? "",
-    status: doc.status ?? "PENDING",
-    paymentStatus: doc.payment?.paymentStatus ?? doc.paymentStatus ?? "PENDING",
-    supplier: {
-      name: doc.supplierName ?? supplierParty.party_name ?? "",
-      tin: doc.supplierTIN ?? supplierParty.tin ?? "",
-      email: doc.supplierEmail ?? supplierParty.email ?? "",
-    },
-    customer: {
-      name: doc.customerName ?? customerParty.party_name ?? "",
-      tin: doc.customerTIN ?? customerParty.tin ?? "",
-      email: doc.customerEmail ?? customerParty.email ?? "",
-    },
-    totalAmount: monetaryTotal.payable_amount ?? doc.totalAmount ?? 0,
-    currency: doc.document_currency_code ?? doc.currency ?? "NGN",
-    createdAt: doc.createdAt ?? doc.issueDate,
-    updatedAt: doc.updatedAt ?? doc.issueDate,
-    raw: doc,
+    irn: inv.irn,
+    erpInvoiceId: inv.erpInvoiceId ?? null,
+    source: inv.source ?? "api",
+    type: "outbound",
+    direction: "OUTBOUND",
+    invoiceNumber:
+      inv.invoiceNumber ||
+      inv.metadata?.invoiceNumber ||
+      inv.metadata?.InvoiceNumber ||
+      null,
+    status: inv.status,
+    paymentStatus: inv.paymentStatus || inv.payment?.paymentStatus || "PENDING",
+    qrCode: inv.qrCode ?? null,
+    erp: inv.erpSystem ?? null,
+    workflowState: inv.workflowState ?? null,
+    lastJobError: inv.lastJobError ?? null,
+    customerName:
+      inv.customerName ||
+      inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name ||
+      inv.accounting_customer_party?.party_name ||
+      null,
+    supplierName:
+      inv.supplierName ||
+      inv.metadata?.AccountingSupplierParty?.Party?.PartyName?.[0]?.Name ||
+      inv.accounting_supplier_party?.party_name ||
+      null,
+    totalAmount:
+      inv.totalAmount ||
+      inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value ||
+      inv.legal_monetary_total?.payable_amount ||
+      0,
+    currency:
+      inv.currency ||
+      inv.metadata?.DocumentCurrencyCode ||
+      inv.document_currency_code ||
+      "NGN",
+    webhookEventCount: (inv.webhookEvents ?? []).length,
+    createdAt: inv.createdAt,
+    updatedAt: inv.updatedAt,
+  };
+}
+
+/**
+ * Format inbound invoice document matching standard inbound schema
+ */
+function formatInboundInvoiceItem(inv: any): any {
+  return {
+    irn: inv.irn,
+    erpInvoiceId: null,
+    source: "inbound",
+    type: "inbound",
+    direction: "INBOUND",
+    invoiceNumber: inv.invoiceNumber ?? null,
+    status: inv.status,
+    paymentStatus: inv.paymentStatus || inv.payment?.paymentStatus || "PENDING",
+    qrCode: inv.qrCode ?? null,
+    erp: null,
+    workflowState: null,
+    lastJobError: null,
+    customerName: inv.customerName ?? null,
+    supplierName: inv.supplierName ?? null,
+    totalAmount: inv.totalAmount ?? 0,
+    currency: inv.currency ?? "NGN",
+    webhookEventCount: 0,
+    createdAt: inv.createdAt,
+    updatedAt: inv.updatedAt,
   };
 }
 
@@ -104,98 +138,75 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const fromDate = query.from;
         const toDate = query.to;
 
-        // Build base filters
-        const baseFilter: any = {};
-        if (!auth?.isAdmin) {
-          baseFilter.tenantId = auth!.tenantId;
-          if (auth!.businessId) {
-            baseFilter.businessId = auth!.businessId;
-          }
-        }
-        if (statusFilter) {
-          baseFilter.status = statusFilter;
-        }
-        if (paymentStatusFilter) {
-          baseFilter.paymentStatus = paymentStatusFilter;
-        }
-
-        if (searchTerm) {
-          baseFilter.search = searchTerm;
-        }
-
-        if (fromDate || toDate) {
-          baseFilter.issueDate = {};
-          if (fromDate) baseFilter.issueDate._gte = fromDate;
-          if (toDate) baseFilter.issueDate._lte = toDate;
-        }
-
-        const countsByType: Record<string, number> = {
-          outbound: 0,
-          inbound: 0,
-        };
-
         const fetchOutbound =
           requestedType === "all" || requestedType === "outbound";
         const fetchInbound =
           requestedType === "all" || requestedType === "inbound";
 
+        const outboundFilters: any = {};
+        const inboundFilters: any = {};
+
+        if (!auth?.isAdmin) {
+          outboundFilters.tenantId = { _eq: auth!.tenantId };
+          if (auth?.businessId) {
+            inboundFilters.businessId = { _eq: auth.businessId };
+          } else {
+            inboundFilters.tenantId = { _eq: auth!.tenantId };
+          }
+        }
+
+        if (query.source) {
+          outboundFilters.source = { _eq: query.source };
+        }
+        if (query.erpInvoiceId) {
+          outboundFilters.erpInvoiceId = { _eq: query.erpInvoiceId };
+        }
+        if (statusFilter) {
+          outboundFilters.status = { _eq: statusFilter };
+          inboundFilters.status = { _eq: statusFilter };
+        }
+        if (paymentStatusFilter) {
+          outboundFilters.paymentStatus = { _eq: paymentStatusFilter };
+          inboundFilters.paymentStatus = { _eq: paymentStatusFilter };
+        }
+        if (fromDate || toDate) {
+          outboundFilters.createdAt = {};
+          inboundFilters.createdAt = {};
+          if (fromDate) {
+            outboundFilters.createdAt._gte = new Date(fromDate);
+            inboundFilters.createdAt._gte = new Date(fromDate);
+          }
+          if (toDate) {
+            outboundFilters.createdAt._lte = new Date(toDate);
+            inboundFilters.createdAt._lte = new Date(toDate);
+          }
+        }
+
         const tasks: Promise<any>[] = [];
+        let outboundTotal = 0;
+        let inboundTotal = 0;
 
         if (fetchOutbound) {
           tasks.push(
-            (async () => {
-              const where: any = { ...baseFilter };
-              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
-              if (where.businessId) {
-                where.businessId = { _eq: where.businessId };
-              }
-              if (where.status) where.status = { _eq: where.status };
-              if (where.paymentStatus) {
-                where.paymentStatus = { _eq: where.paymentStatus };
-              }
-
-              const docs = await outboundRepo.findMany(
-                where,
-                undefined,
-                1000,
-                0,
-              );
-              const formatted = docs.map((doc: any) =>
-                normalizeInvoiceDocument(doc, "OUTBOUND"),
-              );
-
-              countsByType.outbound = formatted.length;
-              return formatted;
-            })(),
+            Promise.all([
+              outboundRepo.findMany(outboundFilters, undefined, 1000, 0),
+              outboundRepo.count(outboundFilters),
+            ]).then(([docs, count]) => {
+              outboundTotal = count;
+              return docs.map(formatOutboundInvoiceItem);
+            }),
           );
         }
 
         if (fetchInbound) {
           tasks.push(
-            (async () => {
-              const where: any = { ...baseFilter };
-              if (where.tenantId) where.tenantId = { _eq: where.tenantId };
-              if (where.businessId) {
-                where.businessId = { _eq: where.businessId };
-              }
-              if (where.status) where.status = { _eq: where.status };
-              if (where.paymentStatus) {
-                where.paymentStatus = { _eq: where.paymentStatus };
-              }
-
-              const docs = await inboundRepo.findMany(
-                where,
-                undefined,
-                1000,
-                0,
-              );
-              const formatted = docs.map((doc: any) =>
-                normalizeInvoiceDocument(doc, "INBOUND"),
-              );
-
-              countsByType.inbound = formatted.length;
-              return formatted;
-            })(),
+            Promise.all([
+              inboundRepo.findMany(inboundFilters, undefined, 1000, 0),
+              inboundRepo.count(inboundFilters),
+            ]).then(([docs, count]) => {
+              inboundTotal = count;
+              return docs.map(formatInboundInvoiceItem);
+            }),
           );
         }
 
@@ -203,23 +214,39 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const combinedInvoices = results.flat();
 
         combinedInvoices.sort((a, b) => {
-          const dateA = new Date(a.createdAt || a.issueDate).getTime();
-          const dateB = new Date(b.createdAt || b.issueDate).getTime();
+          const dateA = new Date(a.createdAt).getTime();
+          const dateB = new Date(b.createdAt).getTime();
           return dateB - dateA;
         });
 
-        const totalCount = combinedInvoices.length;
+        let totalCount = 0;
+        if (fetchOutbound) {
+          totalCount += outboundTotal;
+        }
+        if (fetchInbound) {
+          totalCount += inboundTotal;
+        }
+
         const paginatedData = combinedInvoices.slice(offset, offset + limit);
 
         return {
           success: true,
           data: paginatedData,
+          pagination: {
+            page,
+            limit,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / limit) || 1,
+          },
           meta: {
             total: totalCount,
             page,
             limit,
             pages: Math.ceil(totalCount / limit) || 1,
-            countsByType,
+            countsByType: {
+              outbound: outboundTotal,
+              inbound: inboundTotal,
+            },
           },
         };
       } catch (error: any) {
