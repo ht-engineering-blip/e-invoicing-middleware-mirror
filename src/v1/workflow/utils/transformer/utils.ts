@@ -8,6 +8,14 @@ export function generateDatestamp(date: Date = new Date()): string {
   return `${y}${m}${d}`;
 }
 
+export function generateInvoiceRef(
+  date: string = new Date().toISOString().slice(0, 10),
+) {
+  return `INV${date.replace(/-/g, "")}${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0")}`;
+}
+
 export function sanitizeIRN(irn: string): string {
   if (typeof irn !== "string") return irn;
   return irn
@@ -92,59 +100,6 @@ export function sanitizeInvoiceIRNs(invoice: any): void {
   if (Array.isArray(invoice.additional_document_reference)) {
     for (const ref of invoice.additional_document_reference) {
       if (ref && ref.irn) ref.irn = sanitizeIRN(ref.irn);
-    }
-  }
-}
-
-export function sanitizeLineItemDescriptions(completed: any): void {
-  if (!completed) return;
-
-  if (Array.isArray(completed.invoice_line)) {
-    for (const line of completed.invoice_line) {
-      if (!line.item || typeof line.item !== "object") {
-        line.item = { name: "Item", description: "Item description" };
-      }
-      if (
-        !line.item.name ||
-        typeof line.item.name !== "string" ||
-        !line.item.name.trim()
-      ) {
-        line.item.name = line.product_category || "Item";
-      }
-      if (
-        !line.item.description ||
-        typeof line.item.description !== "string" ||
-        !line.item.description.trim()
-      ) {
-        line.item.description =
-          line.item.name ||
-          line.product_category ||
-          "Product / Service description";
-      }
-    }
-  }
-
-  if (completed.accounting_supplier_party) {
-    if (
-      !completed.accounting_supplier_party.business_description ||
-      typeof completed.accounting_supplier_party.business_description !==
-        "string" ||
-      !completed.accounting_supplier_party.business_description.trim()
-    ) {
-      completed.accounting_supplier_party.business_description =
-        completed.accounting_supplier_party.party_name || "Business entity";
-    }
-  }
-
-  if (completed.accounting_customer_party) {
-    if (
-      !completed.accounting_customer_party.business_description ||
-      typeof completed.accounting_customer_party.business_description !==
-        "string" ||
-      !completed.accounting_customer_party.business_description.trim()
-    ) {
-      completed.accounting_customer_party.business_description =
-        completed.accounting_customer_party.party_name || "Customer entity";
     }
   }
 }

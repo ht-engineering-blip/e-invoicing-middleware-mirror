@@ -9,7 +9,6 @@ import { generateQRCode } from "./generateQR";
 
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
-import { TenantModel } from "../../../v1/tenants/models/tenant.model";
 
 export interface FIRSUserInfo {
   code: number;
@@ -162,8 +161,6 @@ export default class FIRSClient extends RestClient {
     return this.client.get(`/${path}`, config);
   };
 }
-
-import { decryptSensitiveData } from "../../../@lib/crypto";
 
 export class FIRSService {
   public appClient: FIRSClient;
@@ -327,7 +324,7 @@ export class FIRSService {
   public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
     const client = this.appClient;
     return client.execute(
-      `invoice/transmit/${irn}`,
+      `api/v1/invoice/transmit/${irn}`,
       {
         message: "ACKNOWLEDGED",
       },

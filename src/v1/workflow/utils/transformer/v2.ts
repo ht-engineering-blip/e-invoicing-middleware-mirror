@@ -10,9 +10,9 @@ import {
   sanitizeInvoiceIRNs,
   sanitizeHsnCode,
   sanitizePriceUnit,
-  sanitizeLineItemDescriptions,
   setDynamicQuantityCodes,
   setDynamicHsCodes,
+  generateInvoiceRef,
 } from "./utils";
 
 import { FIRS_INVOICE_METADATA } from "../defaults";
@@ -79,11 +79,11 @@ export class FIRSInvoiceTransformerV2 {
       const firsSchemaDoc = await transformService.getInvoiceSchema(
         SchemaSourceType.FIRS_UBL,
       );
-      if (firsSchemaDoc) {
-        firsSchema = firsSchemaDoc.fields;
-      }
+
+      if (firsSchemaDoc) firsSchema = firsSchemaDoc.fields;
+
       // Transform using LLM with schema-based prompts
-      let result: any = await this.transformInvoice(
+      let result = await this.transformInvoice(
         invoice,
         authContext!,
         sourceSchema,
@@ -149,9 +149,6 @@ export class FIRSInvoiceTransformerV2 {
         console.error("Failed to fetch FIRS resources:", e);
       }
 
-      const schemaGraph = this.buildSchemaGraph(firsSchema);
-      //logger.info("Schema Graph", schemaGraph)
-
       const mapped = this.deterministicTransform(invoice, mappingRules);
       //logger.info("Mapped", mapped)
       const base = { ...invoice, ...mapped };
@@ -160,14 +157,12 @@ export class FIRSInvoiceTransformerV2 {
       // logger.info("resolved", resolved)
 
       // Set expected identity fields securely
+      const refence = invoice.invoice_reference;
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const invoiceRef =
-        invoice.invoice_reference ||
-        `INV${todayStr.replace(/-/g, "")}${Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, "0")}`;
+
+      const invoiceRef = refence || generateInvoiceRef();
+
       const computedIrn = generateIRN(
         invoiceRef,
         authContext?.serviceId,
@@ -259,8 +254,7 @@ export class FIRSInvoiceTransformerV2 {
         logger.info("completed", completed);
       }
 
-      // Deterministic HSN code, price_unit, and item description sanitization
-      sanitizeLineItemDescriptions(completed);
+      // Deterministic HSN code and price_unit sanitization
       if (Array.isArray(completed.invoice_line)) {
         for (const line of completed.invoice_line) {
           if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -287,8 +281,7 @@ export class FIRSInvoiceTransformerV2 {
           taxCategories,
           invoiceTypes,
         );
-        // Deterministic HSN code, price_unit, and item description sanitization post-repair
-        sanitizeLineItemDescriptions(completed);
+        // Deterministic HSN code and price_unit sanitization post-repair
         if (Array.isArray(completed.invoice_line)) {
           for (const line of completed.invoice_line) {
             if (line.hsn_code !== undefined && line.hsn_code !== null) {
@@ -317,26 +310,6 @@ export class FIRSInvoiceTransformerV2 {
         originalInvoice: invoice,
       };
     }
-  }
-
-  /* -----------------------------------------------------
-     SCHEMA GRAPH
-    ----------------------------------------------------- */
-
-  private buildSchemaGraph(schema: ISchemaField[]) {
-    const graph: Record<string, string[]> = {};
-
-    for (const field of schema) {
-      if (!field.parent_field_id) continue;
-
-      if (!graph[field.parent_field_id]) {
-        graph[field.parent_field_id] = [];
-      }
-
-      graph[field.parent_field_id].push(field.field_path);
-    }
-
-    return graph;
   }
 
   /* -----------------------------------------------------
@@ -694,9 +667,12 @@ ${JSON.stringify(invoiceTypes, null, 2)}
 5. telephone: ensure it starts with "+" (country code)
 6. invoice_kind: default to "B2B" if missing
 
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
+## PARTY INFORMATION RULES (STRICT NESTING REQUIRED):
+- accounting_supplier_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- accounting_customer_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- All supplier information MUST be nested EXCLUSIVELY inside the accounting_supplier_party object.
+- All customer/buyer information MUST be nested EXCLUSIVELY inside the accounting_customer_party object.
+- NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
 - TIN format should be preserved from source
@@ -845,71 +821,21 @@ Complete the missing fields also generate emails here missing currency should de
       metaContext,
     );
 
-    const prompt = `
-                The JSON below failed validation.
+    const userRepairPrompt = `
+The JSON below failed validation.
 
-                Errors:
-                ${JSON.stringify(errors)}
+Validation Errors to Fix:
+${JSON.stringify(errors, null, 2)}
 
-                Fix the JSON.
+JSON to Fix:
+${JSON.stringify(json, null, 2)}
 
-                JSON:
-                ${JSON.stringify(json)}
-
-
-## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
-- business_id: Use "${authContext?.businessId || "{{TEST_BUSINESS_ID}}"}" 
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
-- document_currency_code: REQUIRED, default to "NGN"
-- accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
-- accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
-- tax_total: REQUIRED - must include tax_amount and tax_subtotal array
-- legal_monetary_total: REQUIRED with line_extension_amount, tax_exclusive_amount, tax_inclusive_amount, payable_amount
-- invoice_line: REQUIRED array with at least one item
-
-Ensure all keys above are not changed
-
-## TAX TOTAL REQUIREMENTS (CRITICAL):
-- tax_total MUST be present as an array with at least one object
-- Each tax_total object must contain:
-  * tax_amount: total tax amount for this tax type
-  * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
-
-## VALID TAX CATEGORIES:
-${JSON.stringify(taxCategories, null, 2)}
-
-## VALID INVOICE TYPES:
-${JSON.stringify(invoiceTypes, null, 2)}
-
-## DATE/TIME FORMATTING RULES:
-1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
-2. NEVER leave date fields empty or as empty strings
-3. For missing dates in document references, use the main invoice's issue_date
-4. Times must be in HH:MM:SS format
-
-## AUTO-POPULATION RULES:
-1. payment_status: default to "PENDING" if missing
-2. document_currency_code: default to "NGN" if missing
-3. tax_currency_code: default to "NGN" if missing
-4. postal_zone: use "100001" if missing
-5. telephone: ensure it starts with "+" (country code)
-6. invoice_kind: default to "B2B" if missing
-
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
-- All party objects require: party_name, tin, email, postal_address
-- Telephone must start with "+" if provided
-- TIN format should be preserved from source
-
-## FIELD METADATA REQUIREMENTS:
-${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
-
-                Return valid JSON only.
+Return valid, corrected JSON only following all system prompt rules.
 `;
 
-    const response = await this.callLLM(prompt);
+    const response = await this.callLLM(
+      `${systemPrompt}\n\n${userRepairPrompt}`,
+    );
 
     const parsed = this.safeParseLLMJSON(response);
 

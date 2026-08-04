@@ -39,9 +39,7 @@ const ensureMongoConnection = async () => {
 // (serves live .d.ts types), so only wire it in outside production. Passing
 // an empty Elysia() as a no-op keeps this a single unbroken method chain.
 const dtsPlugin =
-  process.env.NODE_ENV !== "production"
-    ? dts("./src/index.ts")
-    : new Elysia();
+  process.env.NODE_ENV !== "production" ? dts("./src/index.ts") : new Elysia();
 
 const app = new Elysia()
   .use(cors())
