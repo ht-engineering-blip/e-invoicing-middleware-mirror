@@ -4,7 +4,13 @@ import { requireAuth } from "../../middlewares/auth";
 import { onlyAdmin } from "../auth/utils/access-checks";
 import { AuditService } from "./services/audit.service";
 
-export const auditRoutes = new Elysia({ prefix: "/audit" })
+export const auditRoutes = new Elysia({
+  prefix: "/audit",
+  detail: {
+    tags: ["Audit"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+  },
+})
   .use(requireAuth)
   .decorate("auditService", new AuditService())
   .get("/", async ({ auth, query, auditService }) => {
@@ -12,7 +18,7 @@ export const auditRoutes = new Elysia({ prefix: "/audit" })
     const result = await auditService.listAuditLogs({
       tenantId: query.tenantId,
       actorId: query.actorId,
-      eventType: query.eventType as any,
+      eventType: query.eventType,
       resourceType: query.resourceType,
       resourceId: query.resourceId,
       startDate: query.startDate ? new Date(query.startDate) : undefined,

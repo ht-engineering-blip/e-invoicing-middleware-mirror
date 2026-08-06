@@ -1,7 +1,7 @@
-import { t } from 'elysia';
+import { InboundInvoicePayloadSchema } from "./invoice-payload.schema";
 
 export const inboundInvoiceValidation = {
-  body: t.Any({ default: {} }),
+  body: InboundInvoicePayloadSchema,
   detail: {
     summary: "Inbound Invoice",
     description: "Process inbound workflow and transmit invoice",

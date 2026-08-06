@@ -277,7 +277,7 @@ const authRoutes = new Elysia()
         // Generate JWT token
         const tokenPayload = {
           tenantId: tenant.tenantId,
-          businessId: (tenant as any).businessId || tenant.tenantId,
+          businessId: firsResult.data.id,
           email: tenant.contactEmail,
           businessName: tenant.businessName,
           type: "tenant",

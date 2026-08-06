@@ -6,7 +6,10 @@ import { AuthContext } from "../../../middlewares";
  * using securely authenticated request context variables to prevent tenant spoofing.
  */
 export function secureAndValidateInvoice(
-  invoice: SecureInvoice,
+  invoice: Omit<SecureInvoice, "tenant_id" | "business_id"> & {
+    tenant_id?: string;
+    business_id?: string;
+  },
   auth?: AuthContext,
 ): SecureInvoice {
   if (!auth || !auth.tenantId || !auth.businessId) {
@@ -15,9 +18,12 @@ export function secureAndValidateInvoice(
     );
   }
 
-  // Force-overwrite with authenticated context variables to prevent tenant spoofing
-  invoice.tenant_id = auth.tenantId;
-  invoice.business_id = auth.businessId;
+  // Cast securely as we populate the required fields below
+  const secureInvoice = invoice as SecureInvoice;
 
-  return invoice;
+  // Force-overwrite with authenticated context variables to prevent tenant spoofing
+  secureInvoice.tenant_id = auth.tenantId;
+  secureInvoice.business_id = auth.businessId;
+
+  return secureInvoice;
 }
