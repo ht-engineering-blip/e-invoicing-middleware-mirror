@@ -1,5 +1,5 @@
 import { logger } from "../../../@lib/logger";
-import { AppError, safeSearchRegExp } from "../../../@lib";
+import { AppError, escapeRegExp, safeSearchRegExp } from "../../../@lib";
 import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   TenantDocument,
@@ -33,7 +33,7 @@ export class TenantRepository {
     // Case-insensitive exact match (anchored regex, ^value$)
     if (where.contactEmail?._iexact)
       query.contactEmail = {
-        $regex: `^${where.contactEmail._iexact}$`,
+        $regex: `^${escapeRegExp(where.contactEmail._iexact)}$`,
         $options: "i",
       };
 

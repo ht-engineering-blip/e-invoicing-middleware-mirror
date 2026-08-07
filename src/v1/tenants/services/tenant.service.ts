@@ -187,6 +187,7 @@ export class TenantService extends BaseService {
     const tenant = await this.tenantRepo.findOne({
       contactEmail: { _iexact: contactEmail },
     });
+
     if (!tenant) {
       throw new NotFoundError("Tenant");
     }
