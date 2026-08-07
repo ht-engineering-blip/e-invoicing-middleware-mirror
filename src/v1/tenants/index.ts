@@ -1,29 +1,21 @@
 // Tenant module routes
-import { Elysia, t } from "elysia";
-import {
-  createTenantValidator,
-  updateTenantValidator,
-  updateFirsCredentialsValidator,
-  tenantIdParamValidator,
-  listTenantsQueryValidator,
-  createApiKeyValidator,
-  apiKeyIdParamValidator,
-  revokeApiKeyValidator,
-  updateOnboardingStatusValidator,
-  erpSyncConfigValidator,
-} from "./utils/tenant.validators";
-import { requireAdmin, requireAuth } from "../../middlewares/auth";
+import { Elysia } from "elysia";
 import { logger, UnauthorizedError } from "../../@lib";
+import { requireAuth } from "../../middlewares/auth";
 import { TenantService } from "./services/tenant.service";
-
-import adminTenantRoutes from "./routes/admin";
-import { onlySelf } from "../auth/utils/access-checks";
 import {
-  publicOnboardingRoutes,
+  tenantIdParamValidator,
+  updateFirsCredentialsValidator,
+} from "./utils/tenant.validators";
+
+import { onlySelf } from "../auth/utils/access-checks";
+import adminTenantRoutes from "./routes/admin";
+import {
   protectedOnboardingRoutes,
+  publicOnboardingRoutes,
 } from "./routes/onboarding.routes";
-import { publicTeamRoutes, protectedTeamRoutes } from "./routes/team.routes";
 import { settingsRoutes } from "./routes/settings.routes";
+import { protectedTeamRoutes, publicTeamRoutes } from "./routes/team.routes";
 
 /**
  * Auth-protected onboarding route
@@ -47,11 +39,15 @@ const authOnboardingRoutes = new Elysia()
           publicKey: body.publicKey,
         };
         let targetTenantId = params.tenantId;
-        if (targetTenantId === 'me' && auth?.tenantId) {
+        if (targetTenantId === "me" && auth?.tenantId) {
           targetTenantId = auth.tenantId;
         }
 
-        if (auth?.tenantId !== targetTenantId && auth?.businessId !== targetTenantId && !auth?.isAdmin) {
+        if (
+          auth?.tenantId !== targetTenantId &&
+          auth?.businessId !== targetTenantId &&
+          !auth?.isAdmin
+        ) {
           throw new UnauthorizedError("Invalid token used for this tenant");
         }
 
@@ -64,9 +60,8 @@ const authOnboardingRoutes = new Elysia()
 
           // Automatically update onboarding step - mark FIRS provisioning as complete
           try {
-            const onboarding = await tenantService.getOnboardingStatus(
-              targetTenantId,
-            );
+            const onboarding =
+              await tenantService.getOnboardingStatus(targetTenantId);
             if (onboarding && !onboarding.steps?.firsProvisioning?.completed) {
               await tenantService.completeOnboardingStep(
                 targetTenantId,

@@ -435,7 +435,7 @@ export const requireAuth = (instance: Elysia) =>
             decoded.businessId = decoded.tenantId;
           }
           // Handle regular tenant tokens
-          if (!decoded.tenantId || !decoded.businessId) {
+          if (!decoded.tenantId) {
             throw new UnauthorizedError("Invalid token payload");
           }
 

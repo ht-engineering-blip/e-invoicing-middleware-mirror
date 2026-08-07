@@ -42,9 +42,7 @@ export async function chainNext(
       const outboundRepo = await getOutboundRepo();
       const invoice = await outboundRepo.findByIrn(irn).catch(() => null);
       if (invoice && invoice.workflowState?.delivered) {
-        await outboundRepo
-          .updateStatus(irn, OutboundInvoiceStatus.DELIVERED)
-          .catch(() => {});
+        await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.DELIVERED);
       }
     }
 
@@ -80,9 +78,7 @@ export async function chainNext(
   // Track the new Agenda job ID on the webhook event for chain tracing
   const nextAgendaJobId = nextJob.attrs._id?.toString();
   if (nextAgendaJobId) {
-    webhookEventRepo
-      .addJobId(data.webhookEventId, nextAgendaJobId)
-      .catch(() => {});
+    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId);
   }
 
   logger.info("[Job] Scheduled next step", {
@@ -128,9 +124,7 @@ export async function chainFail(
   if (irn) {
     const outboundRepo = await getOutboundRepo();
     await outboundRepo.setLastJobError(irn, action, error.message);
-    await outboundRepo
-      .updateStatus(irn, OutboundInvoiceStatus.FAILED)
-      .catch(() => {});
+    await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.FAILED);
   }
 
   await webhookEventRepo.markAsFailed(

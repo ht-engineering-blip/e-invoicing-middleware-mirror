@@ -8,10 +8,16 @@ export function generateDatestamp(date: Date = new Date()): string {
   return `${y}${m}${d}`;
 }
 
-export function generateInvoiceRef(
-  date: string = new Date().toISOString().slice(0, 10),
-) {
-  return `INV${date.replace(/-/g, "")}${Math.floor(Math.random() * 1000)
+export function generateInvoiceRef(date: Date = new Date(), ref?: string) {
+  if (ref) {
+    return `${ref}${Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, "0")}`;
+  }
+
+  return `INV${date.toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(
+    Math.random() * 1000,
+  )
     .toString()
     .padStart(3, "0")}`;
 }

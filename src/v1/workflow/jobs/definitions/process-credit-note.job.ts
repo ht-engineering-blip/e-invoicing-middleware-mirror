@@ -23,8 +23,9 @@ export function registerProcessCreditNoteJob(): void {
       try {
         const payload = context.originalPayload;
 
-        const refKey =
-          authContext?.referenceIdKeyMap?.[job.attrs.data.eventType];
+        const idKeyMap = authContext?.referenceIdKeyMap;
+
+        const refKey = idKeyMap?.[job.attrs.data.eventType];
         const creditNoteId = context.erpInvoiceId;
         const referenceIds: string[] = [];
 

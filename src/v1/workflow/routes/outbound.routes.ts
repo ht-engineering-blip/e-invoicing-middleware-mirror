@@ -24,7 +24,7 @@ const outboundInvoiceRoutes = new Elysia({ prefix: "/outbound" })
       try {
         console.log({ query });
         const transmit = Boolean(query.transmit === "true");
-        const invoice = secureAndValidateInvoice(body as SecureInvoice, auth);
+        const invoice = secureAndValidateInvoice(body, auth);
 
         let qrCode = await outboundWorkflowService.handleOutboundWorkflow(
           invoice,
