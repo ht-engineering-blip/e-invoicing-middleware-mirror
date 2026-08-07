@@ -1,34 +1,42 @@
-import crypto from 'crypto';
-import { agenda } from '../../../@lib/queue/agenda';
-import { TenantRepository } from '../../tenants/repos/tenant.repo';
-import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
-import { logger } from '../../../@lib/logger';
-import { decryptSensitiveData } from '../../../@lib/crypto';
-import { ACTION_TO_JOB, getPriority } from './types';
+import crypto from "crypto";
+import { agenda } from "../../../@lib/queue/agenda";
+import { TenantRepository } from "../../tenants/repos/tenant.repo";
+import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
+import { logger } from "../../../@lib/logger";
+import { decryptSensitiveData } from "../../../@lib/crypto";
+import { ACTION_TO_JOB, getPriority } from "./types";
 
 const webhookEventRepo = new WebhookEventRepository();
 
 const tenantRepo = new TenantRepository();
-
 
 /**
  * Builds and enqueues the first job of a processing chain.
  * Called from the inbound webhook handler after event routing is resolved.
  * The remaining steps are scheduled automatically by each job via chain.ts.
  */
-export async function scheduleJobChain(input: ScheduleChainInput): Promise<string> {
-  const { webhookEventId, tenantId, eventType, payload, actions, routeId } = input;
+export async function scheduleJobChain(
+  input: ScheduleChainInput,
+): Promise<string> {
+  const { webhookEventId, tenantId, eventType, payload, actions, routeId } =
+    input;
   let decryptedClientID: any;
   if (!actions.length) {
-    logger.warn('[Orchestrator] No actions to schedule', { webhookEventId, tenantId, eventType });
-    return '';
+    logger.warn("[Orchestrator] No actions to schedule", {
+      webhookEventId,
+      tenantId,
+      eventType,
+    });
+    return "";
   }
 
   // Validate all action IDs are known
   const unknownActions = actions.filter((a) => !ACTION_TO_JOB[a]);
   if (unknownActions.length) {
-    logger.warn('[Orchestrator] Unknown actions — skipping chain', { unknownActions });
-    return '';
+    logger.warn("[Orchestrator] Unknown actions — skipping chain", {
+      unknownActions,
+    });
+    return "";
   }
 
   // Build auth context from tenant
@@ -36,18 +44,20 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
 
   // Decrypt Business ID
   if (tenant && tenant.config && tenant.config.firsCredentials?.clientId) {
-    decryptedClientID = decryptSensitiveData(tenant.config.firsCredentials.clientId)
-    // (tenant as any).businessId = decryptedClientID
+    decryptedClientID = decryptSensitiveData(
+      tenant.config.firsCredentials.clientId,
+    );
   }
-  const authContext: JobChainData['authContext'] = {
+  const authContext: JobChainData["authContext"] = {
     tenantId,
-    businessId: decryptedClientID ?? (tenant as any)?.businessId,
+    businessId: decryptedClientID,
     businessTIN: tenant?.tin,
     serviceId: tenant?.config?.firsCredentials?.serviceId,
     tenantERP: tenant?.config?.erpSystem,
-    referenceIdKeyMap: tenant?.config?.referenceIdKeyMap instanceof Map
-      ? Object.fromEntries(tenant.config.referenceIdKeyMap)
-      : tenant?.config?.referenceIdKeyMap,
+    referenceIdKeyMap:
+      tenant?.config?.referenceIdKeyMap instanceof Map
+        ? Object.fromEntries(tenant.config.referenceIdKeyMap)
+        : tenant?.config?.referenceIdKeyMap,
     isAdmin: false,
   };
 
@@ -83,10 +93,10 @@ export async function scheduleJobChain(input: ScheduleChainInput): Promise<strin
   // Track the first Agenda job ID on the webhook event for chain tracing
   const agendaJobId = job.attrs._id?.toString();
   if (agendaJobId) {
-    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => { });
+    webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => {});
   }
 
-  logger.info('[Orchestrator] Chain scheduled', {
+  logger.info("[Orchestrator] Chain scheduled", {
     jobChainId,
     tenantId,
     eventType,

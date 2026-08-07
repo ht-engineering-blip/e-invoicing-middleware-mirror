@@ -11,7 +11,10 @@ import { TenantRepository } from "../tenants/repos/tenant.repo";
 import { scheduleJobChain } from "../workflow/jobs/orchestrator";
 import { OutboundInvoiceSource } from "../workflow/models/outbound-invoice.model";
 import { OutboundInvoiceRepository } from "../workflow/repos/outbound-invoice.repo";
-import { generateIRN } from "../workflow/utils/transformer/utils";
+import {
+  generateInvoiceRef,
+  generateIRN,
+} from "../workflow/utils/transformer/utils";
 import {
   ErpEventType,
   WebhookDeliveryStatus,
@@ -275,9 +278,7 @@ export const webhookRoutes = new Elysia({
         try {
           while (true) {
             if (queue.length === 0) {
-              await new Promise<void>((r) => {
-                resolve = r;
-              });
+              await new Promise<void>((r) => (resolve = r));
             }
             while (queue.length > 0) {
               const event = queue.shift();
@@ -421,6 +422,7 @@ export const webhookRoutes = new Elysia({
         tenant.tenantId,
         eventType,
       );
+
       const routedActions = matchedRoutes.flatMap((r) => r.actions);
 
       // 7. Extract ERP invoice ID using the configured key path (dot-notation)
@@ -452,9 +454,7 @@ export const webhookRoutes = new Elysia({
       // 8. Upsert OutboundInvoice — create on first event, reuse on updates
       let irn: string | undefined;
       if (erpInvoiceId) {
-        const invoiceRef = `${erpInvoiceId}${Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, "0")}`;
+        const invoiceRef = generateInvoiceRef(undefined, erpInvoiceId);
         const generatedIrn = generateIRN(
           invoiceRef,
           tenant.config?.firsCredentials?.serviceId,
@@ -466,9 +466,7 @@ export const webhookRoutes = new Elysia({
             tenant.tenantId,
             erpInvoiceId,
             {
-              irn:
-                generatedIrn ??
-                `IRN-${tenant.tenantId.slice(0, 6).toUpperCase()}-${Date.now()}`,
+              irn: generatedIrn,
               erpSystem: tenant.config?.erpSystem ?? "UNKNOWN",
               source: OutboundInvoiceSource.WEBHOOK,
               createdBy: tenant.tenantId,
@@ -531,9 +529,7 @@ export const webhookRoutes = new Elysia({
         } as any);
 
         // 10. Link webhook event to the invoice record
-        if (irn) {
-          await outboundRepo.addWebhookEvent(irn, eventId);
-        }
+        if (irn) await outboundRepo.addWebhookEvent(irn, eventId);
 
         logger.info("Inbound webhook received", {
           tenantId: tenant.tenantId,
@@ -556,9 +552,7 @@ export const webhookRoutes = new Elysia({
             erpInvoiceId,
             irn,
           })
-            .then((id) => {
-              jobChainId = id;
-            })
+            .then((id) => (jobChainId = id))
             .catch((err) =>
               logger.error("Failed to schedule job chain", {
                 eventId,
