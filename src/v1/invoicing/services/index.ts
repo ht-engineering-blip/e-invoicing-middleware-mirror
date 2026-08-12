@@ -250,7 +250,7 @@ export class InvoiceWorkflowService {
       }
 
       // Call FIRS transmit API
-      const transmitResult: any = await this.firsService.transmitInvoice(
+      const transmitResult = await this.firsService.transmitInvoice(
         authContext.tenantId,
         irn,
       );
@@ -268,7 +268,7 @@ export class InvoiceWorkflowService {
         success: true,
         irn,
         transmitted: true,
-        data: transmitResult?.data,
+        data: transmitResult,
         workflowState: { transmitted: true },
       };
     } catch (error: any) {
@@ -444,7 +444,7 @@ export class InvoiceWorkflowService {
   async reportInvoice(reportData: VATPostPaymentReportData): Promise<any> {
     try {
       // Call FIRS VAT post-payment API
-      const reportResult: any = await this.firsService.reportVATPostPayment(
+      const reportResult = await this.firsService.reportVATPostPayment(
         reportData.integrator_service_id || reportData.agent_tin,
         reportData,
       );
