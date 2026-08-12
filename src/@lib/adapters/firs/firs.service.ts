@@ -114,7 +114,7 @@ export default class FIRSClient extends RestClient {
     //   message: error.message
     // }
     let foundError = error?.response?.data?.error;
-    console.log("Resp error:", { error });
+    console.log("Resp error:", { error: error.response });
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status,
       foundError?.public_message + " - " + foundError?.details ||
@@ -343,7 +343,7 @@ export class FIRSService {
     reportData: VATPostPaymentReportData,
   ) {
     const client = this.appClient;
-    return client.post("/api/v1/vat/postpayment", reportData);
+    return client.post("api/v1/vat/postpayment", reportData);
   }
 
   /**
