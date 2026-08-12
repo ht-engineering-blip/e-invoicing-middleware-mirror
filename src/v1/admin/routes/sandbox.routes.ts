@@ -1,9 +1,12 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { requireAdmin } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { SystemConfigService } from '../services/system-config.service';
-import { SchemaSourceType } from '../../workflow/models';
-import { testTransformExample, testValidateExample, testFullExample } from '../examples/sandbox.examples';
+import {
+  testTransformValidation,
+  testValidateValidation,
+  testFullValidation
+} from '../validations/sandbox.validation';
 
 /**
  * Sandbox Testing Routes
@@ -39,18 +42,7 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
         };
       }
     },
-    {
-      body: t.Object({
-        erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
-        invoice: t.Any({ default: {}, examples: [testTransformExample.invoice] }),
-      }, { examples: [testTransformExample] }),
-      detail: {
-        tags: ['Admin', 'Sandbox'],
-        security: [{ adminKey: [] }],
-        summary: 'Test Transform',
-        description: 'Test invoice transformation from ERP format to FIRS UBL format',
-      },
-    }
+    testTransformValidation
   )
 
   /**
@@ -80,17 +72,7 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
         };
       }
     },
-    {
-      body: t.Object({
-        invoice: t.Any({ default: {}, examples: [testValidateExample.invoice] }),
-      }, { examples: [testValidateExample] }),
-      detail: {
-        tags: ['Admin', 'Sandbox'],
-        security: [{ adminKey: [] }],
-        summary: 'Test Validate',
-        description: 'Test invoice validation against FIRS requirements',
-      },
-    }
+    testValidateValidation
   )
 
   /**
@@ -120,16 +102,5 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
         };
       }
     },
-    {
-      body: t.Object({
-        erpType: t.Union([t.Enum(SchemaSourceType), t.String()]),
-        invoice: t.Any({ default: {}, examples: [testFullExample.invoice] }),
-      }, { examples: [testFullExample] }),
-      detail: {
-        tags: ['Admin', 'Sandbox'],
-        security: [{ adminKey: [] }],
-        summary: 'Test Full Workflow',
-        description: 'Test complete transform and validate workflow',
-      },
-    }
+    testFullValidation
   );

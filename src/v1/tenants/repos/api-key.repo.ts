@@ -1,6 +1,10 @@
-import { AppError } from '../../../@lib';
-import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
-import { ApiKeyDocument, ApiKeyModel, ApiKeyStatus } from '../models/api-key.model';
+import { AppError } from "../../../@lib";
+import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
+import {
+  ApiKeyDocument,
+  ApiKeyModel,
+  ApiKeyStatus,
+} from "../models/api-key.model";
 
 export class ApiKeyRepository {
   private apiKeyModel: ModelWrapper<ApiKeyDocument>;
@@ -52,7 +56,7 @@ export class ApiKeyRepository {
     where?: any,
     select?: any,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
   ): Promise<ApiKeyDocument[]> {
     try {
       const query = this.buildApiKeyQuery(where);
@@ -67,8 +71,8 @@ export class ApiKeyRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error finding API keys:', error);
-      throw new AppError(500, 'Failed to fetch API keys');
+      console.error("Error finding API keys:", error);
+      throw new AppError(500, "Failed to fetch API keys");
     }
   }
 
@@ -80,12 +84,12 @@ export class ApiKeyRepository {
       const query = this.buildApiKeyQuery(where);
       const projection = this.buildApiKeyProjection(select);
 
-      const doc = await this.apiKeyModel.base.findOne(query, projection).exec();
+      const doc = await this.apiKeyModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
-      console.error('Error finding API key:', error);
-      throw new AppError(500, 'Failed to fetch API key');
+      console.error("Error finding API key:", error);
+      throw new AppError(500, "Failed to fetch API key");
     }
   }
 
@@ -102,21 +106,24 @@ export class ApiKeyRepository {
 
       return doc.toJSON();
     } catch (error: any) {
-      console.error('Error creating API key:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error creating API key:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
       if (error.code === 11000) {
-        throw new AppError(409, 'API key with this hash already exists');
+        throw new AppError(409, "API key with this hash already exists");
       }
-      throw new AppError(500, 'Failed to create API key');
+      throw new AppError(500, "Failed to create API key");
     }
   }
 
   /**
    * Update an API key
    */
-  async update(keyId: string, data: Partial<ApiKeyDocument>): Promise<ApiKeyDocument> {
+  async update(
+    keyId: string,
+    data: Partial<ApiKeyDocument>,
+  ): Promise<ApiKeyDocument> {
     try {
       // Remove undefined values
       const updateData = Object.keys(data).reduce((acc, key: string) => {
@@ -127,24 +134,28 @@ export class ApiKeyRepository {
         return acc;
       }, {} as any);
 
-      const doc = await this.apiKeyModel.base
-        .findByIdAndUpdate(keyId, { $set: updateData }, { new: true, runValidators: true })
+      const doc = await this.apiKeyModel
+        .findByIdAndUpdate(
+          keyId,
+          { $set: updateData },
+          { returnDocument: 'after', runValidators: true },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'API key not found');
+        throw new AppError(404, "API key not found");
       }
 
       return doc;
     } catch (error: any) {
-      console.error('Error updating API key:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error updating API key:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update API key');
+      throw new AppError(500, "Failed to update API key");
     }
   }
 
@@ -153,12 +164,12 @@ export class ApiKeyRepository {
    */
   async delete(keyId: string): Promise<boolean> {
     try {
-      const result = await this.apiKeyModel.base.findByIdAndDelete(keyId).exec();
+      const result = await this.apiKeyModel.findByIdAndDelete(keyId).exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error deleting API key:', error);
-      throw new AppError(500, 'Failed to delete API key');
+      console.error("Error deleting API key:", error);
+      throw new AppError(500, "Failed to delete API key");
     }
   }
 
@@ -168,12 +179,12 @@ export class ApiKeyRepository {
   async count(where?: any): Promise<number> {
     try {
       const query = this.buildApiKeyQuery(where);
-      console.log("=========", query)
+      console.log("=========", query);
       const count = await this.apiKeyModel.countDocuments(query).exec();
       return count;
     } catch (error) {
-      console.error('Error counting API keys:', error);
-      throw new AppError(500, 'Failed to count API keys');
+      console.error("Error counting API keys:", error);
+      throw new AppError(500, "Failed to count API keys");
     }
   }
 
@@ -183,14 +194,14 @@ export class ApiKeyRepository {
   async findByTenantId(
     tenantId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: ApiKeyDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { tenantId };
 
       const [docs, total] = await Promise.all([
-        this.apiKeyModel.base
+        this.apiKeyModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -211,8 +222,8 @@ export class ApiKeyRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching API keys:', error);
-      throw new AppError(500, 'Failed to fetch API keys');
+      console.error("Error fetching API keys:", error);
+      throw new AppError(500, "Failed to fetch API keys");
     }
   }
 
@@ -221,11 +232,11 @@ export class ApiKeyRepository {
    */
   async findByKeyHash(keyHash: string): Promise<ApiKeyDocument | null> {
     try {
-      const doc = await this.apiKeyModel.base.findOne({ keyHash }).exec();
+      const doc = await this.apiKeyModel.findOne({ keyHash }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching API key:', error);
-      throw new AppError(500, 'Failed to fetch API key');
+      console.error("Error fetching API key:", error);
+      throw new AppError(500, "Failed to fetch API key");
     }
   }
 
@@ -234,11 +245,11 @@ export class ApiKeyRepository {
    */
   async findByKeyPrefix(keyPrefix: string): Promise<ApiKeyDocument | null> {
     try {
-      const doc = await this.apiKeyModel.base.findOne({ keyPrefix }).exec();
+      const doc = await this.apiKeyModel.findOne({ keyPrefix }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching API key:', error);
-      throw new AppError(500, 'Failed to fetch API key');
+      console.error("Error fetching API key:", error);
+      throw new AppError(500, "Failed to fetch API key");
     }
   }
 
@@ -248,10 +259,10 @@ export class ApiKeyRepository {
   async revoke(
     keyId: string,
     revokedBy: string,
-    reason: string
+    reason: string,
   ): Promise<ApiKeyDocument> {
     try {
-      const doc = await this.apiKeyModel.base
+      const doc = await this.apiKeyModel
         .findByIdAndUpdate(
           keyId,
           {
@@ -262,21 +273,21 @@ export class ApiKeyRepository {
               revokedReason: reason,
             },
           },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'API key not found');
+        throw new AppError(404, "API key not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error revoking API key:', error);
+      console.error("Error revoking API key:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to revoke API key');
+      throw new AppError(500, "Failed to revoke API key");
     }
   }
 
@@ -285,17 +296,17 @@ export class ApiKeyRepository {
    */
   async updateLastUsed(keyHash: string): Promise<void> {
     try {
-      await this.apiKeyModel.base
+      await this.apiKeyModel
         .findOneAndUpdate(
           { keyHash },
           {
             $set: { lastUsedAt: new Date() },
             $inc: { usageCount: 1 },
-          }
+          },
         )
         .exec();
     } catch (error) {
-      console.error('Error updating API key last used:', error);
+      console.error("Error updating API key last used:", error);
       // Don't throw error, just log it
     }
   }
@@ -305,7 +316,7 @@ export class ApiKeyRepository {
    */
   async findExpired(): Promise<ApiKeyDocument[]> {
     try {
-      const docs = await this.apiKeyModel.base
+      const docs = await this.apiKeyModel
         .find({
           expiresAt: { $lte: new Date() },
           status: ApiKeyStatus.ACTIVE,
@@ -314,8 +325,8 @@ export class ApiKeyRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error finding expired API keys:', error);
-      throw new AppError(500, 'Failed to find expired API keys');
+      console.error("Error finding expired API keys:", error);
+      throw new AppError(500, "Failed to find expired API keys");
     }
   }
 
@@ -324,7 +335,7 @@ export class ApiKeyRepository {
    */
   async markExpired(): Promise<number> {
     try {
-      const result = await this.apiKeyModel.base
+      const result = await this.apiKeyModel
         .updateMany(
           {
             expiresAt: { $lte: new Date() },
@@ -332,14 +343,14 @@ export class ApiKeyRepository {
           },
           {
             $set: { status: ApiKeyStatus.EXPIRED },
-          }
+          },
         )
         .exec();
 
       return result.modifiedCount || 0;
     } catch (error) {
-      console.error('Error marking expired API keys:', error);
-      throw new AppError(500, 'Failed to mark expired API keys');
+      console.error("Error marking expired API keys:", error);
+      throw new AppError(500, "Failed to mark expired API keys");
     }
   }
 
@@ -348,7 +359,7 @@ export class ApiKeyRepository {
    */
   async findActiveByTenantId(tenantId: string): Promise<ApiKeyDocument[]> {
     try {
-      const docs = await this.apiKeyModel.base
+      const docs = await this.apiKeyModel
         .find({
           tenantId,
           status: ApiKeyStatus.ACTIVE,
@@ -358,8 +369,8 @@ export class ApiKeyRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error fetching active API keys:', error);
-      throw new AppError(500, 'Failed to fetch active API keys');
+      console.error("Error fetching active API keys:", error);
+      throw new AppError(500, "Failed to fetch active API keys");
     }
   }
 
@@ -369,10 +380,10 @@ export class ApiKeyRepository {
   async bulkRevoke(
     keyIds: string[],
     revokedBy: string,
-    reason: string
+    reason: string,
   ): Promise<number> {
     try {
-      const result = await this.apiKeyModel.base
+      const result = await this.apiKeyModel
         .updateMany(
           { _id: { $in: keyIds } },
           {
@@ -382,14 +393,14 @@ export class ApiKeyRepository {
               revokedBy,
               revokedReason: reason,
             },
-          }
+          },
         )
         .exec();
 
       return result.modifiedCount || 0;
     } catch (error) {
-      console.error('Error bulk revoking API keys:', error);
-      throw new AppError(500, 'Failed to bulk revoke API keys');
+      console.error("Error bulk revoking API keys:", error);
+      throw new AppError(500, "Failed to bulk revoke API keys");
     }
   }
 }

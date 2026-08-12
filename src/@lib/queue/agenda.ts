@@ -1,11 +1,9 @@
-import { Agenda } from 'agenda';
-import { MongoBackend } from '@agendajs/mongo-backend';
-import { databaseConfig } from '../../@config/database';
-import { logger } from '../logger';
+import { Agenda } from "agenda";
+import { MongoBackend } from "@agendajs/mongo-backend";
+import { databaseConfig } from "../../@config/database";
+import { logger } from "../logger";
 
-const mongoUri =
-  process.env.MONGODB_URI ||
-  databaseConfig?.data?.mongoUri!
+const mongoUri = databaseConfig?.data?.mongoUri!;
 
 /**
  * Shared Agenda instance backed by the same MongoDB as the application.
@@ -15,14 +13,16 @@ const mongoUri =
 export const agenda = new Agenda({
   backend: new MongoBackend({
     address: mongoUri,
-    collection: 'job_queue',
+    collection: "job_queue",
   }),
-  processEvery: '2 seconds',
+  processEvery: "2 seconds",
   defaultConcurrency: 5,
   maxConcurrency: 20,
   defaultLockLifetime: 5 * 60 * 1000, // 5 min max per job
-  logging: true
+  logging: true,
 });
 
-agenda.on('ready', () => logger.info('[Queue] Agenda connected to MongoDB'));
-agenda.on('error', (err: any) => logger.error('[Queue] Agenda connection error', { err }));
+agenda.on("ready", () => logger.info("[Queue] Agenda connected to MongoDB"));
+agenda.on("error", (err: any) =>
+  logger.error("[Queue] Agenda connection error", { err }),
+);

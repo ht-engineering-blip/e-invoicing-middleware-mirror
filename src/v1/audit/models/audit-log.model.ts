@@ -114,6 +114,10 @@ export interface AuditLogDocument extends Document {
   // Timestamps
   timestamp: Date;
   createdAt: Date;
+
+  // Cryptographic integrity fields
+  hash?: string;
+  previousHash?: string;
 }
 
 /**
@@ -215,6 +219,15 @@ const AuditLogSchema = new Schema<AuditLogDocument>(
       type: Date,
       default: Date.now,
       // Note: index defined below with TTL expireAfterSeconds option
+    },
+
+    // Cryptographic integrity fields
+    hash: {
+      type: String,
+      index: true,
+    },
+    previousHash: {
+      type: String,
     },
   },
   {

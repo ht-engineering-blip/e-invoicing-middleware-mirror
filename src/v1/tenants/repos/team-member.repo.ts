@@ -134,7 +134,7 @@ export class TeamMemberRepository {
       const doc = await TeamMemberModel.findOneAndUpdate(
         { userId },
         { $set: data },
-        { new: true }
+        { returnDocument: 'after' }
       ).exec();
       return doc;
     } catch (error) {

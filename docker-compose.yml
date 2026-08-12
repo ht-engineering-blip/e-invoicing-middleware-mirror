@@ -6,6 +6,11 @@ services:
     image: mongo:7.0
     container_name: e-invoicing-middleware-mongodb
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
     ports:
       - "27017:27017"
     env_file:
@@ -26,13 +31,39 @@ services:
       retries: 5
       start_period: 10s
 
-
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: e-invoicing-middleware-redis
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - e-invoicing-middleware-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # MongoDB Express - Web-based MongoDB admin interface
   mongo-express:
     image: mongo-express:latest
     container_name: e-invoicing-middleware-mongo-express
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
     ports:
       - "8081:8081"
     env_file:

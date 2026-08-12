@@ -73,11 +73,18 @@ export default class LLMClient extends RestClient {
 
     _handleError(error: AxiosError<any>) {
 
-        // {
-        //   status: error.response?.status,
-        //   url: error.config?.url,
-        //   message: error.message
-        // }
+        // Redact Authorization header to prevent token leakage in AxiosError objects or logs
+        if (error.config?.headers) {
+            const headers = error.config.headers as any;
+            if (headers.Authorization) headers.Authorization = "[REDACTED]";
+            if (headers.authorization) headers.authorization = "[REDACTED]";
+        }
+        if (error.request?._headers) {
+            const requestHeaders = error.request._headers as any;
+            if (requestHeaders.Authorization) requestHeaders.Authorization = "[REDACTED]";
+            if (requestHeaders.authorization) requestHeaders.authorization = "[REDACTED]";
+        }
+
         let foundError = error?.response?.data?.error
         console.log('Resp error:', { foundError });
         const errorResp = new AppError(error?.response?.data?.code || error?.response?.status, foundError?.public_message || HandleErrorResponse(error), error)
@@ -135,7 +142,7 @@ export class LLMService {
     /**
  * Generate Invoice Dictionary
  */
-    async generateInvoiceDictionary(erp: any, invoice: any, metadata:any={}): Promise<any> {
+    async generateInvoiceDictionary(erp: any, invoice: any, metadata: any = {}): Promise<any> {
         try {
             let payload = {
                 model: aiConfig?.inferenceModel,
@@ -158,15 +165,24 @@ export class LLMService {
                 ]
             }
             const response: any = await this.client.post(``, payload);
-            console.log(response)
             if (!response.choices) {
-
                 throw new Error(`Failed to extract invoice dictionary`);
             }
-            const content = response.choices[0].message.content; 
+            const content = response.choices[0].message.content;
             return JSON.parse(content);
-        } catch (error) {
+        } catch (error: any) {
+            // Securely redact Authorization headers in error objects to prevent key leakage in logs
+            if (error?.errors?.config?.headers) {
+                const headers = error.errors.config.headers;
+                if (headers.Authorization) headers.Authorization = "[REDACTED]";
+                if (headers.authorization) headers.authorization = "[REDACTED]";
+            }
             if (axios.isAxiosError(error)) {
+                if (error.config?.headers) {
+                    const headers = error.config.headers as any;
+                    if (headers.Authorization) headers.Authorization = "[REDACTED]";
+                    if (headers.authorization) headers.authorization = "[REDACTED]";
+                }
                 if (error.response?.status === 401) {
                     throw new Error('Invalid or expired LLM access token');
                 }

@@ -8,7 +8,6 @@ export const connectMongo = async () => {
       // Additional MongoDB connection options
       maxPoolSize: 10,
       minPoolSize: 2,
-      serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     }).then(() => {
       console.info(`MongoDB connected successfully to database: ${databaseConfig?.data?.dbName}`);

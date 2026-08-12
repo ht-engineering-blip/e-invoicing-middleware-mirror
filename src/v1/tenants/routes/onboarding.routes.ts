@@ -1,5 +1,5 @@
-import { Elysia, t } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
+import { Elysia } from 'elysia';
+import { requireAuth, getActor } from '../../../middlewares/auth';
 import { logger } from '../../../@lib';
 import { TenantService } from '../services/tenant.service';
 import { jwtConfig, appConfig } from '../../../@config';
@@ -9,13 +9,18 @@ import axios from 'axios';
 import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
-import app from '../../..';
+import { signWebhookPayload } from '../../webhook';
 import {
-  updateCredentialsExample,
-  generateWebhookExample,
-  updateInvoiceIdKeyExample,
-  testWebhookExample,
-} from '../examples/onboarding.examples';
+  activateValidation,
+  updateCredentialsValidation,
+  generateWebhookValidation,
+  updateInvoiceIdKeyValidation,
+  testWebhookValidation,
+  resendTenantTokenValidation
+} from '../validations/onboarding.validation';
+import { AuthService } from '../../auth/services';
+import { MailContent, withTemplate } from '../../../@lib/messaging';
+import { templateEngine } from '../../../templates/engine';
 
 /**
  * Public Onboarding Routes (no auth required)
@@ -39,7 +44,9 @@ export const publicOnboardingRoutes = new Elysia()
         let decoded: any;
 
         try {
-          decoded = jwt.verify(params.token, jwtSecret);
+          decoded = jwt.verify(params.token, jwtSecret, {
+            algorithms: [jwtConfig?.algorithm as jwt.Algorithm || 'HS256']
+          });
         } catch (jwtError: any) {
           logger.warn('Invalid activation token', { error: jwtError.message });
           return {
@@ -60,15 +67,30 @@ export const publicOnboardingRoutes = new Elysia()
         // Get tenant
         const tenant = await tenantService.getTenantById(decoded.tenantId);
 
-        // Check if already activated (has password)
-        if (tenant.password) {
+        // Check if already activated
+        if (tenant.password || tenant.metadata?.activationCompleted) {
+          set.status = 400
           return {
-            success: true,
-            message: 'Account already activated',
-            data: {
-              tenantId: tenant.tenantId,
-              alreadyActivated: true,
-            },
+            success: false,
+            error: 'Account has already been activated',
+            statusCode: 400,
+          };
+        }
+
+        // Verify single active token ID match and expiration using service helpers
+        if (!tenantService.isActivationTokenValid(tenant, decoded.activationTokenId)) {
+          set.status = 400
+          logger.warn('Activation token is invalid or expired (ID mismatch or timeframe expired)', {
+            tenantId: tenant.tenantId,
+            dbTokenId: tenant.metadata?.activationTokenId,
+            decodedTokenId: decoded.activationTokenId,
+            expiresAt: tenantService.getActivationTokenExpiry(tenant),
+          });
+          return {
+
+            success: false,
+            error: 'Invalid or expired activation link',
+            statusCode: 400,
           };
         }
 
@@ -80,7 +102,10 @@ export const publicOnboardingRoutes = new Elysia()
             purpose: 'set-password',
           },
           jwtSecret,
-          { expiresIn: '1h' }
+          {
+            expiresIn: '1h',
+            algorithm: (jwtConfig?.algorithm as jwt.Algorithm) || 'HS256'
+          }
         );
 
         // Return redirect info or token
@@ -107,16 +132,7 @@ export const publicOnboardingRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        token: t.String(),
-      }),
-      detail: {
-        tags: ['Onboarding'],
-        summary: 'Handle Activation Link',
-        description: 'Process tenant activation link and return password setting token',
-      },
-    }
+    activateValidation
   );
 
 /**
@@ -125,6 +141,7 @@ export const publicOnboardingRoutes = new Elysia()
 export const protectedOnboardingRoutes = new Elysia()
   .use(requireAuth)
   .decorate('tenantService', new TenantService())
+  .decorate('authService', new AuthService())
   .decorate('webhookService', new WebhookService())
   /**
    * PUT /tenants/:tenantId/credentials
@@ -161,13 +178,13 @@ export const protectedOnboardingRoutes = new Elysia()
         const updatedTenant = await tenantService.updateFIRSCredentials(params.tenantId, {
           certificate: body.certificate,
           publicKey: body.publicKey,
-        });
+        }, getActor(auth));
 
         // Update onboarding step if not already completed
         try {
           const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
           if (onboarding && !onboarding.steps?.firsProvisioning?.completed) {
-            await tenantService.completeOnboardingStep(params.tenantId, 'firsProvisioning');
+            await tenantService.completeOnboardingStep(params.tenantId, 'firsProvisioning', getActor(auth));
           }
         } catch (onboardingError) {
           logger.warn('Failed to update onboarding step', { error: onboardingError });
@@ -190,21 +207,7 @@ export const protectedOnboardingRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      body: t.Object({
-        publicKey: t.String({ minLength: 1, example: updateCredentialsExample.publicKey }),
-        certificate: t.String({ minLength: 1, example: updateCredentialsExample.certificate }),
-      }, { examples: [updateCredentialsExample] }),
-      detail: {
-        tags: ['Onboarding'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Update Credentials',
-        description: 'Update tenant public key and certificate for FIRS integration',
-      },
-    }
+    updateCredentialsValidation
   )
 
   /**
@@ -250,7 +253,7 @@ export const protectedOnboardingRoutes = new Elysia()
             webhookPath,
             webhookSecretHash: crypto.createHash('sha256').update(webhookSecret).digest('hex'),
           },
-        } as any);
+        } as any, getActor(auth));
 
         await webhookService.configureWebhook({ enabled: true, tenantId: params.tenantId, webhookUrl, webhookSecret })
 
@@ -274,28 +277,7 @@ export const protectedOnboardingRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      body: t.Optional(
-        t.Object({
-          invoiceIdKey: t.Optional(
-            t.String({
-              description:
-                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
-            })
-          ),
-        })
-      ),
-      detail: {
-        tags: ['Onboarding'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
-        summary: 'Generate Webhook URL',
-        description:
-          'Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.',
-      },
-    }
+    generateWebhookValidation
   )
   /**
    * PUT /tenants/:tenantId/invoice-id-key
@@ -309,27 +291,27 @@ export const protectedOnboardingRoutes = new Elysia()
         onlySelf(auth!, params.tenantId)
 
         logger.info('Updating Invoice ID Key', { tenantId: params.tenantId });
- 
+
         // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
 
         // Persist invoiceIdKey if provided; otherwise keep existing value
         const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
- 
 
-        await tenantService.updateTenant(params.tenantId, { 
+
+        await tenantService.updateTenant(params.tenantId, {
           config: {
             ...tenant.config,
             invoiceIdKey,
           }
-        } as any);
+        } as any, getActor(auth));
 
-        
+
         return {
           success: true,
           message: 'Invoice ID Key updated successfully',
-          data: { 
-            invoiceIdKey: invoiceIdKey ?? null, 
+          data: {
+            invoiceIdKey: invoiceIdKey ?? null,
           },
         };
       } catch (error: any) {
@@ -341,26 +323,7 @@ export const protectedOnboardingRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      body: t.Optional(
-        t.Object({
-          invoiceIdKey: t.String({
-              description:
-                'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
-            }),
-        })
-      ),
-      detail: {
-        tags: ['Onboarding'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
-        summary: 'Update Invoice ID Key for tenant',
-        description:
-          'Update invoiceIdKey to configure which payload field identifies the ERP invoice.',
-      },
-    }
+    updateInvoiceIdKeyValidation
   )
 
   /**
@@ -386,6 +349,15 @@ export const protectedOnboardingRoutes = new Elysia()
           };
         }
 
+        const secret = tenant.config?.webhookAuth;
+        if (!secret) {
+          return {
+            success: false,
+            error: 'Webhook secret not configured for this tenant. Generate one first.',
+            statusCode: 400,
+          };
+        }
+
         // Create test payload
         const testPayload = body?.testPayload || {
           event: 'webhook.test',
@@ -397,13 +369,11 @@ export const protectedOnboardingRoutes = new Elysia()
           },
         };
 
-        // Generate signature for the payload
-        const webhookSecretHash = tenant.metadata?.webhookSecretHash;
+        // Generate signature for the payload using both formats for backward compatibility
         const payloadString = JSON.stringify(testPayload);
-        const signature = crypto
-          .createHmac('sha256', webhookSecretHash || 'test')
-          .update(payloadString)
-          .digest('hex');
+        const legacySignature = crypto.createHmac("sha256", secret).update(payloadString).digest("hex");
+        const now = Math.floor(Date.now() / 1000);
+        const signature = signWebhookPayload(secret, now, payloadString);
 
         // Send test webhook
         let testResult: any = {
@@ -419,7 +389,8 @@ export const protectedOnboardingRoutes = new Elysia()
           const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'X-Webhook-Key': signature,
+              'X-Webhook-Key': legacySignature,
+              'X-Webhook-Signature': `t=${now},v1=${signature}`,
               'X-Webhook-Event': 'webhook.test',
             },
             timeout: 10000, // 10 second timeout
@@ -446,7 +417,7 @@ export const protectedOnboardingRoutes = new Elysia()
           try {
             const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
             if (onboarding && !onboarding.steps?.testing?.completed) {
-              await tenantService.completeOnboardingStep(params.tenantId, 'testing');
+              await tenantService.completeOnboardingStep(params.tenantId, 'testing', getActor(auth));
             }
           } catch (onboardingError) {
             logger.warn('Failed to update onboarding step', { error: onboardingError });
@@ -471,20 +442,86 @@ export const protectedOnboardingRoutes = new Elysia()
         };
       }
     },
-    {
-      params: t.Object({
-        tenantId: t.String(),
-      }),
-      body: t.Optional(
-        t.Object({
-          testPayload: t.Optional(t.Record(t.String(), t.Any())),
-        })
-      ),
-      detail: {
-        tags: ['Onboarding'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Test Webhook',
-        description: 'Send a test webhook to verify connectivity',
-      },
-    }
+    testWebhookValidation
+  )
+
+  .post(
+    '/resend/token/:tenantId',
+    async ({ params, auth, tenantService, set, authService }) => {
+      try {
+        // Check authorization
+        onlySelf(auth!, params.tenantId)
+
+        logger.info('Resending activation email', { tenantId: params.tenantId });
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+
+        if (!tenant) {
+          set.status = 404;
+          return {
+            success: false,
+            error: 'Tenant not found',
+            statusCode: 404,
+          };
+        }
+
+        // Check if already activated
+        if (tenant.password || tenant.metadata?.activationCompleted) {
+          set.status = 400;
+          return {
+            success: false,
+            error: 'Account has already been activated',
+            statusCode: 400,
+          };
+        }
+
+        // Check if previous token is still in timeframe and disable/invalidate it using service helper
+        if (tenantService.isActivationTokenInTimeframe(tenant)) {
+          logger.info('Disabling previous activation token', {
+            tenantId: tenant.tenantId,
+            tokenId: tenant.metadata?.activationTokenId,
+          });
+          // Overwritten by new values in the update below
+        }
+
+        // Generate new activation token and timeframe
+        const activationTokenId = crypto.randomUUID();
+        const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours
+
+        const metadata = {
+          ...tenant.metadata,
+          activationTokenId,
+          activationTokenExpiresAt,
+        };
+
+        await tenantService.updateTenant(tenant.tenantId, { metadata }, getActor(auth));
+
+        // Resend activation email with new token ID
+        let activationToken = await authService.createAuthToken({
+          ...tenant.toObject(),
+          activationTokenId,
+        } as any, "12HRS")
+
+        let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
+        let activationEmail: MailContent = {
+          subject: 'Welcome to HT Invoicing',
+          html: withTemplate(templateEngine.render('newTenants', { activationLink })),
+        }
+        await tenantService.notifyTenant(activationEmail, tenant)
+
+        return {
+          success: true,
+          message: 'Activation email resent successfully',
+        };
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error('Failed to resend activation email', { error: error.message });
+        return {
+          success: false,
+          error: error.message || 'Failed to resend activation email',
+          statusCode: error.statusCode || 500,
+        };
+      }
+    },
+    resendTenantTokenValidation
   );

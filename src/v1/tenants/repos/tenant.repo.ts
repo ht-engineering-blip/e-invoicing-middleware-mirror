@@ -1,7 +1,11 @@
-import { logger } from '../../../@lib/logger';
-import { AppError } from '../../../@lib';
-import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
-import { TenantDocument, TenantModel, TenantStatus } from '../models/tenant.model';
+import { logger } from "../../../@lib/logger";
+import { AppError, safeSearchRegExp } from "../../../@lib";
+import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
+import {
+  TenantDocument,
+  TenantModel,
+  TenantStatus,
+} from "../models/tenant.model";
 
 export class TenantRepository {
   private tenantModel: ModelWrapper<TenantDocument>;
@@ -28,19 +32,22 @@ export class TenantRepository {
 
     // Case-insensitive exact match (anchored regex, ^value$)
     if (where.contactEmail?._iexact)
-      query.contactEmail = { $regex: `^${where.contactEmail._iexact}$`, $options: 'i' };
+      query.contactEmail = {
+        $regex: `^${where.contactEmail._iexact}$`,
+        $options: "i",
+      };
 
     // IN conditions
     if (where.status?._in) query.status = { $in: where.status._in };
     if (where.tenantId?._in) query.tenantId = { $in: where.tenantId._in };
- 
+
     // Search conditions
     if (where.search) {
       query.$or = [
-        { contactEmail: new RegExp(where.search, 'i') },
-        { businessName: new RegExp(where.search, 'i') },
-        { tin: new RegExp(where.search, 'i') },
-        { tenantId: new RegExp(where.search, 'i') },
+        { contactEmail: safeSearchRegExp(where.search) },
+        { businessName: safeSearchRegExp(where.search) },
+        { tin: safeSearchRegExp(where.search) },
+        { tenantId: safeSearchRegExp(where.search) },
       ];
     }
 
@@ -50,7 +57,6 @@ export class TenantRepository {
         return this.buildTenantQuery(andCondition);
       });
     }
- 
 
     return query;
   }
@@ -69,7 +75,7 @@ export class TenantRepository {
     where?: any,
     select?: any,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
   ): Promise<TenantDocument[]> {
     try {
       const query = this.buildTenantQuery(where);
@@ -84,8 +90,8 @@ export class TenantRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error finding tenants:', error);
-      throw new AppError(500, 'Failed to fetch tenants');
+      console.error("Error finding tenants:", error);
+      throw new AppError(500, "Failed to fetch tenants");
     }
   }
 
@@ -96,13 +102,13 @@ export class TenantRepository {
     try {
       const query = this.buildTenantQuery(where);
       const projection = this.buildTenantProjection(select);
-console.log({where, query})
-      const doc = await this.tenantModel.base.findOne(query, projection).exec();
+      console.log({ where, query });
+      const doc = await this.tenantModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
-      console.error('Error finding tenant:', error);
-      throw new AppError(500, 'Failed to fetch tenant');
+      console.error("Error finding tenant:", error);
+      throw new AppError(500, "Failed to fetch tenant");
     }
   }
 
@@ -111,30 +117,39 @@ console.log({where, query})
    */
   async create(data: Partial<TenantDocument>): Promise<TenantDocument> {
     try {
-      logger.info("Creating", JSON.stringify(data, undefined, 2))
-      const doc = await this.tenantModel.createWithTenant({
-        ...data,
-      }, false);
+      logger.info("Creating", JSON.stringify(data, undefined, 2));
+      const doc = await this.tenantModel.createWithTenant(
+        {
+          ...data,
+        },
+        false,
+      );
 
       return doc;
     } catch (error: any) {
-      console.error('Error creating tenant:', error);
-      if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+      console.error("Error creating tenant:", error);
+      if (error.name === "ValidationError") {
+        throw new AppError(400, "Invalid input");
       }
       if (error.code === 11000) {
-        throw new AppError(409, 'Tenant with this tenantId or businessId already exists');
+        throw new AppError(
+          409,
+          "Tenant with this tenantId or businessId already exists",
+        );
       }
-      throw new AppError(500, 'Failed to create tenant');
+      throw new AppError(500, "Failed to create tenant");
     }
   }
 
   /**
    * Update a tenant
    */
-  async update(tenantId: string, data: Partial<TenantDocument>): Promise<TenantDocument> {
+  async update(
+    tenantId: string,
+    data: Partial<TenantDocument>,
+  ): Promise<TenantDocument> {
     try {
-       console.log(data)
+      console.log(data);
       // Remove undefined values
       const updateData = Object.keys(data).reduce((acc, key: string) => {
         const dataKey = key as keyof TenantDocument;
@@ -144,25 +159,28 @@ console.log({where, query})
         return acc;
       }, {} as any);
 
-     
-      const doc = await this.tenantModel.base
-        .findOneAndUpdate({ tenantId }, { $set: updateData }, { new: true, runValidators: true })
+      const doc = await this.tenantModel
+        .findOneAndUpdate(
+          { tenantId },
+          { $set: updateData },
+          { returnDocument: 'after', runValidators: true },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Tenant not found');
+        throw new AppError(404, "Tenant not found");
       }
 
       return doc;
     } catch (error: any) {
-      console.error('Error updating tenant:', error);
-      if (error.name === 'ValidationError') {
-        throw new AppError(400, error.message);
+      console.error("Error updating tenant:", error);
+      if (error.name === "ValidationError") {
+        throw new AppError(400, "Invalid input");
       }
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update tenant');
+      throw new AppError(500, "Failed to update tenant");
     }
   }
 
@@ -171,14 +189,18 @@ console.log({where, query})
    */
   async delete(tenantId: string): Promise<boolean> {
     try {
-      const result = await this.tenantModel.base
-        .findOneAndUpdate({ tenantId }, { $set: { status: TenantStatus.INACTIVE } }, { new: true })
+      const result = await this.tenantModel
+        .findOneAndUpdate(
+          { tenantId },
+          { $set: { status: TenantStatus.INACTIVE } },
+          { returnDocument: 'after' },
+        )
         .exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error deleting tenant:', error);
-      throw new AppError(500, 'Failed to delete tenant');
+      console.error("Error deleting tenant:", error);
+      throw new AppError(500, "Failed to delete tenant");
     }
   }
 
@@ -187,12 +209,14 @@ console.log({where, query})
    */
   async hardDelete(tenantId: string): Promise<boolean> {
     try {
-      const result = await this.tenantModel.base.findOneAndDelete({ tenantId }).exec();
+      const result = await this.tenantModel
+        .findOneAndDelete({ tenantId })
+        .exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error hard deleting tenant:', error);
-      throw new AppError(500, 'Failed to delete tenant');
+      console.error("Error hard deleting tenant:", error);
+      throw new AppError(500, "Failed to delete tenant");
     }
   }
 
@@ -202,11 +226,13 @@ console.log({where, query})
   async count(where?: any): Promise<number> {
     try {
       const query = this.buildTenantQuery(where);
-      const count = await this.tenantModel.countDocumentsWithTenant(query, false).exec();
+      const count = await this.tenantModel
+        .countDocumentsWithTenant(query, false)
+        .exec();
       return count;
     } catch (error) {
-      console.error('Error counting tenants:', error);
-      throw new AppError(500, 'Failed to count tenants');
+      console.error("Error counting tenants:", error);
+      throw new AppError(500, "Failed to count tenants");
     }
   }
 
@@ -215,11 +241,11 @@ console.log({where, query})
    */
   async findByTenantId(tenantId: string): Promise<TenantDocument | null> {
     try {
-      const doc = await this.tenantModel.base.findOne({ tenantId }).exec();
+      const doc = await this.tenantModel.findOne({ tenantId }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching tenant:', error);
-      throw new AppError(500, 'Failed to fetch tenant');
+      console.error("Error fetching tenant:", error);
+      throw new AppError(500, "Failed to fetch tenant");
     }
   }
 
@@ -228,11 +254,11 @@ console.log({where, query})
    */
   async findByBusinessId(businessId: string): Promise<TenantDocument | null> {
     try {
-      const doc = await this.tenantModel.base.findOne({ businessId }).exec();
+      const doc = await this.tenantModel.findOne({ businessId }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching tenant:', error);
-      throw new AppError(500, 'Failed to fetch tenant');
+      console.error("Error fetching tenant:", error);
+      throw new AppError(500, "Failed to fetch tenant");
     }
   }
 
@@ -241,11 +267,11 @@ console.log({where, query})
    */
   async findByTIN(tin: string): Promise<TenantDocument | null> {
     try {
-      const doc = await this.tenantModel.base.findOne({ tin }).exec();
+      const doc = await this.tenantModel.findOne({ tin }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching tenant:', error);
-      throw new AppError(500, 'Failed to fetch tenant');
+      console.error("Error fetching tenant:", error);
+      throw new AppError(500, "Failed to fetch tenant");
     }
   }
 
@@ -254,13 +280,13 @@ console.log({where, query})
    */
   async findByWebhookPath(webhookPath: string): Promise<TenantDocument | null> {
     try {
-      const doc = await this.tenantModel.base
-        .findOne({ 'metadata.webhookPath': webhookPath })
+      const doc = await this.tenantModel
+        .findOne({ "metadata.webhookPath": webhookPath })
         .exec();
       return doc;
     } catch (error) {
-      console.error('Error finding tenant by webhook path:', error);
-      throw new AppError(500, 'Failed to find tenant by webhook path');
+      console.error("Error finding tenant by webhook path:", error);
+      throw new AppError(500, "Failed to find tenant by webhook path");
     }
   }
 
@@ -270,21 +296,26 @@ console.log({where, query})
   async searchTenants(
     searchQuery: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: TenantDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
 
       const query: any = {
         $or: [
-          { businessName: new RegExp(searchQuery, 'i') },
-          { tin: new RegExp(searchQuery, 'i') },
-          { tenantId: new RegExp(searchQuery, 'i') },
+          { businessName: safeSearchRegExp(searchQuery) },
+          { tin: safeSearchRegExp(searchQuery) },
+          { tenantId: safeSearchRegExp(searchQuery) },
         ],
       };
 
       const [docs, total] = await Promise.all([
-        this.tenantModel.base.find(query).sort({ createdAt: -1 }).limit(limit).skip(offset).exec(),
+        this.tenantModel
+          .find(query)
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .skip(offset)
+          .exec(),
         this.tenantModel.countDocuments(query).exec(),
       ]);
 
@@ -300,8 +331,8 @@ console.log({where, query})
         meta,
       };
     } catch (error) {
-      console.error('Error searching tenants:', error);
-      throw new AppError(500, 'Failed to search tenants');
+      console.error("Error searching tenants:", error);
+      throw new AppError(500, "Failed to search tenants");
     }
   }
 
@@ -310,21 +341,25 @@ console.log({where, query})
    */
   async activate(tenantId: string): Promise<TenantDocument> {
     try {
-      const doc = await this.tenantModel.base
-        .findOneAndUpdate({ tenantId }, { $set: { status: TenantStatus.ACTIVE } }, { new: true })
+      const doc = await this.tenantModel
+        .findOneAndUpdate(
+          { tenantId },
+          { $set: { status: TenantStatus.ACTIVE } },
+          { returnDocument: 'after' },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Tenant not found');
+        throw new AppError(404, "Tenant not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error activating tenant:', error);
+      console.error("Error activating tenant:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to activate tenant');
+      throw new AppError(500, "Failed to activate tenant");
     }
   }
 
@@ -333,25 +368,25 @@ console.log({where, query})
    */
   async suspend(tenantId: string): Promise<TenantDocument> {
     try {
-      const doc = await this.tenantModel.base
+      const doc = await this.tenantModel
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.SUSPENDED } },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Tenant not found');
+        throw new AppError(404, "Tenant not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error suspending tenant:', error);
+      console.error("Error suspending tenant:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to suspend tenant');
+      throw new AppError(500, "Failed to suspend tenant");
     }
   }
 
@@ -361,46 +396,52 @@ console.log({where, query})
   async updateFIRSCredentials(
     tenantId: string,
     credentials: {
-      clientId: string;  
-      serviceId: string;  
-      certificate: string;
-      publicKey: string;
-    }
+      clientId?: string;
+      serviceId?: string;
+      certificate?: string;
+      publicKey?: string;
+      apiKey?: string;
+      apiSecret?: string;
+    },
   ): Promise<TenantDocument> {
     try {
-      const doc = await this.tenantModel.base
+      const doc = await this.tenantModel
         .findOneAndUpdate(
           { tenantId },
           {
             $set: {
-              'config.firsCredentials.clientId': credentials.clientId, 
-              'config.firsCredentials.serviceId': credentials.serviceId, 
-              'config.firsCredentials.certificate': credentials.certificate,
-              'config.firsCredentials.publicKey': credentials.publicKey,
+              ...(credentials.clientId && { "config.firsCredentials.clientId": credentials.clientId }),
+              ...(credentials.serviceId && { "config.firsCredentials.serviceId": credentials.serviceId }),
+              ...(credentials.certificate && { "config.firsCredentials.certificate": credentials.certificate }),
+              ...(credentials.publicKey && { "config.firsCredentials.publicKey": credentials.publicKey }),
+              ...(credentials.apiKey && { "config.firsCredentials.apiKey": credentials.apiKey }),
+              ...(credentials.apiSecret && { "config.firsCredentials.apiSecret": credentials.apiSecret }),
             },
           },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Tenant not found');
+        throw new AppError(404, "Tenant not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error updating FIRS credentials:', error);
+      console.error("Error updating FIRS credentials:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update FIRS credentials');
+      throw new AppError(500, "Failed to update FIRS credentials");
     }
   }
 
   /**
    * Bulk update tenants
    */
-  async bulkUpdate(updates: Array<{ tenantId: string; data: Partial<TenantDocument> }>): Promise<boolean> {
+  async bulkUpdate(
+    updates: Array<{ tenantId: string; data: Partial<TenantDocument> }>,
+  ): Promise<boolean> {
     try {
       const bulkOps = updates.map((update) => ({
         updateOne: {
@@ -409,11 +450,11 @@ console.log({where, query})
         },
       }));
 
-      const result = await this.tenantModel.base.bulkWrite(bulkOps);
+      const result = await this.tenantModel.bulkWrite(bulkOps);
       return result.modifiedCount > 0;
     } catch (error) {
-      console.error('Error bulk updating tenants:', error);
-      throw new AppError(500, 'Failed to bulk update tenants');
+      console.error("Error bulk updating tenants:", error);
+      throw new AppError(500, "Failed to bulk update tenants");
     }
   }
 
@@ -423,14 +464,19 @@ console.log({where, query})
   async findByStatus(
     status: TenantStatus,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: TenantDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { status };
 
       const [docs, total] = await Promise.all([
-        this.tenantModel.base.find(query).sort({ createdAt: -1 }).limit(limit).skip(offset).exec(),
+        this.tenantModel
+          .find(query)
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .skip(offset)
+          .exec(),
         this.tenantModel.countDocuments(query).exec(),
       ]);
 
@@ -446,8 +492,8 @@ console.log({where, query})
         meta,
       };
     } catch (error) {
-      console.error('Error fetching tenants by status:', error);
-      throw new AppError(500, 'Failed to fetch tenants');
+      console.error("Error fetching tenants by status:", error);
+      throw new AppError(500, "Failed to fetch tenants");
     }
   }
 }

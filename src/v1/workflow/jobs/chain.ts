@@ -1,14 +1,16 @@
-import type { Job } from 'agenda';
-import { agenda } from '../../../@lib/queue/agenda';
-import { ACTION_TO_JOB, type JobChainData } from './types';
-import { logger } from '../../../@lib/logger';
-import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
+import type { Job } from "agenda";
+import { agenda } from "../../../@lib/queue/agenda";
+import { logger } from "../../../@lib/logger";
+import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
+import { ACTION_TO_JOB } from "./types";
+import { OutboundInvoiceStatus } from "../models/outbound-invoice.model";
 
 const webhookEventRepo = new WebhookEventRepository();
 
 // Lazy-loaded to avoid circular dependency at module load time
 async function getOutboundRepo() {
-  const { OutboundInvoiceRepository } = await import('../repos/outbound-invoice.repo');
+  const { OutboundInvoiceRepository } =
+    await import("../repos/outbound-invoice.repo");
   return new OutboundInvoiceRepository();
 }
 
@@ -19,7 +21,7 @@ async function getOutboundRepo() {
  */
 export async function chainNext(
   job: Job<JobChainData>,
-  stepOutput: Partial<JobChainData['context']>
+  stepOutput: Partial<JobChainData["context"]>,
 ): Promise<void> {
   const data = job.attrs.data;
   const nextIndex = data.stepIndex + 1;
@@ -29,11 +31,22 @@ export async function chainNext(
 
   if (nextIndex >= data.actions.length) {
     // ── Chain complete ─────────────────────────────────────────────────────
-    logger.info('[Job] Chain complete', {
+    logger.info("[Job] Chain complete", {
       jobChainId: data.jobChainId,
       tenantId: data.tenantId,
       steps: data.actions,
     });
+
+    const irn = data.context?.irn;
+    if (irn) {
+      const outboundRepo = await getOutboundRepo();
+      const invoice = await outboundRepo.findByIrn(irn).catch(() => null);
+      if (invoice && invoice.workflowState?.delivered) {
+        await outboundRepo
+          .updateStatus(irn, OutboundInvoiceStatus.DELIVERED)
+          .catch(() => {});
+      }
+    }
 
     await webhookEventRepo.markAsDelivered(data.webhookEventId, 200, {
       jobChainId: data.jobChainId,
@@ -49,7 +62,10 @@ export async function chainNext(
   const nextJobName = ACTION_TO_JOB[nextAction];
 
   if (!nextJobName) {
-    logger.warn('[Job] Unknown action — skipping', { nextAction, jobChainId: data.jobChainId });
+    logger.warn("[Job] Unknown action — skipping", {
+      nextAction,
+      jobChainId: data.jobChainId,
+    });
     return;
   }
 
@@ -64,10 +80,12 @@ export async function chainNext(
   // Track the new Agenda job ID on the webhook event for chain tracing
   const nextAgendaJobId = nextJob.attrs._id?.toString();
   if (nextAgendaJobId) {
-    webhookEventRepo.addJobId(data.webhookEventId, nextAgendaJobId).catch(() => {});
+    webhookEventRepo
+      .addJobId(data.webhookEventId, nextAgendaJobId)
+      .catch(() => {});
   }
 
-  logger.info('[Job] Scheduled next step', {
+  logger.info("[Job] Scheduled next step", {
     jobChainId: data.jobChainId,
     step: nextIndex,
     action: nextAction,
@@ -83,14 +101,12 @@ export async function chainNext(
  */
 export async function chainFail(
   job: Job<JobChainData>,
-  error: Error
+  error: Error,
 ): Promise<void> {
   const data = job.attrs.data;
   const action = data.actions[data.stepIndex];
 
-  error.message = error.message.indexOf('undefined -') > -1? "Something went wrong,  Please retry from failed step.": error.message
-
-  logger.error('[Job] Step failed — chain halted', {
+  logger.error("[Job] Step failed — chain halted", {
     jobChainId: data.jobChainId,
     step: data.stepIndex,
     action,
@@ -112,11 +128,14 @@ export async function chainFail(
   if (irn) {
     const outboundRepo = await getOutboundRepo();
     await outboundRepo.setLastJobError(irn, action, error.message);
+    await outboundRepo
+      .updateStatus(irn, OutboundInvoiceStatus.FAILED)
+      .catch(() => {});
   }
 
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${action}] failed: ${error.message.indexOf('undefined -') > -1? "": error.message}`,
-    500
+    `Step [${action}] failed: ${error.message.indexOf("undefined -") > -1 ? "" : error.message}`,
+    500,
   );
 }

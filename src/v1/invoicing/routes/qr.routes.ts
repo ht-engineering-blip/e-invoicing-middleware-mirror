@@ -1,7 +1,6 @@
-import Elysia, { t } from 'elysia';
-import { requireAuth } from '../../../middlewares';
+import Elysia from 'elysia';
 import { OutboundInvoiceRepository } from '../../workflow/repos/outbound-invoice.repo';
-import { appConfig } from '../../../@config';
+import { getInvoiceQRValidation } from '../validations/qr.validation';
 
 const outboundRepo = new OutboundInvoiceRepository();
 
@@ -49,16 +48,7 @@ const qrMgmtRoutes = new Elysia({
 
       return imageBuffer;
     },
-    {
-      params: t.Object({
-        irn: t.String({ minLength: 1 }),
-      }),
-      detail: {
-        summary: 'Get Invoice QR Code Image',
-        description: `Returns the invoice QR code as a raw PNG binary. Use \`${appConfig?.apiBaseURL}/v1/invoicing/{irn}/qr\` directly as an \`<img src>\` value.`,
-        tags: ['Misc'],
-      },
-    }
+    getInvoiceQRValidation
   );
 
 export default qrMgmtRoutes;

@@ -1,30 +1,42 @@
-import { Elysia, t } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
-import { agenda } from '../../../@lib/queue/agenda';
-import { OutboundInvoiceRepository } from '../repos/outbound-invoice.repo';
-import { InboundInvoiceRepository } from '../repos/inbound-invoice.repo';
-import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
-import { WebhookEventRepository } from '../../webhook/repos/webhook-event.repo';
-import { OutboundWorkflowService } from '../services/workflows/outbound.service';
+import { Elysia } from "elysia";
+import { requireAuth } from "../../../middlewares/auth";
+import { logger } from "../../../@lib";
+import { agenda } from "../../../@lib/queue/agenda";
+import { OutboundInvoiceRepository } from "../repos/outbound-invoice.repo";
+import { InboundInvoiceRepository } from "../repos/inbound-invoice.repo";
+import { AuditLogRepository } from "../../audit/repos/audit-log.repo";
+import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
+import { OutboundWorkflowService } from "../services/workflows/outbound.service";
 import {
   IOutboundPaymentDetails,
   OutboundInvoiceStatus,
   OutboundPaymentStatus,
-} from '../models/outbound-invoice.model';
-import { scheduleJobChain } from '../jobs/orchestrator';
-import { ACTION_TO_JOB } from '../jobs/types';
+} from "../models/outbound-invoice.model";
+import { scheduleJobChain } from "../jobs/orchestrator";
+import { ACTION_TO_JOB } from "../jobs/types";
+import {
+  listOutboundInvoicesValidation,
+  getOutboundInvoiceValidation,
+  updatePaymentStatusValidation,
+  retryInvoiceFromStepValidation,
+  resendFailedInvoiceValidation,
+  listInboundInvoicesValidation,
+  getInboundInvoiceValidation,
+} from "../validations/transaction-logs.validation";
+import { TenantRepository } from "../../tenants/repos/tenant.repo";
+import { decryptSensitiveData } from "../../../@lib/crypto";
 
 /**
  * Transaction Logs Routes
  */
-export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
+export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
   .use(requireAuth)
-  .decorate('outboundRepo', new OutboundInvoiceRepository())
-  .decorate('inboundRepo', new InboundInvoiceRepository())
-  .decorate('auditRepo', new AuditLogRepository())
-  .decorate('webhookEventRepo', new WebhookEventRepository())
-  .decorate('outboundService', new OutboundWorkflowService())
+  .decorate("outboundRepo", new OutboundInvoiceRepository())
+  .decorate("inboundRepo", new InboundInvoiceRepository())
+  .decorate("auditRepo", new AuditLogRepository())
+  .decorate("webhookEventRepo", new WebhookEventRepository())
+  .decorate("outboundService", new OutboundWorkflowService())
+  .decorate("tenantRepo", new TenantRepository())
 
   // ==================== OUTBOUND INVOICES ====================
 
@@ -33,11 +45,11 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * List outbound invoices with filtering and pagination
    */
   .get(
-    '/outbound',
-    async ({ query, auth, outboundRepo }) => {
+    "/outbound",
+    async ({ query, auth, outboundRepo, set }) => {
       try {
-        const page = parseInt(query.page || '1');
-        const limit = Math.min(parseInt(query.limit || '20'), 100);
+        const page = parseInt(query.page || "1");
+        const limit = Math.min(parseInt(query.limit || "20"), 100);
         const offset = (page - 1) * limit;
 
         // Build filters
@@ -48,7 +60,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
 
         if (query.status) filters.status = { _eq: query.status };
         if (query.source) filters.source = { _eq: query.source };
-        if (query.erpInvoiceId) filters.erpInvoiceId = { _eq: query.erpInvoiceId };
+        if (query.erpInvoiceId)
+          filters.erpInvoiceId = { _eq: query.erpInvoiceId };
 
         if (query.from || query.to) {
           filters.createdAt = {};
@@ -67,14 +80,17 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
             irn: inv.irn,
             erpInvoiceId: inv.erpInvoiceId,
             source: inv.source,
-            invoiceNumber: inv.metadata?.invoiceNumber || inv.metadata?.InvoiceNumber,
+            invoiceNumber:
+              inv.metadata?.invoiceNumber || inv.metadata?.InvoiceNumber,
             status: inv.status,
             paymentStatus: inv.paymentStatus,
             qrCode: inv.qrCode,
             erp: inv.erpSystem,
             workflowState: inv.workflowState,
             lastJobError: inv.lastJobError,
-            customerName: inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name,
+            customerName:
+              inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]
+                ?.Name,
             totalAmount: inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value,
             currency: inv.metadata?.DocumentCurrencyCode,
             webhookEventCount: (inv.webhookEvents ?? []).length,
@@ -89,31 +105,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to list outbound invoices', { error: error.message });
+        set.status = 500;
+        logger.error("Failed to list outbound invoices", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to list outbound invoices',
+          error: error.message || "Failed to list outbound invoices",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-        source: t.Optional(t.String()),
-        erpInvoiceId: t.Optional(t.String()),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Outbound Invoices',
-        description: 'List outbound invoices with filtering and pagination. Filter by source=webhook|api or erpInvoiceId.',
-      },
-    }
+    listOutboundInvoicesValidation,
   )
 
   /**
@@ -121,20 +124,27 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * Get outbound invoice with status history
    */
   .get(
-    '/outbound/:irn',
-    async ({ params, auth, outboundRepo }) => {
+    "/outbound/:irn",
+    async ({ params, auth, outboundRepo, set }) => {
       try {
-        const result = await outboundRepo.findByIrnWithWebhookEvents(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const result = await outboundRepo.findByIrnWithWebhookEvents(
+          params.irn,
+          tenantId,
+        );
+
+        console.log({ result });
 
         if (!result) {
-          return { success: false, error: 'Invoice not found', statusCode: 404 };
+          set.status = 404;
+          return {
+            success: false,
+            error: "Invoice not found",
+            statusCode: 404,
+          };
         }
 
         const { invoice, webhookEvents } = result;
-
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized to view this invoice', statusCode: 403 };
-        }
 
         // Fetch all Agenda jobs referenced across all webhook events
         const allJobIds = webhookEvents.flatMap((ev: any) => ev.jobIds ?? []);
@@ -147,7 +157,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
               if (id) agendaJobsById.set(id, job);
             }
           } catch (e: any) {
-            logger.warn('Failed to fetch agenda jobs for invoice detail', { error: e.message });
+            logger.warn("Failed to fetch agenda jobs for invoice detail", {
+              error: e.message,
+            });
           }
         }
 
@@ -182,7 +194,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         const statusHistory = webhookEvents.flatMap((ev: any) => {
           const entries: any[] = [
             {
-              step: 'webhook_received',
+              step: "webhook_received",
               status: ev.status,
               eventId: ev.eventId,
               eventType: ev.eventType,
@@ -193,7 +205,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           (ev.jobErrors ?? []).forEach((je: any) => {
             entries.push({
               step: je.action,
-              status: 'failed',
+              status: "failed",
               eventId: ev.eventId,
               jobChainId: je.jobChainId,
               agendaJobId: je.agendaJobId ?? null,
@@ -242,23 +254,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to get outbound invoice', { error: error.message });
+        set.status = 500;
+        logger.error("Failed to get outbound invoice", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to get outbound invoice',
+          error: error.message || "Failed to get outbound invoice",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Outbound Invoice',
-        description: 'Get outbound invoice with populated webhook events, job error timeline, and payment status',
-      },
-    }
+    getOutboundInvoiceValidation,
   )
 
   /**
@@ -266,19 +273,24 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * Update payment status and optionally trigger report_vat job
    */
   .patch(
-    '/outbound/:irn/payment-status',
-    async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
+    "/outbound/:irn/payment-status",
+    async ({ params, body, auth, outboundRepo, webhookEventRepo, set }) => {
       try {
-        const invoice = await outboundRepo.findByIrn(params.irn);
-        if (!invoice) return { success: false, error: 'Invoice not found', statusCode: 404 };
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized', statusCode: 403 };
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
+        if (!invoice) {
+          set.status = 404;
+          return {
+            success: false,
+            error: "Invoice not found",
+            statusCode: 404,
+          };
         }
 
         const updated = await outboundRepo.updatePaymentStatus(
           params.irn,
           body.paymentStatus as OutboundPaymentStatus,
-          body.paymentDetails as IOutboundPaymentDetails
+          body.paymentDetails as IOutboundPaymentDetails,
         );
 
         // Schedule report_vat when invoice is DELIVERED and now PAID
@@ -292,14 +304,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           await webhookEventRepo.create({
             tenantId: invoice.tenantId,
             eventId,
-            eventType: 'invoice.payment.updated',
+            eventType: "invoice.payment.updated",
             payload: { irn: params.irn, ...body },
             resourceId: params.irn,
-            resourceType: 'invoice',
-            webhookUrl: '',
+            resourceType: "invoice",
+            webhookUrl: "",
             maxRetries: 0,
             jobErrors: [],
-            metadata: { source: 'payment_status_update' },
+            metadata: { source: "payment_status_update" },
           } as any);
 
           await outboundRepo.addWebhookEvent(params.irn, eventId);
@@ -307,16 +319,23 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           jobChainId = await scheduleJobChain({
             webhookEventId: eventId,
             tenantId: invoice.tenantId,
-            eventType: 'invoice.payment.updated',
-            payload: { irn: params.irn, vatReportData: { payment_status: body.paymentStatus, reference: body.paymentDetails?.transactionReference, ...body.paymentDetails } },
-            actions: ['report_vat'],
+            eventType: "invoice.payment.updated",
+            payload: {
+              irn: params.irn,
+              vatReportData: {
+                payment_status: body.paymentStatus,
+                reference: body.paymentDetails?.transactionReference,
+                ...body.paymentDetails,
+              },
+            },
+            actions: ["report_vat"],
             irn: params.irn,
           });
         }
 
         return {
           success: true,
-          message: 'Payment status updated',
+          message: "Payment status updated",
           data: {
             irn: updated.irn,
             paymentStatus: updated.paymentStatus,
@@ -326,30 +345,17 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to update payment status', { error: error.message });
-        return { success: false, error: error.message || 'Failed to update payment status', statusCode: error.statusCode || 500 };
+        logger.error("Failed to update payment status", {
+          error: error.message,
+        });
+        return {
+          success: false,
+          error: error.message || "Failed to update payment status",
+          statusCode: error.statusCode || 500,
+        };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      body: t.Object({
-        paymentStatus: t.Union([
-          t.Literal('PAID'), t.Literal('PARTIAL'), t.Literal('OVERDUE'),
-        ]),
-        paymentDetails: t.Optional(t.Object({
-          paymentDate: t.Optional(t.String()),
-          paymentMethod: t.Optional(t.String()),
-          transactionReference: t.Optional(t.String()),
-          amountPaid: t.Optional(t.Number()),
-        })),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Update Payment Status',
-        description: 'Update outbound invoice payment status. Automatically schedules report_vat when status is PAID and invoice is DELIVERED.',
-      },
-    }
+    updatePaymentStatusValidation,
   )
 
   /**
@@ -357,14 +363,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * Resume a failed job chain starting from a specific action
    */
   .post(
-    '/outbound/:irn/retry-from-step',
-    async ({ params, body, auth, outboundRepo, webhookEventRepo }) => {
+    "/outbound/:irn/retry-from-step",
+    async ({ params, body, auth, outboundRepo, webhookEventRepo, set }) => {
       try {
-        const invoice = await outboundRepo.findByIrn(params.irn);
-        if (!invoice) return { success: false, error: 'Invoice not found', statusCode: 404 };
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return { success: false, error: 'Not authorized', statusCode: 403 };
-        }
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
+        if (!invoice)
+          return {
+            success: false,
+            error: "Invoice not found",
+            statusCode: 404,
+          };
+
         // Allow all retries, so we can handle duplicated events internally
         /*         if ([ OutboundInvoiceStatus.FAILED, OutboundInvoiceStatus.CREATED, ].includes(invoice.status)) {
                   return { success: false, error: 'Only FAILED invoices can be retried', statusCode: 400 };
@@ -372,36 +382,50 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
          */
         const startAction = body.fromStep;
         if (!ACTION_TO_JOB[startAction]) {
-          return { success: false, error: `Unknown action: ${startAction}`, statusCode: 400 };
+          set.status = 400;
+          return {
+            success: false,
+            error: `Unknown action: ${startAction}`,
+            statusCode: 400,
+          };
         }
 
         // ── Recover original action chain from the invoice's existing webhook events ──
         let originalActions: string[] | null = null;
-        let originalWebhookUrl = '';
+        let originalWebhookUrl = "";
         const existingEventIds: string[] = invoice.webhookEvents ?? [];
 
         if (existingEventIds.length > 0) {
           // Find the earliest non-retry event (the original trigger for this invoice)
-          const priorEvents = await webhookEventRepo.find(
-            { eventId: { $in: existingEventIds }, 'metadata.source': { $ne: 'manual_retry' } },
-            0,
-            100
-          );
-          const originalEvent = priorEvents
-            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
+          const eventFilter: any = {
+            eventId: { $in: existingEventIds },
+            "metadata.source": { $ne: "manual_retry" },
+          };
+          if (tenantId) eventFilter.tenantId = tenantId;
+          const priorEvents = await webhookEventRepo.find(eventFilter, 0, 100);
+          const originalEvent = priorEvents.sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          )[0];
 
           if (originalEvent) {
-            originalWebhookUrl = originalEvent.webhookUrl ?? '';
+            originalWebhookUrl = originalEvent.webhookUrl ?? "";
 
             // Tier 1: matchedRoutes stored in metadata (webhook-triggered flows)
-            const matchedRoutes: any[] = (originalEvent as any).metadata?.matchedRoutes ?? [];
-            const fromRoutes = matchedRoutes.flatMap((r: any) => r.actions ?? []);
+            const matchedRoutes: any[] =
+              (originalEvent as any).metadata?.matchedRoutes ?? [];
+            const fromRoutes = matchedRoutes.flatMap(
+              (r: any) => r.actions ?? [],
+            );
             if (fromRoutes.length > 0) {
               originalActions = fromRoutes;
             } else if (originalEvent.jobIds?.length) {
               // Tier 2: read the first Agenda job's data.actions
-              const { jobs } = await agenda.db.queryJobs({ ids: [originalEvent.jobIds[0]] });
-              const jobActions: string[] | undefined = (jobs[0] as any)?.data?.actions;
+              const { jobs } = await agenda.db.queryJobs({
+                ids: [originalEvent.jobIds[0]],
+              });
+              const jobActions: string[] | undefined = (jobs[0] as any)?.data
+                ?.actions;
               if (jobActions?.length) originalActions = jobActions;
             }
           }
@@ -412,22 +436,24 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         if (originalActions?.length) {
           const startIndex = originalActions.indexOf(startAction);
           // If step is in the original chain, resume from there; otherwise run just that step
-          actions = startIndex >= 0 ? originalActions.slice(startIndex) : [startAction];
+          actions =
+            startIndex >= 0 ? originalActions.slice(startIndex) : [startAction];
         } else {
           // No history recoverable — fall back to the canonical outbound chain order
           const fallbackChain = [
-            'generate_irn',
-            'transform',
-            'validate',
-            'sign',
-            'transmit',
-            'confirm_invoice_status',
-            'complete_outbound',
-            'report_vat',
-            'sync_erp',
+            "generate_irn",
+            "transform",
+            "validate",
+            "sign",
+            "transmit",
+            "confirm_invoice_status",
+            "complete_outbound",
+            "report_vat",
+            "sync_erp",
           ];
           const startIndex = fallbackChain.indexOf(startAction);
-          actions = startIndex >= 0 ? fallbackChain.slice(startIndex) : [startAction];
+          actions =
+            startIndex >= 0 ? fallbackChain.slice(startIndex) : [startAction];
         }
 
         // Create a retry webhook event to anchor the new chain
@@ -435,25 +461,28 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
         await webhookEventRepo.create({
           tenantId: invoice.tenantId,
           eventId,
-          eventType: 'invoice.retry',
+          eventType: "invoice.retry",
           payload: { irn: params.irn, fromStep: startAction },
           resourceId: params.irn,
-          resourceType: 'invoice',
+          resourceType: "invoice",
           webhookUrl: originalWebhookUrl,
           maxRetries: 0,
           jobErrors: [],
-          metadata: { source: 'manual_retry', fromStep: startAction },
+          metadata: { source: "manual_retry", fromStep: startAction },
         } as any);
 
         await outboundRepo.addWebhookEvent(params.irn, eventId);
 
         // Reset invoice status so it can progress again
-        await outboundRepo.updateStatus(params.irn, OutboundInvoiceStatus.CREATED);
+        await outboundRepo.updateStatus(
+          params.irn,
+          OutboundInvoiceStatus.CREATED,
+        );
 
         const jobChainId = await scheduleJobChain({
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
-          eventType: 'invoice.retry',
+          eventType: "invoice.retry",
           payload: invoice.metadata,
           actions,
           irn: params.irn,
@@ -466,24 +495,16 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
         };
       } catch (error: any) {
-        logger.error('Failed to retry invoice', { error: error.message });
-        return { success: false, error: error.message || 'Failed to retry invoice', statusCode: error.statusCode || 500 };
+        set.status = 500;
+        logger.error("Failed to retry invoice", { error: error.message });
+        return {
+          success: false,
+          error: error.message || "Failed to retry invoice",
+          statusCode: error.statusCode || 500,
+        };
       }
     },
-    {
-      params: t.Object({ irn: t.String() }),
-      body: t.Object({
-        fromStep: t.String({
-          description: 'Action name to resume from (e.g. "validate", "sign", "transmit")',
-        }),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Retry Invoice From Step',
-        description: 'Resume a failed invoice job chain from a specific workflow step.',
-      },
-    }
+    retryInvoiceFromStepValidation,
   )
 
   /**
@@ -491,59 +512,80 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * Resend failed invoice workflow
    */
   .post(
-    '/outbound/:irn/resend',
-    async ({ params, auth, outboundRepo, outboundService }) => {
+    "/outbound/:irn/resend",
+    async ({
+      params,
+      auth,
+      outboundRepo,
+      outboundService,
+      tenantRepo,
+      set,
+    }) => {
       try {
         // Find invoice
-        const invoice = await outboundRepo.findByIrn(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
 
         if (!invoice) {
+          set.status = 404;
           return {
             success: false,
-            error: 'Invoice not found',
+            error: "Invoice not found",
             statusCode: 404,
-          };
-        }
-
-        // Check ownership
-        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
-          return {
-            success: false,
-            error: 'Not authorized',
-            statusCode: 403,
           };
         }
 
         // Check if invoice is in failed state
         if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+          set.status = 400;
           return {
             success: false,
-            error: 'Only failed invoices can be resent',
+            error: "Only failed invoices can be resent",
             statusCode: 400,
           };
         }
 
         // Determine the failure point and restart from there
         const workflowState = invoice.workflowState;
-        let restartFrom = 'validate';
+        let restartFrom = "validate";
 
         if (!workflowState?.validated) {
-          restartFrom = 'validate';
+          restartFrom = "validate";
         } else if (!workflowState?.signed) {
-          restartFrom = 'sign';
+          restartFrom = "sign";
         } else if (!workflowState?.transmitted) {
-          restartFrom = 'transmit';
+          restartFrom = "transmit";
         }
 
         // Update status to allow retry
-        await outboundRepo.updateStatus(params.irn, OutboundInvoiceStatus.VALIDATED);
+        await outboundRepo.updateStatus(
+          params.irn,
+          OutboundInvoiceStatus.VALIDATED,
+        );
+
+        let business_id = auth!.businessId;
+
+        if (auth.isAdmin) {
+          const tenant = await tenantRepo.findByTenantId(invoice.tenantId);
+          if (tenant?.config?.firsCredentials?.clientId) {
+            business_id = decryptSensitiveData(
+              tenant.config.firsCredentials.clientId,
+            );
+          }
+        }
 
         // Trigger workflow
-        const result = await outboundService.handleOutboundWorkflow(invoice.metadata, true);
+        const data = {
+          irn: params.irn,
+          tenant_id: auth!.tenantId || invoice.tenantId,
+          business_id: business_id!,
+        };
+
+        const result = await outboundService.handleOutboundWorkflow(data, true);
 
         return {
           success: true,
-          message: 'Invoice workflow restarted',
+          message: "Invoice workflow restarted",
           data: {
             irn: params.irn,
             restartedFrom: restartFrom,
@@ -551,25 +593,16 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to resend invoice', { error: error.message });
+        set.status = 500;
+        logger.error("Failed to resend invoice", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Failed to resend invoice',
+          error: error.message || "Failed to resend invoice",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String(),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Resend Failed Invoice',
-        description: 'Restart workflow for a failed invoice',
-      },
-    }
+    resendFailedInvoiceValidation,
   )
 
   // ==================== INBOUND INVOICES ====================
@@ -579,11 +612,11 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * List inbound invoices with filtering and pagination
    */
   .get(
-    '/inbound',
-    async ({ query, auth, inboundRepo }) => {
+    "/inbound",
+    async ({ query, auth, inboundRepo, set }) => {
       try {
-        const page = parseInt(query.page || '1');
-        const limit = Math.min(parseInt(query.limit || '20'), 100);
+        const page = parseInt(query.page || "1");
+        const limit = Math.min(parseInt(query.limit || "20"), 100);
         const offset = (page - 1) * limit;
 
         // Build filters
@@ -638,30 +671,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to list inbound invoices', { error: error.message });
+        set.status = 500;
+        logger.error("Failed to list inbound invoices", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to list inbound invoices',
+          error: error.message || "Failed to list inbound invoices",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    {
-      query: t.Object({
-        page: t.Optional(t.String()),
-        limit: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-        paymentStatus: t.Optional(t.String()),
-        from: t.Optional(t.String()),
-        to: t.Optional(t.String()),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'List Inbound Invoices',
-        description: 'List inbound invoices with filtering and pagination',
-      },
-    }
+    listInboundInvoicesValidation,
   )
 
   /**
@@ -669,31 +690,24 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
    * Get inbound invoice with status history
    */
   .get(
-    '/inbound/:irn',
-    async ({ params, auth, inboundRepo, auditRepo }) => {
+    "/inbound/:irn",
+    async ({ params, auth, inboundRepo, auditRepo, set }) => {
       try {
         // Find invoice
-        const invoice = await inboundRepo.findByIRN(params.irn);
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const businessId = auth!.isAdmin ? undefined : auth!.businessId;
+        const invoice = await inboundRepo.findByIRN(
+          params.irn,
+          tenantId,
+          businessId,
+        );
 
         if (!invoice) {
+          set.status = 404;
           return {
             success: false,
-            error: 'Invoice not found',
+            error: "Invoice not found",
             statusCode: 404,
-          };
-        }
-
-        // Check ownership
-        const isOwner =
-          invoice.tenantId === auth!.tenantId ||
-          invoice.businessId === auth!.businessId ||
-          auth!.isAdmin;
-
-        if (!isOwner) {
-          return {
-            success: false,
-            error: 'Not authorized to view this invoice',
-            statusCode: 403,
           };
         }
 
@@ -735,23 +749,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: '/invoices' })
           },
         };
       } catch (error: any) {
-        logger.error('Failed to get inbound invoice', { error: error.message });
+        set.status = 500;
+        logger.error("Failed to get inbound invoice", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Failed to get inbound invoice',
+          error: error.message || "Failed to get inbound invoice",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    {
-      params: t.Object({
-        irn: t.String(),
-      }),
-      detail: {
-        tags: ['Transaction Logs'],
-        security: [{ apiKey: [] }, { bearerAuth: [] }],
-        summary: 'Get Inbound Invoice',
-        description: 'Get inbound invoice with full details and status history',
-      },
-    }
+    getInboundInvoiceValidation,
   );
