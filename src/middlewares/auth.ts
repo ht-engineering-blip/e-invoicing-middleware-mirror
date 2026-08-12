@@ -207,11 +207,16 @@ export const requireJwt = (instance: Elysia) =>
         throw new UnauthorizedError("Tenant not found");
       }
 
-      if (
-        tenant.status !== TenantStatus.ACTIVE &&
-        tenant.status !== TenantStatus.ONBOARDING
-      ) {
-        throw new UnauthorizedError(`Tenant account is ${tenant.status}`);
+      const blocked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
+
+      if (!tenant || blocked.includes(tenant.status)) {
+        throw new UnauthorizedError(
+          `Tenant account is ${tenant?.status || "inactive"}`,
+        );
+      }
+
+      if (!decoded.businessId && tenant.status !== TenantStatus.ONBOARDING) {
+        throw new UnauthorizedError("Invalid token payload");
       }
 
       if (tenant.passwordChangedAt && decoded.iat) {
@@ -443,16 +448,20 @@ export const requireAuth = (instance: Elysia) =>
           const tenantRepo = new TenantRepository();
           const tenant = await tenantRepo.findByTenantId(decoded.tenantId);
 
-          if (
-            !tenant ||
-            (tenant.status !== TenantStatus.ACTIVE &&
-              tenant.status !== TenantStatus.ONBOARDING)
-          ) {
+          const blocked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
+
+          if (!tenant || blocked.includes(tenant.status)) {
             throw new UnauthorizedError(
               `Tenant account is ${tenant?.status || "inactive"}`,
             );
           }
 
+          if (
+            !decoded.businessId &&
+            tenant.status !== TenantStatus.ONBOARDING
+          ) {
+            throw new UnauthorizedError("Invalid token payload");
+          }
           if (tenant.passwordChangedAt && decoded.iat) {
             const iatMs = decoded.iat * 1000;
             if (iatMs < tenant.passwordChangedAt.getTime() - 1000) {

@@ -3,9 +3,9 @@
  * Business logic for tenant lifecycle management
  */
 
+import crypto from "crypto";
 import { appConfig } from "../../../@config";
 import { BaseService, logger } from "../../../@lib";
-import crypto from "crypto";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
@@ -19,7 +19,6 @@ import { MailContent, withTemplate } from "../../../@lib/messaging";
 import { templateEngine } from "../../../templates/engine";
 import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import {
-  ApiKeyDocument,
   ApiKeyStatus,
   OnboardingStatus,
   type TenantDocument,
@@ -29,6 +28,7 @@ import {
 import { ApiKeyRepository } from "../repos/api-key.repo";
 import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
 import { TenantRepository } from "../repos/tenant.repo";
+import { T } from "@faker-js/faker/dist/index-BSUsvzGS";
 
 export interface ApiKeyDTO {
   keyId: string;
@@ -155,7 +155,7 @@ export class TenantService extends BaseService {
   async getTenantById(
     tenantId: string,
     includeOnboarding: boolean = false,
-  ): Promise<TenantDocument & { onboarding?: any }> {
+  ): Promise<TenantDocument & { onboarding?: TenantOnboardingDocument }> {
     const tenant = await this.tenantRepo.findOne({
       tenantId: { _eq: tenantId },
     });
@@ -166,7 +166,7 @@ export class TenantService extends BaseService {
     if (includeOnboarding) {
       try {
         const onboarding = await this.onboardingRepo.findByTenantId(tenantId);
-        return { ...tenant.toObject(), onboarding } as any;
+        return { ...tenant.toObject(), onboarding };
       } catch (error) {
         // If onboarding not found, return tenant without it
         return tenant;
@@ -250,7 +250,7 @@ export class TenantService extends BaseService {
             const onboarding = await this.onboardingRepo.findByTenantId(
               tenant.tenantId,
             );
-            return { ...tenant.toObject(), onboarding } as any;
+            return { ...tenant.toObject(), onboarding };
           } catch (error) {
             // If onboarding not found, return tenant without it
             return tenant;
