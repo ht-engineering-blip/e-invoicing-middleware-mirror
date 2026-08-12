@@ -3,8 +3,10 @@
 export * from './validation';
 export * from './encryption';
 export * from './json';
+export * from './ssrf';
 
 import { appConfig } from '../../@config';
+import { AutocompletePaths } from '../types';
 
 /**
  * Build the public URL for an invoice's QR code image.
@@ -68,5 +70,85 @@ function _traverse(current: any, keys: string[]): any {
     return results.length === 0 ? undefined : results.length === 1 ? results[0] : results;
   }
   return _traverse(current[head], rest);
+}
+
+/**
+ * Safely escape HTML characters to prevent XSS (Cross-Site Scripting).
+ */
+export function escapeHtml(unsafe: string | undefined | null): string {
+  if (unsafe == null) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Tagged template literal helper that automatically HTML-escapes all interpolated variables.
+ */
+export function html(strings: TemplateStringsArray, ...values: any[]): string {
+  return strings.reduce((result, string, i) => {
+    const value = values[i - 1];
+    const escapedValue = typeof value === 'string' ? escapeHtml(value) : String(value ?? '');
+    return result + escapedValue + string;
+  });
+}
+
+const DEFAULT_SENSITIVE_KEYS = ['password', 'passwordChange', 'passwordChangedAt', 'privateKey', 'clientSecret', 'certificate'];
+
+/**
+ * Omit keys recursively from an object, Mongoose document, or array of objects.
+ * 
+ * @param data - The object or array of objects to filter
+ * @param keysToOmit - List of keys to exclude (defaults to standard sensitive fields)
+ */
+export function omitKeys<T>(
+  data: T,
+  keysToOmit: AutocompletePaths<T>[] = DEFAULT_SENSITIVE_KEYS as AutocompletePaths<T>[],
+  currentPath: string = ""
+): T {
+  if (data == null) return data;
+
+  if (Array.isArray(data)) {
+    return data.map(item => omitKeys(item, keysToOmit, currentPath)) as T;
+  }
+
+  if (typeof data === 'object') {
+    // Convert Mongoose Document to plain object if toObject method exists
+    let obj: Record<string, unknown>;
+    const target = data as { toObject?: () => Record<string, unknown> };
+    if (typeof target.toObject === 'function') {
+      obj = target.toObject();
+    } else {
+      obj = { ...data as Record<string, unknown> };
+    }
+
+    const result: Record<string, unknown> = {};
+    const omitList = keysToOmit as string[];
+    for (const key of Object.keys(obj)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        continue;
+      }
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+        continue;
+      }
+      const keyPath = currentPath ? `${currentPath}.${key}` : key;
+      if (omitList.includes(key) || omitList.includes(keyPath)) {
+        continue;
+      }
+
+      const val = obj[key];
+      if (val !== null && typeof val === 'object' && !(val instanceof Date) && !(val instanceof RegExp)) {
+        result[key] = omitKeys(val, keysToOmit as AutocompletePaths<unknown>[], keyPath);
+      } else {
+        result[key] = val;
+      }
+    }
+    return result as T;
+  }
+
+  return data;
 }
 

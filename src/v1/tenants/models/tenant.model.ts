@@ -53,6 +53,8 @@ export interface ITenantConfig {
     serviceId?: string;
     certificate?: string;
     publicKey?: string;
+    apiKey?: string;
+    apiSecret?: string;
   };
   erpSyncConfig?: IERPSyncConfig;
   erpSystem: SchemaSourceType | string;
@@ -60,6 +62,8 @@ export interface ITenantConfig {
   webhookAuth?: string;
   webhookEnabled?: boolean;
   invoiceIdKey?: string;
+  idKeyMap?: Record<string, string>;
+  referenceIdKeyMap?: Record<string, string>;
   features?: {
     autoFix: boolean;
     maxRetries: number;
@@ -90,6 +94,7 @@ export interface TenantDocument extends Document {
   businessName: string;
   tin: string;
   status: TenantStatus;
+  passwordChangedAt?: Date;
   config?: ITenantConfig;
   createdAt: Date;
   updatedAt: Date;
@@ -136,6 +141,9 @@ const TenantSchema = new Schema<TenantDocument>(
       type: String,
       required: true,
     },
+    passwordChangedAt: {
+      type: Date,
+    },
     status: {
       type: String,
       enum: Object.values(TenantStatus),
@@ -146,7 +154,9 @@ const TenantSchema = new Schema<TenantDocument>(
         clientId: { type: String },
         serviceId: { type: String },
         certificate: { type: String },
-        publicKey: { type: String }
+        publicKey: { type: String },
+        apiKey: { type: String },
+        apiSecret: { type: String }
       },
       erpSyncConfig: {
         name: { type: String },
@@ -184,6 +194,8 @@ const TenantSchema = new Schema<TenantDocument>(
       webhookAuth: { type: String },
       webhookEnabled: { type: Boolean, default: false },
       invoiceIdKey: { type: String },
+      idKeyMap: { type: Map, of: String },
+      referenceIdKeyMap: { type: Map, of: String },
       features: {
         autoFix: { type: Boolean, default: true },
         maxRetries: { type: Number, default: 5 },

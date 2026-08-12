@@ -1,13 +1,16 @@
-import Elysia, { t } from "elysia";
+import Elysia from "elysia";
 import { requireAuth } from "../../../middlewares";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { TransformWorkflowService } from "../services/workflows/transform.service";
 import jsonSpread from "json-spread";
 import { LLMService } from "../../../@lib/adapters/llm/llm.service";
 import { onlyAdmin } from "../../auth/utils/access-checks";
-import { SchemaSourceType } from "../models";
-import { FIRS_INVOICE_METADATA, FIRS_INVOICE_SCHEMA } from "../utils/defaults";
-import { flatten } from "../../../@lib";
+import { secureAndValidateInvoice } from "../utils/security";
+import {
+  transformInvoiceValidation,
+  configureERPDictionaryValidation,
+  configureFIRSDictionaryValidation
+} from "../validations/transform.validation";
 
 /**
  * Admin-protected tenant routes
@@ -26,12 +29,11 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
    */
   .post(
     '/',
-    async ({ auth, body, query, tenantService, transformWorkflowService }) => {
+    async ({ auth, body, query, tenantService, transformWorkflowService, set }) => {
       try {
-        let { invoice, source_type }: any = body
-        if (auth && auth.tenantId) {
-          invoice.business_id = auth.businessId
-        }
+        const { invoice: rawInvoice, source_type }: any = body;
+        const invoice = secureAndValidateInvoice(rawInvoice as SecureInvoice, auth);
+
         let transformedPayload = await transformWorkflowService.transformInvoiceV2(
           invoice,
           auth,
@@ -43,6 +45,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
           data: transformedPayload
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -50,16 +53,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: '/transform' })
         };
       }
     },
-    {
-      body: t.Object({
-        invoice: t.Any({ default: {} }),
-        source_type: t.String(),
-      }),
-      detail: {
-        summary: 'Transform Invoice',
-        description: 'Transform invoice from source ERP format to FIRS UBL format using schema-based mapping',
-      },
-    }
+    transformInvoiceValidation
   );
 
 /* Dictionary Configuration */
@@ -70,13 +64,11 @@ transformInvoiceRoutes
    */
   .post(
     '/dictionary/erp',
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!)
-        let { erp, invoice, metadata }: any = body
-        if (auth && auth.tenantId) {
-          invoice.business_id = auth.businessId
-        }
+        const { erp, invoice: rawInvoice, metadata }: any = body;
+        const invoice = secureAndValidateInvoice(rawInvoice as SecureInvoice, auth);
 
         // Flatten the invoice for field extraction
         let flatInvoice = jsonSpread(invoice)[0]
@@ -111,6 +103,7 @@ transformInvoiceRoutes
           },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -118,20 +111,7 @@ transformInvoiceRoutes
         };
       }
     },
-    {
-      body: t.Object({
-        erp: t.String(),
-        invoice: t.Any({ default: {} }),
-        metadata: t.Optional(t.Any()),
-      }),
-      detail: {
-        hide: true,
-        tags: ['Admin - System Configuration.Bak'],
-        security: [{ adminKey: [] }],
-        summary: 'Configure ERP Invoice Dictionary',
-        description: 'Creates and updates invoice dictionary used for mapping for supported ERPs. Extracts field definitions from sample invoice.',
-      },
-    }
+    configureERPDictionaryValidation
   )
   /**
    * POST /api/v1/workflow/transform/dictionary/firs
@@ -139,7 +119,7 @@ transformInvoiceRoutes
    */
   .post(
     '/dictionary/firs',
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!)
         let { invoice, metadata }: any = body
@@ -181,6 +161,7 @@ transformInvoiceRoutes
           },
         };
       } catch (error: any) {
+        set.status = 500
         return {
           success: false,
           error: error.message,
@@ -188,19 +169,7 @@ transformInvoiceRoutes
         };
       }
     },
-    {
-      body: t.Object({
-        invoice: t.Any({ default: FIRS_INVOICE_SCHEMA }),
-        metadata: t.Optional(t.Any({ default: FIRS_INVOICE_METADATA })),
-      }),
-      detail: {
-        hide: true,
-        tags: ['Admin - System Configuration.Bak'],
-        security: [{ adminKey: [] }],
-        summary: 'Configure FIRS Dictionary',
-        description: 'Creates and updates FIRS UBL invoice dictionary. Extracts field definitions from sample FIRS invoice and metadata.',
-      },
-    }
+    configureFIRSDictionaryValidation
   )
 
 

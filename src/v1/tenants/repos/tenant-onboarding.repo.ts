@@ -1,16 +1,18 @@
-import { AppError } from '../../../@lib';
-import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
+import { AppError } from "../../../@lib";
+import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   TenantOnboardingDocument,
   TenantOnboardingModel,
   OnboardingStatus,
-} from '../models/tenant-onboarding.model';
+} from "../models/tenant-onboarding.model";
 
 export class TenantOnboardingRepository {
   private onboardingModel: ModelWrapper<TenantOnboardingDocument>;
 
   constructor() {
-    this.onboardingModel = new ModelWrapper<TenantOnboardingDocument>(TenantOnboardingModel);
+    this.onboardingModel = new ModelWrapper<TenantOnboardingDocument>(
+      TenantOnboardingModel,
+    );
   }
 
   /**
@@ -54,7 +56,7 @@ export class TenantOnboardingRepository {
     where?: any,
     select?: any,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
   ): Promise<TenantOnboardingDocument[]> {
     try {
       const query = this.buildOnboardingQuery(where);
@@ -69,32 +71,37 @@ export class TenantOnboardingRepository {
 
       return docs;
     } catch (error) {
-      console.error('Error finding onboarding records:', error);
-      throw new AppError(500, 'Failed to fetch onboarding records');
+      console.error("Error finding onboarding records:", error);
+      throw new AppError(500, "Failed to fetch onboarding records");
     }
   }
 
   /**
    * Find one onboarding record
    */
-  async findOne(where: any, select?: any): Promise<TenantOnboardingDocument | null> {
+  async findOne(
+    where: any,
+    select?: any,
+  ): Promise<TenantOnboardingDocument | null> {
     try {
       const query = this.buildOnboardingQuery(where);
       const projection = this.buildOnboardingProjection(select);
 
-      const doc = await this.onboardingModel.base.findOne(query, projection).exec();
+      const doc = await this.onboardingModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
-      console.error('Error finding onboarding record:', error);
-      throw new AppError(500, 'Failed to fetch onboarding record');
+      console.error("Error finding onboarding record:", error);
+      throw new AppError(500, "Failed to fetch onboarding record");
     }
   }
 
   /**
    * Create a new onboarding record
    */
-  async create(data: Partial<TenantOnboardingDocument>): Promise<TenantOnboardingDocument> {
+  async create(
+    data: Partial<TenantOnboardingDocument>,
+  ): Promise<TenantOnboardingDocument> {
     try {
       const doc = await this.onboardingModel.create({
         ...data,
@@ -110,11 +117,11 @@ export class TenantOnboardingRepository {
 
       return doc;
     } catch (error: any) {
-      console.error('Error creating onboarding record:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error creating onboarding record:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
-      throw new AppError(500, 'Failed to create onboarding record');
+      throw new AppError(500, "Failed to create onboarding record");
     }
   }
 
@@ -123,7 +130,7 @@ export class TenantOnboardingRepository {
    */
   async update(
     tenantId: string,
-    data: Partial<TenantOnboardingDocument>
+    data: Partial<TenantOnboardingDocument>,
   ): Promise<TenantOnboardingDocument> {
     try {
       // Remove undefined values
@@ -135,28 +142,28 @@ export class TenantOnboardingRepository {
         return acc;
       }, {} as any);
 
-      const doc = await this.onboardingModel.base
+      const doc = await this.onboardingModel
         .findOneAndUpdate(
           { tenantId },
           { $set: updateData },
-          { new: true, runValidators: true }
+          { returnDocument: 'after', runValidators: true },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Onboarding record not found');
+        throw new AppError(404, "Onboarding record not found");
       }
 
       return doc;
     } catch (error: any) {
-      console.error('Error updating onboarding record:', error);
-      if (error.name === 'ValidationError') {
+      console.error("Error updating onboarding record:", error);
+      if (error.name === "ValidationError") {
         throw new AppError(400, error.message);
       }
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update onboarding record');
+      throw new AppError(500, "Failed to update onboarding record");
     }
   }
 
@@ -165,12 +172,14 @@ export class TenantOnboardingRepository {
    */
   async delete(tenantId: string): Promise<boolean> {
     try {
-      const result = await this.onboardingModel.base.findOneAndDelete({ tenantId }).exec();
+      const result = await this.onboardingModel
+        .findOneAndDelete({ tenantId })
+        .exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error deleting onboarding record:', error);
-      throw new AppError(500, 'Failed to delete onboarding record');
+      console.error("Error deleting onboarding record:", error);
+      throw new AppError(500, "Failed to delete onboarding record");
     }
   }
 
@@ -183,21 +192,23 @@ export class TenantOnboardingRepository {
       const count = await this.onboardingModel.countDocuments(query).exec();
       return count;
     } catch (error) {
-      console.error('Error counting onboarding records:', error);
-      throw new AppError(500, 'Failed to count onboarding records');
+      console.error("Error counting onboarding records:", error);
+      throw new AppError(500, "Failed to count onboarding records");
     }
   }
 
   /**
    * Find onboarding record by tenant ID
    */
-  async findByTenantId(tenantId: string): Promise<TenantOnboardingDocument | null> {
+  async findByTenantId(
+    tenantId: string,
+  ): Promise<TenantOnboardingDocument | null> {
     try {
-      const doc = await this.onboardingModel.base.findOne({ tenantId }).exec();
+      const doc = await this.onboardingModel.findOne({ tenantId }).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching onboarding record:', error);
-      throw new AppError(500, 'Failed to fetch onboarding record');
+      console.error("Error fetching onboarding record:", error);
+      throw new AppError(500, "Failed to fetch onboarding record");
     }
   }
 
@@ -206,24 +217,24 @@ export class TenantOnboardingRepository {
    */
   async updateStatus(
     tenantId: string,
-    status: OnboardingStatus
+    status: OnboardingStatus,
   ): Promise<TenantOnboardingDocument> {
     try {
-      const doc = await this.onboardingModel.base
-        .findOneAndUpdate({ tenantId }, { $set: { status } }, { new: true })
+      const doc = await this.onboardingModel
+        .findOneAndUpdate({ tenantId }, { $set: { status } }, { returnDocument: 'after' })
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Onboarding record not found');
+        throw new AppError(404, "Onboarding record not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error updating onboarding status:', error);
+      console.error("Error updating onboarding status:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update onboarding status');
+      throw new AppError(500, "Failed to update onboarding status");
     }
   }
 
@@ -232,10 +243,15 @@ export class TenantOnboardingRepository {
    */
   async completeStep(
     tenantId: string,
-    step: 'registration' | 'firsProvisioning' | 'erpConfiguration' | 'testing' | 'goLive'
+    step:
+      | "registration"
+      | "firsProvisioning"
+      | "erpConfiguration"
+      | "testing"
+      | "goLive",
   ): Promise<TenantOnboardingDocument> {
     try {
-      const doc = await this.onboardingModel.base
+      const doc = await this.onboardingModel
         .findOneAndUpdate(
           { tenantId },
           {
@@ -244,30 +260,33 @@ export class TenantOnboardingRepository {
               [`steps.${step}.completedAt`]: new Date(),
             },
           },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Onboarding record not found');
+        throw new AppError(404, "Onboarding record not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error completing onboarding step:', error);
+      console.error("Error completing onboarding step:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to complete onboarding step');
+      throw new AppError(500, "Failed to complete onboarding step");
     }
   }
 
   /**
    * Approve onboarding
    */
-  async approve(tenantId: string, approvedBy: string): Promise<TenantOnboardingDocument> {
+  async approve(
+    tenantId: string,
+    approvedBy: string,
+  ): Promise<TenantOnboardingDocument> {
     try {
-      const doc = await this.onboardingModel.base
+      const doc = await this.onboardingModel
         .findOneAndUpdate(
           { tenantId },
           {
@@ -277,30 +296,33 @@ export class TenantOnboardingRepository {
               approvedAt: new Date(),
             },
           },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Onboarding record not found');
+        throw new AppError(404, "Onboarding record not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error approving onboarding:', error);
+      console.error("Error approving onboarding:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to approve onboarding');
+      throw new AppError(500, "Failed to approve onboarding");
     }
   }
 
   /**
    * Reject onboarding
    */
-  async reject(tenantId: string, rejectedBy: string): Promise<TenantOnboardingDocument> {
+  async reject(
+    tenantId: string,
+    rejectedBy: string,
+  ): Promise<TenantOnboardingDocument> {
     try {
-      const doc = await this.onboardingModel.base
+      const doc = await this.onboardingModel
         .findOneAndUpdate(
           { tenantId },
           {
@@ -310,21 +332,21 @@ export class TenantOnboardingRepository {
               approvedAt: new Date(),
             },
           },
-          { new: true }
+          { returnDocument: 'after' },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Onboarding record not found');
+        throw new AppError(404, "Onboarding record not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error rejecting onboarding:', error);
+      console.error("Error rejecting onboarding:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to reject onboarding');
+      throw new AppError(500, "Failed to reject onboarding");
     }
   }
 
@@ -334,14 +356,14 @@ export class TenantOnboardingRepository {
   async findByStatus(
     status: OnboardingStatus,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: TenantOnboardingDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
       const query: any = { status };
 
       const [docs, total] = await Promise.all([
-        this.onboardingModel.base
+        this.onboardingModel
           .find(query)
           .sort({ createdAt: -1 })
           .limit(limit)
@@ -362,22 +384,28 @@ export class TenantOnboardingRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching onboarding records by status:', error);
-      throw new AppError(500, 'Failed to fetch onboarding records');
+      console.error("Error fetching onboarding records by status:", error);
+      throw new AppError(500, "Failed to fetch onboarding records");
     }
   }
 
   /**
    * Get pending onboarding records
    */
-  async findPending(limit: number = 20, page: number = 1): Promise<{ data: TenantOnboardingDocument[]; meta: any }> {
+  async findPending(
+    limit: number = 20,
+    page: number = 1,
+  ): Promise<{ data: TenantOnboardingDocument[]; meta: any }> {
     return this.findByStatus(OnboardingStatus.PENDING, limit, page);
   }
 
   /**
    * Get in-progress onboarding records
    */
-  async findInProgress(limit: number = 20, page: number = 1): Promise<{ data: TenantOnboardingDocument[]; meta: any }> {
+  async findInProgress(
+    limit: number = 20,
+    page: number = 1,
+  ): Promise<{ data: TenantOnboardingDocument[]; meta: any }> {
     return this.findByStatus(OnboardingStatus.IN_PROGRESS, limit, page);
   }
 }

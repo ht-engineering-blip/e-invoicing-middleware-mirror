@@ -43,7 +43,7 @@ export class SystemConfigRepository {
             },
             $inc: { version: 1 },
           },
-          { new: true }
+          { returnDocument: 'after' }
         ).exec();
 
         if (!doc) {

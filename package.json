@@ -1,6 +1,6 @@
 {
   "name": "e-invoicing-middleware",
-  "version": "1.0.50",
+  "version": "1.0.53",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
@@ -9,39 +9,40 @@
     "worker:dev": "bun run --watch src/worker.ts"
   },
   "dependencies": {
-    "@agendajs/mongo-backend": "^4.0.0",
-    "@elysiajs/cors": "^1.4.1",
-    "@elysiajs/openapi": "^1.4.13",
-    "@faker-js/faker": "^10.4.0",
-    "agenda": "^6.2.3",
-    "agendash": "^8.2.1",
-    "axios": "^1.13.2",
+    "@agendajs/mongo-backend": "^4.0.2",
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/openapi": "^1.4.15",
+    "@faker-js/faker": "^10.5.0",
+    "@sinclair/typebox": "^0.34.52",
+    "agenda": "^6.2.5",
+    "agendash": "^8.2.3",
+    "axios": "^1.18.1",
     "debug": "^4.4.3",
-    "elysia": "latest",
+    "elysia": "^1.4.29",
     "elysia-remote-dts": "^1.0.3",
     "express": "^5.2.1",
     "firs-einvoicing": "1.0.13",
-    "handlebars": "^4.7.8",
+    "handlebars": "^4.7.9",
     "json-spread": "^1.0.1",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.1.3",
+    "mongoose": "^9.7.4",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^7.0.12",
+    "nodemailer": "^9.0.3",
     "qrcode": "^1.5.4",
-    "uuid": "^13.0.0",
-    "zod": "^4.3.5"
+    "uuid": "^14.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/agenda": "^4.1.4",
-    "@types/debug": "^4.1.12",
+    "@types/debug": "^4.1.13",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/nodemailer": "^7.0.5",
+    "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.6",
-    "bun": "^1.3.9",
-    "bun-types": "latest",
-    "concurrently": "^9.2.1",
-    "typescript": "^5.9.3"
+    "bun": "^1.3.14",
+    "bun-types": "^1.3.14",
+    "concurrently": "^10.0.3",
+    "typescript": "^5.5.0"
   },
   "module": "src/index.js"
 }

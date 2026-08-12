@@ -11,6 +11,11 @@ export const updateInvoiceIdKeyExample = {
   invoiceIdKey: 'invoice.documentId',
 };
 
+export const updateKeyMapExample = {
+  eventType: 'erp.creditnote.issued',
+  idKey: 'creditNote.documentId',
+};
+
 export const testWebhookExample = {
   testPayload: {
     event: 'webhook.test',

@@ -1,0 +1,157 @@
+name: DevSecOps Scans (einvoice-worker)
+# STANDALONE by design: this file does NOT modify or gate einvoice-worker.yml.
+# GitHub Actions can only use `needs:` within a single workflow file, so
+# these jobs run independently with their own pass/fail status — they do
+# NOT block build-and-push/deploy from running.
+#
+# If you want a failed scan here to actually stop a merge/deploy, add a
+# branch protection rule on `deploy`: Settings > Branches > Require status
+# checks to pass > select the job names below (Gitleaks, Semgrep, bun
+# audit, Trivy). That's the standard way to connect two separate workflows'
+# outcomes without merging the files.
+
+on:
+  push:
+    branches: [deploy]
+  pull_request:
+    branches: [deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ---------------------------------------------------------------------
+  # 1. SECRET SCANNING
+  # ---------------------------------------------------------------------
+  secret-scan:
+    name: Gitleaks (Secret Scanning)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0   # Gitleaks needs full history, not just the latest commit
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+        # CLI binary directly, not gitleaks/gitleaks-action@v2, since that
+        # Action requires a paid license for organization-owned repos.
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source . --verbose --redact
+        # Exits non-zero (failing this job) if any secret is found.
+
+  # ---------------------------------------------------------------------
+  # 2. SAST
+  # ---------------------------------------------------------------------
+  sast:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Run Semgrep
+        run: semgrep scan --config auto --error
+        # `semgrep scan` (not `semgrep ci`) runs standalone, no token needed.
+
+  # ---------------------------------------------------------------------
+  # 3. DEPENDENCY SCANNING — bun audit (this project uses Bun)
+  # ---------------------------------------------------------------------
+  dependency-scan:
+    name: bun audit (Dependency Scanning)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2.1.2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+        # No --frozen-lockfile: this job only needs a resolved dependency
+        # tree to audit, it doesn't write back to the repo. If this fails
+        # with "lockfile had changes", that's worth fixing separately —
+        # run `bun install` locally and commit the updated bun.lockb.
+
+      - name: Run bun audit
+        run: bun audit --audit-level=high
+        # Fails on any High/Critical CVE. New scan, no established
+        # legacy-debt baseline yet, so it starts blocking. If you hit a
+        # backlog of pre-existing CVEs like the other projects did, relax
+        # this the same way: run: bun audit --audit-level=high || true
+
+  # ---------------------------------------------------------------------
+  # (Optional / conditional) Checkov — only relevant if Terraform/IaC
+  # exists in this repo. Not included as an active job — enable if that
+  # changes.
+  # ---------------------------------------------------------------------
+  # checkov:
+  #   name: Checkov (IaC Scanning)
+  #   runs-on: ubuntu-latest
+  #   if: false
+  #   steps:
+  #     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+  #     - name: Run Checkov
+  #       uses: bridgecrewio/checkov-action@v12
+  #       with:
+  #         directory: terraform/
+  #         framework: terraform
+  #         soft_fail: false
+
+  # ---------------------------------------------------------------------
+  # 4. IMAGE SCANNING — Trivy
+  #    This workflow does NOT push to ECR (that stays the job of
+  #    einvoice-worker.yml). It builds the image locally, purely to scan
+  #    it, so no AWS credentials are needed here at all.
+  # ---------------------------------------------------------------------
+  # image-scan:
+  #   name: Trivy (Image Scanning)
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #   steps:
+  #     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+  #     - name: Build image (local only, not pushed)
+  #       uses: docker/build-push-action@601a80b39c9405e50806ae38af30926f9d957c47 # v6.19.2
+  #       with:
+  #         context: .
+  #         file: ./Dockerfile.worker
+  #         push: false
+  #         load: true
+  #         pull: true
+  #         tags: einvoice-worker:scan
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max
+  #       # pull: true forces a fresh pull of the base image (gcr.io/distroless/base)
+  #       # on every run, bypassing the GHA layer cache for that FROM layer. If
+  #       # Google has published patched OS packages since your last build, the
+  #       # cache would otherwise keep serving the old, vulnerable layer — this
+  #       # rules that out as the reason Trivy keeps reporting the same CVEs.
+
+  #     - name: Run Trivy vulnerability scan
+  #       uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+  #       with:
+  #         image-ref: einvoice-worker:scan
+  #         format: table
+  #         severity: HIGH,CRITICAL
+  #         exit-code: '1'
+  #         ignore-unfixed: true
+  #       # Only fails THIS workflow — it does not stop einvoice-worker.yml
+        # from building and pushing the real image. See branch protection
+        # note at the top of this file if you want that connected.

@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import { appConfig } from '../../../@config';
 import { AppError } from '../../../@lib';
 import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
 import {
@@ -94,7 +96,7 @@ export class AuditLogRepository {
       const query = this.buildAuditLogQuery(where);
       const projection = this.buildAuditLogProjection(select);
 
-      const doc = await this.auditLogModel.base.findOne(query, projection).exec();
+      const doc = await this.auditLogModel.findOne(query, projection).exec();
 
       return doc;
     } catch (error) {
@@ -108,9 +110,44 @@ export class AuditLogRepository {
    */
   async create(data: Partial<AuditLogDocument>): Promise<AuditLogDocument> {
     try {
+      // Retrieve the most recent log to link the previous hash
+      const lastLogs = await this.auditLogModel.find({}).sort({ createdAt: -1 }).limit(1).exec();
+      const lastLog = lastLogs[0] || null;
+      const previousHash = lastLog?.hash || '0'.repeat(64);
+
+      const timestamp = data.timestamp || new Date();
+
+      // Compute HMAC chain hash over critical data
+      const hashContent = JSON.stringify({
+        eventId: data.eventId,
+        tenantId: data.tenantId,
+        eventType: data.eventType,
+        severity: data.severity,
+        actor: {
+          actorType: data.actor?.actorType,
+          actorId: data.actor?.actorId,
+          actorName: data.actor?.actorName,
+        },
+        resource: typeof data.resource === 'object' ? {
+          resourceType: data.resource?.resourceType,
+          resourceId: data.resource?.resourceId,
+          resourceName: data.resource?.resourceName,
+        } : data.resource,
+        description: data.description,
+        timestamp: timestamp.toISOString(),
+        previousHash,
+      });
+
+      const hash = crypto
+        .createHmac('sha256', appConfig?.adminKey || 'audit-secret-key')
+        .update(hashContent)
+        .digest('hex');
+
       const doc = await this.auditLogModel.create({
         ...data,
-        timestamp: data.timestamp || new Date(),
+        timestamp,
+        hash,
+        previousHash,
       });
 
       return doc;
@@ -153,7 +190,7 @@ export class AuditLogRepository {
       const query: any = { tenantId };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -184,7 +221,7 @@ export class AuditLogRepository {
    */
   async findByEventId(eventId: string): Promise<AuditLogDocument | null> {
     try {
-      const doc = await this.auditLogModel.base.findOne({ eventId }).exec();
+      const doc = await this.auditLogModel.findOne({ eventId }).exec();
       return doc;
     } catch (error) {
       console.error('Error fetching audit log:', error);
@@ -204,7 +241,7 @@ export class AuditLogRepository {
    */
   async find(query: any, skip: number = 0, limit: number = 50): Promise<AuditLogDocument[]> {
     try {
-      const docs = await this.auditLogModel.base
+      const docs = await this.auditLogModel
         .find(query)
         .sort({ timestamp: -1 })
         .skip(skip)
@@ -222,7 +259,7 @@ export class AuditLogRepository {
    */
   async findByResource(resource: string, resourceId: string): Promise<AuditLogDocument[]> {
     try {
-      const docs = await this.auditLogModel.base
+      const docs = await this.auditLogModel
         .find({
           'resource.resourceType': resource,
           'resource.resourceId': resourceId,
@@ -249,7 +286,7 @@ export class AuditLogRepository {
       const query: any = { 'resource.resourceId': resourceId };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -288,7 +325,7 @@ export class AuditLogRepository {
       const query: any = { eventType };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -327,7 +364,7 @@ export class AuditLogRepository {
       const query: any = { severity };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -366,7 +403,7 @@ export class AuditLogRepository {
       const query: any = { 'actor.actorId': actorId };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -416,7 +453,7 @@ export class AuditLogRepository {
       }
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -484,7 +521,7 @@ export class AuditLogRepository {
           groupByField = '$eventType';
       }
 
-      const stats = await this.auditLogModel.base
+      const stats = await this.auditLogModel
         .aggregate([
           { $match: matchStage },
           {
@@ -520,7 +557,7 @@ export class AuditLogRepository {
       };
 
       const [docs, total] = await Promise.all([
-        this.auditLogModel.base
+        this.auditLogModel
           .find(query)
           .sort({ timestamp: -1 })
           .limit(limit)
@@ -551,7 +588,7 @@ export class AuditLogRepository {
    */
   async bulkCreate(logs: Array<Partial<AuditLogDocument>>): Promise<boolean> {
     try {
-      await this.auditLogModel.base.insertMany(logs);
+      await this.auditLogModel.create(logs);
       return true;
     } catch (error) {
       console.error('Error bulk creating audit logs:', error);
@@ -564,7 +601,7 @@ export class AuditLogRepository {
    */
   async deleteOldLogs(beforeDate: Date): Promise<number> {
     try {
-      const result = await this.auditLogModel.base
+      const result = await this.auditLogModel
         .deleteMany({
           timestamp: { $lt: beforeDate },
         })

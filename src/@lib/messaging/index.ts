@@ -1,3 +1,4 @@
+import { templateEngine } from "../../templates/engine";
 import Handlebars from "handlebars";
 
 // const twilio = require("twilio"); 
@@ -17,8 +18,13 @@ interface SMSClient {
     send(message: Message): Promise<any>
 }
 
+function stripCRLF(val: string | undefined): string | undefined {
+    if (!val) return val;
+    return val.replace(/[\r\n]/g, '');
+}
+
 export interface MailContent {
-    from?: string | any;
+    from?: string;
     to?: string;
     replyTo?: string;
     subject: string;
@@ -73,11 +79,21 @@ export class NodeMailerClient implements MailClient {
 
     async send(message: MailContent): Promise<boolean> {
         if (this.client != undefined) {
-            message.from = message.from || messagingConfig?.mailFrom || "HT Invoicing <support@htinvoicing.com>"
-            const sent = await this.client.sendMail({ ...message, sender: "HT Invoicing" })
+            const from = stripCRLF(message.from || messagingConfig?.mailFrom || "HT Invoicing <support@htinvoicing.com>");
+            const to = stripCRLF(message.to);
+            const replyTo = stripCRLF(message.replyTo);
+            const subject = stripCRLF(message.subject);
+
+            const sent = await this.client.sendMail({
+                ...message,
+                from,
+                to,
+                replyTo,
+                subject: subject || '',
+                sender: "HT Invoicing"
+            });
             console.log(sent.messageId)
             return sent.messageId != undefined
-
         }
         return false
 
@@ -122,7 +138,10 @@ export class NodeMailerClient implements MailClient {
 export const sendSMSUsing = async (client: SMSClient, message: Message) => await client.send(message).then(sent_or_not => sent_or_not)
 export const sendMailUsing = async (client: MailClient, message: MailContent) => await client.send(message).then(sent_or_not => sent_or_not)
 export const withTemplate = (content: string) => {
-    let compiledMessage = Handlebars.compile(messagingConfig?.defaultEmailTemplate)
     let logo = LOGO
-    return compiledMessage({ logo, content })
+    return templateEngine.renderInline(
+        'defaultEmailTemplate',
+        messagingConfig?.defaultEmailTemplate || '',
+        { logo, content: new Handlebars.SafeString(content) }
+    );
 }

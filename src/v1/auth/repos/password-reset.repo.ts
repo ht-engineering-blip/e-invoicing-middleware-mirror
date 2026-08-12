@@ -65,7 +65,7 @@ export class PasswordResetRepository {
       const doc = await PasswordResetModel.findOneAndUpdate(
         { tokenHash },
         { $set: { usedAt: new Date() } },
-        { new: true }
+        { returnDocument: 'after' }
       ).exec();
       return doc;
     } catch (error) {

@@ -3,36 +3,27 @@
  * Business logic for webhook event delivery and retry logic
  */
 
-import { WebhookEventRepository } from '../repos/webhook-event.repo';
-import { TenantRepository } from '../../tenants/repos/tenant.repo';
-import { AuditLogRepository } from '../../audit/repos/audit-log.repo';
-import { NotFoundError, ValidationError } from '../../../@lib/errors';
-import { WebhookEventType, WebhookDeliveryStatus, type WebhookEventDocument } from '../models';
-import { AuditEventType, AuditEventSeverity } from '../../audit/models';
-import type { ITenantConfig } from '../../tenants/models/tenant.model';
-import axios from 'axios';
-import crypto from 'crypto';
+import { WebhookEventRepository } from "../repos/webhook-event.repo";
+import { TenantRepository } from "../../tenants/repos/tenant.repo";
+import { AuditLogRepository } from "../../audit/repos/audit-log.repo";
+import { NotFoundError, ValidationError } from "../../../@lib/errors";
+import {
+  WebhookEventType,
+  WebhookDeliveryStatus,
+  type WebhookEventDocument,
+} from "../models";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
+import type { ITenantConfig } from "../../tenants/models/tenant.model";
+import axios from "axios";
+import crypto from "crypto";
+import { isSafeUrl } from "../../../@lib/utils/ssrf";
 
-export interface DeliverWebhookInput {
-  eventId: string;
-}
+// Concurrency tracking for outbound webhook deliveries
+const concurrentGlobal = { count: 0 };
+const concurrentTenant = new Map<string, number>();
 
-export interface RetryWebhookInput {
-  eventId: string;
-}
-
-export interface ConfigureWebhookInput {
-  tenantId: string;
-  webhookUrl: string;
-  webhookSecret?: string;
-  enabled: boolean;
-}
-
-export interface TestWebhookInput {
-  tenantId: string;
-  eventType: string;
-  payload?: any;
-}
+const MAX_CONCURRENT_GLOBAL = 100;
+const MAX_CONCURRENT_PER_TENANT = 10;
 
 export class WebhookService {
   private webhookRepo: WebhookEventRepository;
@@ -55,28 +46,52 @@ export class WebhookService {
   async deliverWebhook(eventId: string): Promise<WebhookEventDocument> {
     const event = await this.webhookRepo.findById(eventId);
     if (!event) {
-      throw new NotFoundError('Webhook event not found');
+      throw new NotFoundError("Webhook event not found");
     }
 
     // Get tenant webhook configuration
     const tenant = await this.tenantRepo.findByTenantId(event.tenantId);
     if (!tenant) {
-      throw new NotFoundError('Tenant not found');
+      throw new NotFoundError("Tenant not found");
     }
 
     const webhookUrl = tenant.config?.webhookUrl;
     const webhookEnabled = tenant.config?.webhookEnabled;
-    const webhookSecret = tenant.config?.webhookAuth || '';
+    const webhookSecret = tenant.config?.webhookAuth || "";
 
     if (!webhookUrl || !webhookEnabled) {
-      throw new ValidationError('Webhook not configured or disabled for tenant');
+      throw new ValidationError(
+        "Webhook not configured or disabled for tenant",
+      );
+    }
+
+    // SSRF URL Validation
+    if (!(await isSafeUrl(webhookUrl))) {
+      const errorMsg = `Outbound webhook URL is blocked by SSRF guard: ${webhookUrl}`;
+      await this.webhookRepo.markAsFailed(event.eventId, errorMsg, 400);
+
+      // Audit log
+      await this.createAuditLog(
+        event.tenantId,
+        "webhook.failed",
+        "webhook_event",
+        event.eventId,
+        {
+          error: { message: errorMsg },
+        },
+      );
+
+      throw new ValidationError(errorMsg);
     }
 
     // Check if max retries exceeded
     const attempts = event.deliveryAttempts?.length || 0;
     if (attempts >= this.MAX_RETRIES) {
-      await this.webhookRepo.updateStatus(eventId, WebhookDeliveryStatus.FAILED);
-      throw new ValidationError('Max retry attempts exceeded');
+      await this.webhookRepo.updateStatus(
+        eventId,
+        WebhookDeliveryStatus.FAILED,
+      );
+      throw new ValidationError("Max retry attempts exceeded");
     }
 
     try {
@@ -84,49 +99,95 @@ export class WebhookService {
       const webhookPayload = {
         eventId: event.eventId,
         eventType: event.eventType,
-        tenantId: event.tenantId, 
+        tenantId: event.tenantId,
         timestamp: new Date().toISOString(),
         data: event.payload,
       };
 
-      // Generate signature
-      const signature = this.generateSignature(webhookPayload, webhookSecret);
-
-      // Send webhook request
-      const startTime = Date.now();
-      const response = await axios.post(webhookUrl, webhookPayload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Key': signature,
-          'X-Event-Type': event.eventType,
-        },
-        timeout: 30000, // 30 second timeout
-      });
-      const duration = Date.now() - startTime;
-
-      // Add delivery attempt
-      await this.webhookRepo.addDeliveryAttempt(event.eventId, {
-        attemptNumber: attempts + 1,
-        timestamp: new Date(),
-        httpStatus: response.status,
-        responseBody: response.data,
-        duration,
-      });
-
-      // Mark as delivered
-      const updated = await this.webhookRepo.markAsDelivered(
-        event.eventId,
-        response.status,
-        response.data
+      // Generate signature using both formats for complete backward compatibility
+      const legacySignature = this.generateSignature(
+        webhookPayload,
+        webhookSecret,
       );
 
-      // Audit log
-      await this.createAuditLog(event.tenantId, 'webhook.delivered', 'webhook_event', event.eventId, {
-        eventType: event.eventType,
-        statusCode: response.status,
-      });
+      const now = Math.floor(Date.now() / 1000);
+      const payloadString = JSON.stringify(webhookPayload);
+      const hmacVal = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(`${now}.${payloadString}`)
+        .digest("hex");
+      const secureSignature = `t=${now},v1=${hmacVal}`;
 
-      return updated!;
+      // Concurrency limits check
+      if (concurrentGlobal.count >= MAX_CONCURRENT_GLOBAL) {
+        throw new Error("Global concurrent webhook delivery limit exceeded");
+      }
+      const tenantConcurrent = concurrentTenant.get(event.tenantId) || 0;
+      if (tenantConcurrent >= MAX_CONCURRENT_PER_TENANT) {
+        throw new Error(
+          `Concurrent webhook delivery limit exceeded for tenant ${event.tenantId}`,
+        );
+      }
+
+      // Increment concurrency counters
+      concurrentGlobal.count++;
+      concurrentTenant.set(event.tenantId, tenantConcurrent + 1);
+
+      let response;
+      try {
+        // Send webhook request
+        const startTime = Date.now();
+        response = await axios.post(webhookUrl, webhookPayload, {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Webhook-Key": legacySignature,
+            "X-Webhook-Signature": secureSignature,
+            "X-Event-Type": event.eventType,
+          },
+          timeout: 30000, // 30 second timeout
+          maxRedirects: 0, // SSRF Guard: do not follow redirects
+        });
+        const duration = Date.now() - startTime;
+
+        // Add delivery attempt
+        await this.webhookRepo.addDeliveryAttempt(event.eventId, {
+          attemptNumber: attempts + 1,
+          timestamp: new Date(),
+          httpStatus: response.status,
+          responseBody: response.data,
+          duration,
+        });
+
+        // Mark as delivered
+        const updated = await this.webhookRepo.markAsDelivered(
+          event.eventId,
+          response.status,
+          response.data,
+        );
+
+        // Audit log
+        await this.createAuditLog(
+          event.tenantId,
+          "webhook.delivered",
+          "webhook_event",
+          event.eventId,
+          {
+            eventType: event.eventType,
+            statusCode: response.status,
+          },
+        );
+
+        return updated!;
+      } finally {
+        // Decrement concurrency counters
+        concurrentGlobal.count = Math.max(0, concurrentGlobal.count - 1);
+        const currentCount = concurrentTenant.get(event.tenantId) || 0;
+        if (currentCount <= 1) {
+          concurrentTenant.delete(event.tenantId);
+        } else {
+          concurrentTenant.set(event.tenantId, currentCount - 1);
+        }
+      }
     } catch (error: any) {
       // Handle delivery failure
       const isAxiosError = error.isAxiosError;
@@ -158,19 +219,35 @@ export class WebhookService {
         await this.webhookRepo.scheduleRetry(event.eventId, nextRetryAt);
 
         // Audit log
-        await this.createAuditLog(event.tenantId, 'webhook.retry_scheduled', 'webhook_event', event.eventId, {
-          attempt: attempts + 1,
-          nextRetryAt,
-          error: errorDetails,
-        });
+        await this.createAuditLog(
+          event.tenantId,
+          "webhook.retry_scheduled",
+          "webhook_event",
+          event.eventId,
+          {
+            attempt: attempts + 1,
+            nextRetryAt,
+            error: errorDetails,
+          },
+        );
       } else {
         // Max retries exceeded, mark as failed
-        await this.webhookRepo.markAsFailed(event.eventId, error.message, error.response?.status);
+        await this.webhookRepo.markAsFailed(
+          event.eventId,
+          error.message,
+          error.response?.status,
+        );
 
-        await this.createAuditLog(event.tenantId, 'webhook.failed', 'webhook_event', event.eventId, {
-          attempts: attempts + 1,
-          error: errorDetails,
-        });
+        await this.createAuditLog(
+          event.tenantId,
+          "webhook.failed",
+          "webhook_event",
+          event.eventId,
+          {
+            attempts: attempts + 1,
+            error: errorDetails,
+          },
+        );
       }
 
       // Return current state
@@ -185,11 +262,11 @@ export class WebhookService {
   async retryWebhook(eventId: string): Promise<WebhookEventDocument> {
     const event = await this.webhookRepo.findById(eventId);
     if (!event) {
-      throw new NotFoundError('Webhook event not found');
+      throw new NotFoundError("Webhook event not found");
     }
 
     if (event.status === WebhookDeliveryStatus.DELIVERED) {
-      throw new ValidationError('Webhook already delivered');
+      throw new ValidationError("Webhook already delivered");
     }
 
     // Reset if manually retrying a failed event
@@ -223,7 +300,7 @@ export class WebhookService {
         await this.deliverWebhook(event.eventId);
       } catch (error) {
         // Log error but continue processing other events
-        console.error(`Failed to deliver webhook ${event.eventId}:`, error);
+        console.error('Failed to deliver webhook %s:', event.eventId, error);
       }
     }
   }
@@ -240,7 +317,7 @@ export class WebhookService {
       endDate?: Date;
       skip?: number;
       limit?: number;
-    }
+    },
   ): Promise<{ events: WebhookEventDocument[]; total: number }> {
     const query: any = { tenantId };
 
@@ -264,10 +341,13 @@ export class WebhookService {
   /**
    * Get webhook event by ID
    */
-  async getWebhookEvent(eventId: string, tenantId: string): Promise<WebhookEventDocument> {
+  async getWebhookEvent(
+    eventId: string,
+    tenantId: string,
+  ): Promise<WebhookEventDocument> {
     const event = await this.webhookRepo.findById(eventId);
     if (!event || event.tenantId !== tenantId) {
-      throw new NotFoundError('Webhook event not found');
+      throw new NotFoundError("Webhook event not found");
     }
 
     return event;
@@ -279,7 +359,7 @@ export class WebhookService {
   async configureWebhook(input: ConfigureWebhookInput): Promise<void> {
     const tenant = await this.tenantRepo.findByTenantId(input.tenantId);
     if (!tenant) {
-      throw new NotFoundError('Tenant not found');
+      throw new NotFoundError("Tenant not found");
     }
 
     const config: Partial<ITenantConfig> = tenant.config || {};
@@ -293,10 +373,16 @@ export class WebhookService {
     await this.tenantRepo.update(tenant.tenantId, { config } as any);
 
     // Audit log
-    await this.createAuditLog(input.tenantId, 'webhook.configured', 'tenant', tenant.tenantId, {
-      webhookUrl: input.webhookUrl,
-      enabled: input.enabled,
-    });
+    await this.createAuditLog(
+      input.tenantId,
+      "webhook.configured",
+      "tenant",
+      tenant.tenantId,
+      {
+        webhookUrl: input.webhookUrl,
+        enabled: input.enabled,
+      },
+    );
   }
 
   /**
@@ -305,14 +391,14 @@ export class WebhookService {
   async testWebhook(input: TestWebhookInput): Promise<any> {
     const tenant = await this.tenantRepo.findByTenantId(input.tenantId);
     if (!tenant) {
-      throw new NotFoundError('Tenant not found');
+      throw new NotFoundError("Tenant not found");
     }
 
     const webhookUrl = tenant.config?.webhookUrl;
     const webhookEnabled = tenant.config?.webhookEnabled;
 
     if (!webhookUrl || !webhookEnabled) {
-      throw new ValidationError('Webhook not configured or disabled');
+      throw new ValidationError("Webhook not configured or disabled");
     }
 
     // Generate event ID
@@ -321,11 +407,15 @@ export class WebhookService {
     // Create test event
     const testEvent = await this.webhookRepo.create({
       eventId,
-      tenantId: input.tenantId, 
-      eventType: (input.eventType || WebhookEventType.TEST_EVENT) as WebhookEventType,
-      payload: input.payload || { test: true, timestamp: new Date().toISOString() },
-      resourceId: 'test',
-      resourceType: 'test',
+      tenantId: input.tenantId,
+      eventType: (input.eventType ||
+        WebhookEventType.TEST_EVENT) as WebhookEventType,
+      payload: input.payload || {
+        test: true,
+        timestamp: new Date().toISOString(),
+      },
+      resourceId: "test",
+      resourceType: "test",
       webhookUrl,
       status: WebhookDeliveryStatus.PENDING,
       maxRetries: 0,
@@ -359,10 +449,16 @@ export class WebhookService {
     const irn = webhookData.irn;
 
     // Audit log
-    await this.createAuditLog('system', 'firs_webhook.received', 'webhook', irn || 'unknown', {
-      eventType,
-      irn,
-    });
+    await this.createAuditLog(
+      "system",
+      "firs_webhook.received",
+      "webhook",
+      irn || "unknown",
+      {
+        eventType,
+        irn,
+      },
+    );
 
     // Process based on event type
     // This would trigger invoice service methods
@@ -374,7 +470,10 @@ export class WebhookService {
    */
   private generateSignature(payload: any, secret: string): string {
     const payloadString = JSON.stringify(payload);
-    return crypto.createHmac('sha256', secret).update(payloadString).digest('hex');
+    return crypto
+      .createHmac("sha256", secret)
+      .update(payloadString)
+      .digest("hex");
   }
 
   /**
@@ -383,7 +482,10 @@ export class WebhookService {
   verifySignature(payload: any, signature: string, secret: string): boolean {
     const expectedSignature = this.generateSignature(payload, secret);
     try {
-      return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+      return crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expectedSignature),
+      );
     } catch {
       return false;
     }
@@ -397,7 +499,7 @@ export class WebhookService {
     action: string,
     resourceType: string,
     resourceId: string,
-    metadata: any
+    metadata: any,
   ): Promise<void> {
     try {
       const eventId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -407,8 +509,8 @@ export class WebhookService {
         eventType: AuditEventType.SYSTEM_WARNING, // Generic event type for webhook actions
         severity: AuditEventSeverity.INFO,
         actor: {
-          actorType: 'system',
-          actorId: 'webhook_service',
+          actorType: "system",
+          actorId: "webhook_service",
         },
         resource: {
           resourceType,
@@ -420,7 +522,7 @@ export class WebhookService {
       });
     } catch (error) {
       // Don't fail the main operation if audit logging fails
-      console.error('Failed to create audit log:', error);
+      console.error("Failed to create audit log:", error);
     }
   }
 }

@@ -3,34 +3,22 @@
  * Handles individual invoice operations for the e-invoicing workflow
  */
 
-import { firsConfig } from '../../../@config';
-import { FIRSService, VATPostPaymentReportData } from '../../../@lib/adapters/firs/firs.service';
-import { TenantService } from '../../tenants/services/tenant.service';
-import { OutboundInvoiceRepository } from '../../workflow/repos/outbound-invoice.repo';
-import { InboundInvoiceRepository } from '../../workflow/repos/inbound-invoice.repo';
-import { OutboundInvoiceStatus, type OutboundInvoiceDocument } from '../../workflow/models/outbound-invoice.model';
-import { AppError, NotFoundError, ValidationError } from '../../../@lib';
-import { TransformWorkflowService } from '../../workflow/services/workflows/transform.service';
-import { InboundInvoiceStatus } from '../../workflow/models';
-import { AuthContext } from '../../../middlewares'; 
-
-/**
- * Invoice Payment Status
- */
-export enum InvoicePaymentStatus {
-  PENDING = 'PENDING',
-  PAID = 'PAID',
-  REJECTED = 'REJECTED',
-}
-
-/**
- * Generate IRN Input
- */
-export interface GenerateIRNInput {
-  businessId: string;
-  invoiceNumber: string;
-  issueDate?: Date;
-}
+import { firsConfig } from "../../../@config";
+import {
+  FIRSService,
+  VATPostPaymentReportData,
+} from "../../../@lib/adapters/firs/firs.service";
+import { TenantService } from "../../tenants/services/tenant.service";
+import { OutboundInvoiceRepository } from "../../workflow/repos/outbound-invoice.repo";
+import { InboundInvoiceRepository } from "../../workflow/repos/inbound-invoice.repo";
+import {
+  OutboundInvoiceStatus,
+  type OutboundInvoiceDocument,
+} from "../../workflow/models/outbound-invoice.model";
+import { AppError, NotFoundError, ValidationError } from "../../../@lib";
+import { TransformWorkflowService } from "../../workflow/services/workflows/transform.service";
+import { InboundInvoiceStatus } from "../../workflow/models";
+import { AuthContext } from "../../../middlewares";
 
 /**
  * Invoice Workflow Service
@@ -54,32 +42,39 @@ export class InvoiceWorkflowService {
    * Format FIRS error for consistent error handling
    */
   private getFIRSError(error: any) {
-    const message = error?.errors?.response?.public_message
-      || error?.message
-      || 'An error occurred, please try again.';
+    const message =
+      error?.errors?.response?.public_message ||
+      error?.message ||
+      "An error occurred, please try again.";
     const code = error?.errors?.code || error?.statusCode || 500;
     return { message, code };
   }
-
-  
 
   /**
    * Transform Invoice
    * Transforms invoice data to FIRS UBL format
    */
-  async transformInvoice(invoice: any, authContext?: AuthContext): Promise<any> {
+  async transformInvoice(
+    invoice: any,
+    authContext?: AuthContext,
+  ): Promise<any> {
     try {
-      const transformedPayload = await this.transformService.transformInvoice(invoice, authContext);
+      const transformedPayload = await this.transformService.transformInvoice(
+        invoice,
+        authContext,
+      );
       // If we have an IRN, update the stored invoice
       if (transformedPayload.irn) {
         let createPayload: OutboundInvoiceDocument = {
           ...transformedPayload,
           tenantId: authContext?.tenantId,
           erpSystem: authContext?.tenantERP,
-          createdBy: authContext?.tenantId
-        }
+          createdBy: authContext?.tenantId,
+        };
         await this.outboundRepo.create(createPayload);
-        await this.outboundRepo.updateWorkflowState(invoice.irn, { transformed: true });
+        await this.outboundRepo.updateWorkflowState(invoice.irn, {
+          transformed: true,
+        });
       }
 
       return {
@@ -102,16 +97,17 @@ export class InvoiceWorkflowService {
       // Ensure business_id is set
       invoice.business_id = businessId;
 
-      console.log(JSON.stringify({invoice}, undefined, 2))
+      console.log(JSON.stringify({ invoice }, undefined, 2));
 
       // Call FIRS validation API
-      const validationResult: any = await this.firsService.validateInvoice(invoice);
+      const validationResult: any =
+        await this.firsService.validateInvoice(businessId, invoice);
 
       if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
         return {
           success: false,
           valid: false,
-          errors: validationResult?.data?.errors || ['Validation failed'],
+          errors: validationResult?.data?.errors || ["Validation failed"],
           workflowState: { validated: false },
         };
       }
@@ -121,7 +117,9 @@ export class InvoiceWorkflowService {
         await this.outboundRepo.update(invoice.irn, {
           status: OutboundInvoiceStatus.VALIDATED,
         });
-        await this.outboundRepo.updateWorkflowState(invoice.irn, { validated: true });
+        await this.outboundRepo.updateWorkflowState(invoice.irn, {
+          validated: true,
+        });
       }
 
       return {
@@ -141,25 +139,27 @@ export class InvoiceWorkflowService {
    * Signs the invoice using tenant's FIRS credentials
    */
   async signInvoice(authContext: AuthContext, invoice: any): Promise<any> {
-    try { 
-
+    try {
       // Get FIRS credentials for signing
-      const credentials = await this.tenantService.getFIRSCredentials(authContext.tenantId);
+      const credentials = await this.tenantService.getFIRSCredentials(
+        authContext.tenantId,
+      );
 
       // Prepare invoice with certificate
       const invoiceWithCert = {
         ...invoice,
         business_id: authContext.businessId,
         //certificate: credentials.certificate,
-      }; 
+      };
       // Call FIRS sign API
-      const signResult: any = await this.firsService.signInvoice(invoiceWithCert);
+      const signResult: any =
+        await this.firsService.signInvoice(authContext.tenantId, invoiceWithCert);
 
       if (signResult?.code !== 200 || !signResult?.data?.ok) {
         return {
           success: false,
           signed: false,
-          errors: signResult?.data?.errors || ['Signing failed'],
+          errors: signResult?.data?.errors || ["Signing failed"],
           workflowState: { signed: false },
         };
       }
@@ -169,7 +169,9 @@ export class InvoiceWorkflowService {
         await this.outboundRepo.update(invoice.irn, {
           status: OutboundInvoiceStatus.SIGNED,
         });
-        await this.outboundRepo.updateWorkflowState(invoice.irn, { signed: true });
+        await this.outboundRepo.updateWorkflowState(invoice.irn, {
+          signed: true,
+        });
       }
 
       return {
@@ -190,22 +192,27 @@ export class InvoiceWorkflowService {
    */
   async generateQR(authContext: AuthContext, irn: string): Promise<any> {
     try {
-      
-      const credentials = await this.tenantService.getFIRSCredentials(authContext.tenantId);
+      const credentials = await this.tenantService.getFIRSCredentials(
+        authContext.tenantId,
+      );
       const { certificate, publicKey } = credentials;
 
       // Generate QR code
-      const qrResult = await this.firsService.generateQRCodeV2(irn, certificate, publicKey);
+      const qrResult = await this.firsService.generateQRCodeV2(
+        irn,
+        certificate,
+        publicKey,
+      );
 
       if (!qrResult?.qrCode && !qrResult?.data) {
-        throw new AppError(500, 'QR code generation failed');
+        throw new AppError(500, "QR code generation failed");
       }
 
       // Update stored invoice if exists
       const existingInvoice = await this.outboundRepo.findByIrn(irn);
       if (existingInvoice) {
         await this.outboundRepo.update(irn, {
-          qrCode: qrResult.qrCode
+          qrCode: qrResult.qrCode,
         });
       }
 
@@ -230,17 +237,17 @@ export class InvoiceWorkflowService {
       // Verify invoice exists and is ready for transmission
       const invoice = await this.outboundRepo.findByIrn(irn);
       if (invoice && invoice.tenantId !== authContext.tenantId) {
-        throw new ValidationError('Invoice does not belong to this business');
+        throw new ValidationError("Invoice does not belong to this business");
       }
 
       // Call FIRS transmit API
-      const transmitResult: any = await this.firsService.transmitInvoice(irn);
+      const transmitResult: any = await this.firsService.transmitInvoice(authContext.tenantId, irn);
 
       // Update stored invoice if exists
       if (invoice) {
         await this.outboundRepo.update(irn, {
           status: OutboundInvoiceStatus.TRANSMITTED,
-        //  firsResponse: transmitResult?.data,
+          //  firsResponse: transmitResult?.data,
         });
         await this.outboundRepo.updateWorkflowState(irn, { transmitted: true });
       }
@@ -262,14 +269,15 @@ export class InvoiceWorkflowService {
    * Decrypt Invoice (Inbound)
    * Downloads and decrypts an inbound invoice from FIRS
    */
-  async decryptInvoice(irn: string): Promise<any> {
+  async decryptInvoice(authContext: AuthContext, irn: string): Promise<any> {
     try {
       // Download invoice from FIRS
-      const { data: invoiceResponse }: any = await this.firsService.downloadInvoice(irn);
+      const { data: invoiceResponse }: any =
+        await this.firsService.downloadInvoice(authContext.tenantId, irn);
       const encryptedInvoice = invoiceResponse?.data;
 
       if (!encryptedInvoice) {
-        throw new NotFoundError('Invoice not found on FIRS');
+        throw new NotFoundError("Invoice not found on FIRS");
       }
 
       // Decrypt the invoice
@@ -277,8 +285,18 @@ export class InvoiceWorkflowService {
         iv_hex: encryptedInvoice.iv_hex,
         pub: encryptedInvoice.pub,
         ciphertext: encryptedInvoice.data,
-        api_key: firsConfig?.apiKey,
+        api_key: firsConfig?.appApiKey,
       });
+
+      // Scope decryption to invoices owned by the authenticated tenant
+      if (
+        decryptedData.business_id !== authContext.businessId &&
+        decryptedData.accounting_supplier_party?.tin !==
+          authContext.businessTIN &&
+        decryptedData.accounting_customer_party?.tin !== authContext.businessTIN
+      ) {
+        throw new ValidationError("Invoice does not belong to this business");
+      }
 
       return {
         success: true,
@@ -287,6 +305,9 @@ export class InvoiceWorkflowService {
         data: decryptedData,
       };
     } catch (error: any) {
+      if (error instanceof NotFoundError || error instanceof ValidationError) {
+        throw error;
+      }
       const { message, code } = this.getFIRSError(error);
       throw new AppError(code, `Decryption failed: ${message}`);
     }
@@ -296,10 +317,15 @@ export class InvoiceWorkflowService {
    * Acknowledge Invoice Receipt
    * Acknowledges receipt of an inbound invoice
    */
-  async acknowledgeInvoiceReceipt(businessId: string, irn: string, message?: string): Promise<any> {
+  async acknowledgeInvoiceReceipt(
+    businessId: string,
+    irn: string,
+    message?: string,
+  ): Promise<any> {
     try {
       // Call FIRS acknowledge API
-      const ackResult: any = await this.firsService.acknowledgeInvoiceReceipt(irn);
+      const ackResult: any =
+        await this.firsService.acknowledgeInvoiceReceipt(businessId, irn);
 
       // Update inbound invoice if exists
       const inboundInvoice = await this.inboundRepo.findByIRN(irn);
@@ -327,7 +353,7 @@ export class InvoiceWorkflowService {
    * Updates the payment status of an invoice (PENDING, PAID, REJECTED)
    */
   async updateInvoiceStatus(
-    businessId: string,
+    tenantId: string,
     irn: string,
     status: InvoicePaymentStatus,
     metadata?: {
@@ -335,25 +361,25 @@ export class InvoiceWorkflowService {
       paymentAmount?: number;
       paymentReference?: string;
       rejectionReason?: string;
-    }
+    },
   ): Promise<any> {
     try {
       // Check outbound invoice first
       let invoice: any = await this.outboundRepo.findByIrn(irn);
-      let invoiceType = 'outbound';
+      let invoiceType = "outbound";
 
       if (!invoice) {
         // Check inbound invoice
         invoice = await this.inboundRepo.findByIRN(irn);
-        invoiceType = 'inbound';
+        invoiceType = "inbound";
       }
 
       if (!invoice) {
-        throw new NotFoundError('Invoice not found');
+        throw new NotFoundError("Invoice not found");
       }
 
-      if (invoice.businessId !== businessId) {
-        throw new ValidationError('Invoice does not belong to this business');
+      if (invoice.tenantId !== tenantId) {
+        throw new ValidationError("Invoice does not belong to this business");
       }
 
       const updateData: any = {
@@ -362,11 +388,14 @@ export class InvoiceWorkflowService {
       };
 
       if (metadata?.paymentDate) updateData.paymentDate = metadata.paymentDate;
-      if (metadata?.paymentAmount) updateData.paymentAmount = metadata.paymentAmount;
-      if (metadata?.paymentReference) updateData.paymentReference = metadata.paymentReference;
-      if (metadata?.rejectionReason) updateData.rejectionReason = metadata.rejectionReason;
+      if (metadata?.paymentAmount)
+        updateData.paymentAmount = metadata.paymentAmount;
+      if (metadata?.paymentReference)
+        updateData.paymentReference = metadata.paymentReference;
+      if (metadata?.rejectionReason)
+        updateData.rejectionReason = metadata.rejectionReason;
 
-      if (invoiceType === 'outbound') {
+      if (invoiceType === "outbound") {
         await this.outboundRepo.update(irn, updateData);
       } else {
         await this.inboundRepo.update(invoice.irn, updateData);
@@ -398,15 +427,16 @@ export class InvoiceWorkflowService {
   async reportInvoice(reportData: VATPostPaymentReportData): Promise<any> {
     try {
       // Call FIRS VAT post-payment API
-      const reportResult: any = await this.firsService.reportVATPostPayment(reportData);
+      const reportResult: any =
+        await this.firsService.reportVATPostPayment(reportData.integrator_service_id || reportData.agent_tin, reportData);
 
       // Update invoice with report status
       const invoice = await this.outboundRepo.findByIrn(reportData.irn);
       if (invoice) {
         await this.outboundRepo.update(reportData.irn, {
-          'metadata.vatReported': true,
-          'metadata.vatReportedAt': new Date(),
-          'metadata.vatReportResponse': reportResult?.data,
+          "metadata.vatReported": true,
+          "metadata.vatReportedAt": new Date(),
+          "metadata.vatReportResponse": reportResult?.data,
         } as any);
       }
 
@@ -429,21 +459,26 @@ export class InvoiceWorkflowService {
   async confirmInvoiceStatus(businessId: string, irn: string): Promise<any> {
     try {
       // Search for invoice on FIRS
-      const searchResult: any = await this.firsService.searchInvoice(businessId, irn);
+      const searchResult: any = await this.firsService.searchInvoice(
+        businessId,
+        businessId,
+        irn,
+      );
 
       if (!searchResult?.data?.items || searchResult.data.items.length === 0) {
         return {
           success: true,
           irn,
           found: false,
-          message: 'Invoice not found on FIRS',
+          message: "Invoice not found on FIRS",
         };
       }
 
       const firsInvoice = searchResult.data.items[0];
 
       // Confirm signed invoice status
-      const confirmResult: any = await this.firsService.confirmSignedInvoice(irn);
+      const confirmResult: any =
+        await this.firsService.confirmSignedInvoice(businessId, irn);
 
       return {
         success: true,
@@ -464,6 +499,4 @@ export class InvoiceWorkflowService {
       throw new AppError(code, `Status check failed: ${message}`);
     }
   }
-
-  
 }
