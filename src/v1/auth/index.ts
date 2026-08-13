@@ -210,7 +210,11 @@ const authRoutes = new Elysia()
           };
           try {
             const res = await firsService.authenticate(credentials);
+
             firsResult = res?.data!;
+            if (!firsResult) {
+              throw new UnauthorizedError("No business profile found for this FIRS account");
+            }
           } catch (firsError: any) {
             set.status = 401;
             const status =

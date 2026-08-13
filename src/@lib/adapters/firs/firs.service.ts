@@ -131,23 +131,26 @@ export default class FIRSClient extends RestClient {
     return Promise.reject(errorResp);
   }
 
-  public execute = (
+  public execute = async (
     path: string,
     payload: object,
     headers?: { Authorization?: string; verb?: string },
   ) => {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     console.log(this.client.getUri());
+    let response: AxiosResponse;
     if (headers && typeof headers === "object") {
       let verb: string = headers["verb"] || "post";
-      return (this.client as any)[verb || "post"](normalizedPath, payload, {
+      response = await (this.client as any)[verb || "post"](normalizedPath, payload, {
         headers: {
           "Content-Type": "application/json",
           ...headers,
         },
       });
+    } else {
+      response = await this.client.post(normalizedPath, payload);
     }
-    return this.client.post(normalizedPath, payload);
+    return response.data;
   };
 
   public get = async <T>(
@@ -157,16 +160,19 @@ export default class FIRSClient extends RestClient {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     console.log(this.client.getUri(), normalizedPath);
 
+    let response: AxiosResponse<T>;
     if (config?.headers?.Authorization) {
-      return this.client.get(normalizedPath, {
+      response = await this.client.get<T>(normalizedPath, {
         ...config,
         headers: {
           "Content-Type": "application/json",
           ...config.headers,
         },
       });
+    } else {
+      response = await this.client.get<T>(normalizedPath, config);
     }
-    return this.client.get(normalizedPath, config);
+    return response.data;
   };
 }
 
@@ -205,6 +211,10 @@ export class FIRSService {
     // Step 2: Get user information using the access token
     const userInfo = await this.getFIRSUserInfo(authResponse.entity_id);
 
+    console.log({ userInfo });
+
+    console.log(userInfo.code);
+
     if (userInfo) {
       const userData = userInfo.data || userInfo;
       const businesses: FIRSUserInfoBusiness[] = userData.businesses || [];
@@ -233,8 +243,6 @@ export class FIRSService {
       const response = await this.appClient.get<FIRSUserInfo>(
         `/api/v1/entity/${entity_id}`,
       );
-
-      console.log("FIRS User Info Response:", response);
 
       if (response?.code && response.code !== 200) {
         throw new Error(
