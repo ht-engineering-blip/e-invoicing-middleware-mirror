@@ -27,14 +27,23 @@ export const updateCredentialsValidation = {
   }),
   body: t.Object(
     {
-      publicKey: t.String({
-        minLength: 1,
-        example: updateCredentialsExample.publicKey,
-      }),
-      certificate: t.String({
-        minLength: 1,
-        example: updateCredentialsExample.certificate,
-      }),
+      publicKey: t.Optional(
+        t.String({
+          example: updateCredentialsExample.publicKey,
+        }),
+      ),
+      certificate: t.Optional(
+        t.String({
+          example: updateCredentialsExample.certificate,
+        }),
+      ),
+      mock: t.Optional(
+        t.Boolean({
+          description: "If true, populates mock FIRS credentials for testing",
+        }),
+      ),
+      clientId: t.Optional(t.String()),
+      serviceId: t.Optional(t.String()),
     },
     { examples: [updateCredentialsExample] },
   ),

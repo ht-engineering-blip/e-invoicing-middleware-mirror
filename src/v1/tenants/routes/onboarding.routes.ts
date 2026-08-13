@@ -1,42 +1,42 @@
-import { Elysia } from 'elysia';
-import { requireAuth, getActor } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
-import { TenantService } from '../services/tenant.service';
-import { jwtConfig, appConfig } from '../../../@config';
-import * as jwt from 'jsonwebtoken';
-import * as crypto from 'crypto';
-import axios from 'axios';
-import { onlySelf } from '../../auth/utils/access-checks';
-import { WebhookService } from '../../webhook/services/webhook.service';
-import { signWebhookPayload } from '../../webhook';
+import { Elysia } from "elysia";
+import { requireAuth, getActor } from "../../../middlewares/auth";
+import { logger } from "../../../@lib";
+import { TenantService } from "../services/tenant.service";
+import { jwtConfig, appConfig } from "../../../@config";
+import * as jwt from "jsonwebtoken";
+import * as crypto from "crypto";
+import axios from "axios";
+import { onlySelf } from "../../auth/utils/access-checks";
+import { WebhookService } from "../../webhook/services/webhook.service";
+import { signWebhookPayload } from "../../webhook";
 import {
   activateValidation,
   updateCredentialsValidation,
   generateWebhookValidation,
   updateInvoiceIdKeyValidation,
   testWebhookValidation,
-  resendTenantTokenValidation
-} from '../validations/onboarding.validation';
-import { AuthService } from '../../auth/services';
-import { MailContent, withTemplate } from '../../../@lib/messaging';
-import { templateEngine } from '../../../templates/engine';
+  resendTenantTokenValidation,
+} from "../validations/onboarding.validation";
+import { AuthService } from "../../auth/services";
+import { MailContent, withTemplate } from "../../../@lib/messaging";
+import { templateEngine } from "../../../templates/engine";
 
 /**
  * Public Onboarding Routes (no auth required)
  */
 export const publicOnboardingRoutes = new Elysia()
-  .decorate('tenantService', new TenantService())
-  .decorate('webhookService', new WebhookService())
+  .decorate("tenantService", new TenantService())
+  .decorate("webhookService", new WebhookService())
 
   /**
    * GET /tenants/activate/:token
    * Handle activation link click
    */
   .get(
-    '/activate/:token',
+    "/activate/:token",
     async ({ params, tenantService, set }) => {
       try {
-        logger.info('Activation link clicked');
+        logger.info("Activation link clicked");
 
         // Verify JWT token
         const jwtSecret = jwtConfig?.secret as string;
@@ -44,13 +44,13 @@ export const publicOnboardingRoutes = new Elysia()
 
         try {
           decoded = jwt.verify(params.token, jwtSecret, {
-            algorithms: [jwtConfig?.algorithm as jwt.Algorithm || 'HS256']
+            algorithms: [(jwtConfig?.algorithm as jwt.Algorithm) || "HS256"],
           });
         } catch (jwtError: any) {
-          logger.warn('Invalid activation token', { error: jwtError.message });
+          logger.warn("Invalid activation token", { error: jwtError.message });
           return {
             success: false,
-            error: 'Invalid or expired activation link',
+            error: "Invalid or expired activation link",
             statusCode: 400,
           };
         }
@@ -58,7 +58,7 @@ export const publicOnboardingRoutes = new Elysia()
         if (!decoded.tenantId) {
           return {
             success: false,
-            error: 'Invalid activation token',
+            error: "Invalid activation token",
             statusCode: 400,
           };
         }
@@ -68,27 +68,34 @@ export const publicOnboardingRoutes = new Elysia()
 
         // Check if already activated
         if (tenant.password || tenant.metadata?.activationCompleted) {
-          set.status = 400
+          set.status = 400;
           return {
             success: false,
-            error: 'Account has already been activated',
+            error: "Account has already been activated",
             statusCode: 400,
           };
         }
 
         // Verify single active token ID match and expiration using service helpers
-        if (!tenantService.isActivationTokenValid(tenant, decoded.activationTokenId)) {
-          set.status = 400
-          logger.warn('Activation token is invalid or expired (ID mismatch or timeframe expired)', {
-            tenantId: tenant.tenantId,
-            dbTokenId: tenant.metadata?.activationTokenId,
-            decodedTokenId: decoded.activationTokenId,
-            expiresAt: tenantService.getActivationTokenExpiry(tenant),
-          });
+        if (
+          !tenantService.isActivationTokenValid(
+            tenant,
+            decoded.activationTokenId,
+          )
+        ) {
+          set.status = 400;
+          logger.warn(
+            "Activation token is invalid or expired (ID mismatch or timeframe expired)",
+            {
+              tenantId: tenant.tenantId,
+              dbTokenId: tenant.metadata?.activationTokenId,
+              decodedTokenId: decoded.activationTokenId,
+              expiresAt: tenantService.getActivationTokenExpiry(tenant),
+            },
+          );
           return {
-
             success: false,
-            error: 'Invalid or expired activation link',
+            error: "Invalid or expired activation link",
             statusCode: 400,
           };
         }
@@ -98,22 +105,22 @@ export const publicOnboardingRoutes = new Elysia()
           {
             tenantId: tenant.tenantId,
             email: tenant.contactEmail,
-            purpose: 'set-password',
+            purpose: "set-password",
           },
           jwtSecret,
           {
-            expiresIn: '1h',
-            algorithm: (jwtConfig?.algorithm as jwt.Algorithm) || 'HS256'
-          }
+            expiresIn: "1h",
+            algorithm: (jwtConfig?.algorithm as jwt.Algorithm) || "HS256",
+          },
         );
 
         // Return redirect info or token
-        const webAppUrl = appConfig?.webAppURL || 'http://localhost:3000';
+        const webAppUrl = appConfig?.webAppURL || "http://localhost:3000";
         const redirectUrl = `${webAppUrl}/auth/set-password?token=${setPasswordToken}`;
 
         return {
           success: true,
-          message: 'Activation link valid',
+          message: "Activation link valid",
           data: {
             tenantId: tenant.tenantId,
             businessName: tenant.businessName,
@@ -123,15 +130,17 @@ export const publicOnboardingRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        logger.error('Activation link handling failed', { error: error.message });
+        logger.error("Activation link handling failed", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to process activation link',
+          error: error.message || "Failed to process activation link",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    activateValidation
+    activateValidation,
   );
 
 /**
@@ -139,74 +148,110 @@ export const publicOnboardingRoutes = new Elysia()
  */
 export const protectedOnboardingRoutes = new Elysia()
   .use(requireAuth)
-  .decorate('tenantService', new TenantService())
-  .decorate('authService', new AuthService())
-  .decorate('webhookService', new WebhookService())
+  .decorate("tenantService", new TenantService())
+  .decorate("authService", new AuthService())
+  .decorate("webhookService", new WebhookService())
   /**
    * PUT /tenants/:tenantId/credentials
    * Update tenant's public key and certificate
    */
   .put(
-    '/:tenantId/credentials',
+    "/:tenantId/credentials",
     async ({ params, body, auth, tenantService }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        logger.info('Updating tenant credentials', { tenantId: params.tenantId });
+        logger.info("Updating tenant credentials", {
+          tenantId: params.tenantId,
+          mock: body?.mock,
+        });
 
-        // Validate certificate format (basic check)
-        if (body.certificate && !body.certificate.includes('-----BEGIN CERTIFICATE-----')) {
-          return {
-            success: false,
-            error: 'Invalid certificate format. Must be PEM encoded.',
-            statusCode: 400,
-          };
-        }
+        const isMock = Boolean(body?.mock);
 
-        // Validate public key format (basic check)
-        if (body.publicKey && !body.publicKey.includes('-----BEGIN')) {
-          return {
-            success: false,
-            error: 'Invalid public key format. Must be PEM encoded.',
-            statusCode: 400,
-          };
+        let certificate = body?.certificate;
+        let publicKey = body?.publicKey;
+
+        if (isMock) {
+          if (!certificate || !certificate.includes("-----BEGIN CERTIFICATE-----")) {
+            certificate =
+              "-----BEGIN CERTIFICATE-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_CERTIFICATE_PEM\n-----END CERTIFICATE-----";
+          }
+          if (!publicKey || !publicKey.includes("-----BEGIN")) {
+            publicKey =
+              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_PUBLIC_KEY_PEM\n-----END PUBLIC KEY-----";
+          }
+        } else {
+          // Validate certificate format (basic check)
+          if (
+            certificate &&
+            !certificate.includes("-----BEGIN CERTIFICATE-----")
+          ) {
+            return {
+              success: false,
+              error: "Invalid certificate format. Must be PEM encoded.",
+              statusCode: 400,
+            };
+          }
+
+          // Validate public key format (basic check)
+          if (publicKey && !publicKey.includes("-----BEGIN")) {
+            return {
+              success: false,
+              error: "Invalid public key format. Must be PEM encoded.",
+              statusCode: 400,
+            };
+          }
         }
 
         // Update credentials
-        const updatedTenant = await tenantService.updateFIRSCredentials(params.tenantId, {
-          certificate: body.certificate,
-          publicKey: body.publicKey,
-        }, getActor(auth));
+        const updatedTenant = await tenantService.updateFIRSCredentials(
+          params.tenantId,
+          {
+            certificate,
+            publicKey,
+            clientId: body?.clientId || (isMock ? "a6de8bd8-43be-47b9-80a5-988ee3fb9cea" : undefined),
+            serviceId: body?.serviceId || (isMock ? "34A843BE" : undefined),
+          },
+          getActor(auth),
+        );
 
         // Update onboarding step if not already completed
         try {
-          const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
+          const onboarding = await tenantService.getOnboardingStatus(
+            params.tenantId,
+          );
           if (onboarding && !onboarding.steps?.firsProvisioning?.completed) {
-            await tenantService.completeOnboardingStep(params.tenantId, 'firsProvisioning', getActor(auth));
+            await tenantService.completeOnboardingStep(
+              params.tenantId,
+              "firsProvisioning",
+              getActor(auth),
+            );
           }
         } catch (onboardingError) {
-          logger.warn('Failed to update onboarding step', { error: onboardingError });
+          logger.warn("Failed to update onboarding step", {
+            error: onboardingError,
+          });
         }
 
         return {
           success: true,
-          message: 'Credentials updated successfully',
+          message: "Credentials updated successfully",
           data: {
             tenantId: updatedTenant.tenantId,
             hasCredentials: true,
           },
         };
       } catch (error: any) {
-        logger.error('Failed to update credentials', { error: error.message });
+        logger.error("Failed to update credentials", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Failed to update credentials',
+          error: error.message || "Failed to update credentials",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    updateCredentialsValidation
+    updateCredentialsValidation,
   )
 
   /**
@@ -214,20 +259,20 @@ export const protectedOnboardingRoutes = new Elysia()
    * Generate webhook URL for tenant
    */
   .post(
-    '/:tenantId/webhook/generate',
+    "/:tenantId/webhook/generate",
     async ({ params, body, auth, tenantService, webhookService }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        logger.info('Generating webhook URL', { tenantId: params.tenantId });
+        logger.info("Generating webhook URL", { tenantId: params.tenantId });
 
         // Generate unique webhook path
-        const webhookPath = crypto.randomBytes(16).toString('hex');
-        const webhookSecret = crypto.randomBytes(32).toString('hex');
+        const webhookPath = crypto.randomBytes(16).toString("hex");
+        const webhookSecret = crypto.randomBytes(32).toString("hex");
 
         // Build webhook URL
-        const baseUrl = appConfig?.apiBaseURL || 'http://localhost:3000';
+        const baseUrl = appConfig?.apiBaseURL || "http://localhost:3000";
         const webhookUrl = `${baseUrl}/v1/webhook/inbound/${webhookPath}`;
 
         // Load current tenant to merge existing config
@@ -236,67 +281,90 @@ export const protectedOnboardingRoutes = new Elysia()
         // Persist invoiceIdKey if provided; otherwise keep existing value
         const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
 
-        await tenantService.updateTenant(params.tenantId, {
-          webhookUrl,
-          webhookEnabled: true,
-          config: {
-            ...tenant.config,
-            invoiceIdKey,
-          },
-          metadata: {
-            ...tenant.metadata,
+        await tenantService.updateTenant(
+          params.tenantId,
+          {
             webhookUrl,
-            webhookPath,
-            webhookSecretHash: crypto.createHash('sha256').update(webhookSecret).digest('hex'),
+            webhookEnabled: true,
+            config: {
+              ...tenant.config,
+              invoiceIdKey,
+            },
+            metadata: {
+              ...tenant.metadata,
+              webhookUrl,
+              webhookPath,
+              webhookSecretHash: crypto
+                .createHash("sha256")
+                .update(webhookSecret)
+                .digest("hex"),
+            },
           },
-        } as any, getActor(auth));
+          getActor(auth),
+        );
 
-        await webhookService.configureWebhook({ enabled: true, tenantId: params.tenantId, webhookUrl, webhookSecret })
+        await webhookService.configureWebhook({
+          enabled: true,
+          tenantId: params.tenantId,
+          webhookUrl,
+          webhookSecret,
+        });
 
         // Update onboarding step
         try {
-          const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
+          const onboarding = await tenantService.getOnboardingStatus(
+            params.tenantId,
+          );
           if (onboarding && !onboarding.steps?.erpConfiguration?.completed) {
-            await tenantService.completeOnboardingStep(params.tenantId, 'erpConfiguration', getActor(auth));
+            await tenantService.completeOnboardingStep(
+              params.tenantId,
+              "erpConfiguration",
+              getActor(auth),
+            );
           }
         } catch (onboardingError) {
-          logger.warn('Failed to update onboarding step erpConfiguration', { error: onboardingError });
+          logger.warn("Failed to update onboarding step erpConfiguration", {
+            error: onboardingError,
+          });
         }
 
         return {
           success: true,
-          message: 'Webhook URL generated successfully',
+          message: "Webhook URL generated successfully",
           data: {
             webhookUrl,
             webhookSecret, // Only shown once
             webhookPath,
             invoiceIdKey: invoiceIdKey ?? null,
-            instructions: 'Save the webhook secret securely. It will not be shown again.',
+            instructions:
+              "Save the webhook secret securely. It will not be shown again.",
           },
         };
       } catch (error: any) {
-        logger.error('Failed to generate webhook URL', { error: error.message });
+        logger.error("Failed to generate webhook URL", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to generate webhook URL',
+          error: error.message || "Failed to generate webhook URL",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    generateWebhookValidation
+    generateWebhookValidation,
   )
   /**
    * PUT /tenants/:tenantId/invoice-id-key
    * Update Invoice ID Key for tenant
    */
   .put(
-    '/:tenantId/invoice-id-key',
+    "/:tenantId/invoice-id-key",
     async ({ params, body, auth, tenantService, webhookService }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        logger.info('Updating Invoice ID Key', { tenantId: params.tenantId });
+        logger.info("Updating Invoice ID Key", { tenantId: params.tenantId });
 
         // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
@@ -304,32 +372,36 @@ export const protectedOnboardingRoutes = new Elysia()
         // Persist invoiceIdKey if provided; otherwise keep existing value
         const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
 
-
-        await tenantService.updateTenant(params.tenantId, {
-          config: {
-            ...tenant.config,
-            invoiceIdKey,
-          }
-        } as any, getActor(auth));
-
+        await tenantService.updateTenant(
+          params.tenantId,
+          {
+            config: {
+              ...tenant.config,
+              invoiceIdKey,
+            },
+          } as any,
+          getActor(auth),
+        );
 
         return {
           success: true,
-          message: 'Invoice ID Key updated successfully',
+          message: "Invoice ID Key updated successfully",
           data: {
             invoiceIdKey: invoiceIdKey ?? null,
           },
         };
       } catch (error: any) {
-        logger.error('Failed to update invoice id key', { error: error.message });
+        logger.error("Failed to update invoice id key", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to update invoice id key',
+          error: error.message || "Failed to update invoice id key",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    updateInvoiceIdKeyValidation
+    updateInvoiceIdKeyValidation,
   )
 
   /**
@@ -337,20 +409,20 @@ export const protectedOnboardingRoutes = new Elysia()
    * Test webhook connectivity
    */
   .post(
-    '/:tenantId/webhook/test',
+    "/:tenantId/webhook/test",
     async ({ params, body, auth, tenantService }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        logger.info('Testing webhook', { tenantId: params.tenantId });
+        logger.info("Testing webhook", { tenantId: params.tenantId });
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
         if (!tenant.metadata?.webhookUrl) {
           return {
             success: false,
-            error: 'Webhook URL not configured. Generate one first.',
+            error: "Webhook URL not configured. Generate one first.",
             statusCode: 400,
           };
         }
@@ -359,25 +431,29 @@ export const protectedOnboardingRoutes = new Elysia()
         if (!secret) {
           return {
             success: false,
-            error: 'Webhook secret not configured for this tenant. Generate one first.',
+            error:
+              "Webhook secret not configured for this tenant. Generate one first.",
             statusCode: 400,
           };
         }
 
         // Create test payload
         const testPayload = body?.testPayload || {
-          event: 'webhook.test',
+          event: "webhook.test",
           tenantId: params.tenantId,
           timestamp: new Date().toISOString(),
           data: {
-            message: 'This is a test webhook from E-Invoicing Platform',
-            irn: 'TEST-IRN-' + Date.now(),
+            message: "This is a test webhook from E-Invoicing Platform",
+            irn: "TEST-IRN-" + Date.now(),
           },
         };
 
         // Generate signature for the payload using both formats for backward compatibility
         const payloadString = JSON.stringify(testPayload);
-        const legacySignature = crypto.createHmac("sha256", secret).update(payloadString).digest("hex");
+        const legacySignature = crypto
+          .createHmac("sha256", secret)
+          .update(payloadString)
+          .digest("hex");
         const now = Math.floor(Date.now() / 1000);
         const signature = signWebhookPayload(secret, now, payloadString);
 
@@ -392,15 +468,19 @@ export const protectedOnboardingRoutes = new Elysia()
         const startTime = Date.now();
 
         try {
-          const response = await axios.post(tenant.metadata.webhookUrl, testPayload, {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Webhook-Key': legacySignature,
-              'X-Webhook-Signature': `t=${now},v1=${signature}`,
-              'X-Webhook-Event': 'webhook.test',
+          const response = await axios.post(
+            tenant.metadata.webhookUrl,
+            testPayload,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "X-Webhook-Key": legacySignature,
+                "X-Webhook-Signature": `t=${now},v1=${signature}`,
+                "X-Webhook-Event": "webhook.test",
+              },
+              timeout: 10000, // 10 second timeout
             },
-            timeout: 10000, // 10 second timeout
-          });
+          );
 
           testResult = {
             success: true,
@@ -409,7 +489,7 @@ export const protectedOnboardingRoutes = new Elysia()
             response: response.data,
           };
         } catch (webhookError: any) {
-          console.log({ webhookError })
+          console.log({ webhookError });
           testResult = {
             success: false,
             statusCode: webhookError.response?.status || 0,
@@ -421,18 +501,28 @@ export const protectedOnboardingRoutes = new Elysia()
         // Update onboarding step if test was successful
         if (testResult.success) {
           try {
-            const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
+            const onboarding = await tenantService.getOnboardingStatus(
+              params.tenantId,
+            );
             if (onboarding && !onboarding.steps?.testing?.completed) {
-              await tenantService.completeOnboardingStep(params.tenantId, 'testing', getActor(auth));
+              await tenantService.completeOnboardingStep(
+                params.tenantId,
+                "testing",
+                getActor(auth),
+              );
             }
           } catch (onboardingError) {
-            logger.warn('Failed to update onboarding step', { error: onboardingError });
+            logger.warn("Failed to update onboarding step", {
+              error: onboardingError,
+            });
           }
         }
 
         return {
           success: true,
-          message: testResult.success ? 'Webhook test successful' : 'Webhook test failed',
+          message: testResult.success
+            ? "Webhook test successful"
+            : "Webhook test failed",
           data: {
             webhookUrl: tenant.metadata.webhookUrl,
             testResult,
@@ -440,25 +530,27 @@ export const protectedOnboardingRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        logger.error('Failed to test webhook', { error: error.message });
+        logger.error("Failed to test webhook", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Failed to test webhook',
+          error: error.message || "Failed to test webhook",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    testWebhookValidation
+    testWebhookValidation,
   )
 
   .post(
-    '/resend/token/:tenantId',
+    "/resend/token/:tenantId",
     async ({ params, auth, tenantService, set, authService }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        logger.info('Resending activation email', { tenantId: params.tenantId });
+        logger.info("Resending activation email", {
+          tenantId: params.tenantId,
+        });
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
@@ -466,7 +558,7 @@ export const protectedOnboardingRoutes = new Elysia()
           set.status = 404;
           return {
             success: false,
-            error: 'Tenant not found',
+            error: "Tenant not found",
             statusCode: 404,
           };
         }
@@ -476,14 +568,14 @@ export const protectedOnboardingRoutes = new Elysia()
           set.status = 400;
           return {
             success: false,
-            error: 'Account has already been activated',
+            error: "Account has already been activated",
             statusCode: 400,
           };
         }
 
         // Check if previous token is still in timeframe and disable/invalidate it using service helper
         if (tenantService.isActivationTokenInTimeframe(tenant)) {
-          logger.info('Disabling previous activation token', {
+          logger.info("Disabling previous activation token", {
             tenantId: tenant.tenantId,
             tokenId: tenant.metadata?.activationTokenId,
           });
@@ -492,7 +584,9 @@ export const protectedOnboardingRoutes = new Elysia()
 
         // Generate new activation token and timeframe
         const activationTokenId = crypto.randomUUID();
-        const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours
+        const activationTokenExpiresAt = new Date(
+          Date.now() + 12 * 60 * 60 * 1000,
+        ); // 12 hours
 
         const metadata = {
           ...tenant.metadata,
@@ -500,34 +594,45 @@ export const protectedOnboardingRoutes = new Elysia()
           activationTokenExpiresAt,
         };
 
-        await tenantService.updateTenant(tenant.tenantId, { metadata }, getActor(auth));
+        await tenantService.updateTenant(
+          tenant.tenantId,
+          { metadata },
+          getActor(auth),
+        );
 
         // Resend activation email with new token ID
-        let activationToken = await authService.createAuthToken({
-          ...tenant.toObject(),
-          activationTokenId,
-        } as any, "12HRS")
+        let activationToken = await authService.createAuthToken(
+          {
+            ...tenant.toObject(),
+            activationTokenId,
+          } as any,
+          "12HRS",
+        );
 
         let activationLink = `${appConfig?.webAppURL}/auth/activate?_u=${activationToken}`;
         let activationEmail: MailContent = {
-          subject: 'Welcome to HT Invoicing',
-          html: withTemplate(templateEngine.render('newTenants', { activationLink })),
-        }
-        await tenantService.notifyTenant(activationEmail, tenant)
+          subject: "Welcome to HT Invoicing",
+          html: withTemplate(
+            templateEngine.render("newTenants", { activationLink }),
+          ),
+        };
+        await tenantService.notifyTenant(activationEmail, tenant);
 
         return {
           success: true,
-          message: 'Activation email resent successfully',
+          message: "Activation email resent successfully",
         };
       } catch (error: any) {
         set.status = error.statusCode || 500;
-        logger.error('Failed to resend activation email', { error: error.message });
+        logger.error("Failed to resend activation email", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to resend activation email',
+          error: error.message || "Failed to resend activation email",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    resendTenantTokenValidation
+    resendTenantTokenValidation,
   );

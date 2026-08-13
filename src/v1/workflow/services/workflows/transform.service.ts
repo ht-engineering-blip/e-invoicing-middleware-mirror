@@ -1,5 +1,4 @@
-import { aiConfig, firsConfig } from "../../../../@config";
-import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import { aiConfig } from "../../../../@config";
 import { AuthContext } from "../../../../middlewares";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import {
@@ -9,8 +8,8 @@ import {
   SchemaStatus,
 } from "../../models";
 import {
-  InvoiceSchemaDictionaryRepository,
   CreateSchemaDictionaryInput,
+  InvoiceSchemaDictionaryRepository,
   UpdateSchemaDictionaryInput,
 } from "../../repos/invoice-schema-dictionary.repo";
 import { FIRSInvoiceTransformer } from "../../utils/transformer";
@@ -62,7 +61,7 @@ export class TransformWorkflowService {
       authContext,
       sourceType,
     );
-    console.log({ result });
+
     if (result?.success) {
       // Data is valid and ready to send to FIRS
       const parsedData = JSON.parse(JSON.stringify(result.data)); // Valid JSON
@@ -192,8 +191,8 @@ export class TransformWorkflowService {
   ): Promise<InvoiceSchemaDictionaryDocument> => {
     // Normalize ERP type to uppercase
     let normalizedErp = erpType.toUpperCase().replace(/[-\s]/g, "_");
-    const sourceType =
-      (SchemaSourceType as any)[normalizedErp] || normalizedErp;
+    const key = normalizedErp as keyof typeof SchemaSourceType;
+    const sourceType = SchemaSourceType[key] || normalizedErp;
 
     return this.upsertInvoiceSchema(sourceType, {
       schema_id: `${normalizedErp}_INVOICE_SCHEMA`,
