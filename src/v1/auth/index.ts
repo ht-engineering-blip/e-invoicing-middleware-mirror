@@ -181,28 +181,27 @@ const authRoutes = new Elysia()
           mock: body.mock,
         });
 
-        let firsResult: { data: FIRSUserInfoBusiness };
+        let firsResult: FIRSUserInfoBusiness;
 
         // Mock response for testing
         if (body.mock) {
           firsResult = {
-            data: {
-              id: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
-              reference: "enim-itaque",
-              name: "Test Business Ltd",
-              tin: "61392352-1056",
-              sector: "Technology",
-              annual_turnover: "above 100million",
-              support_peppol: true,
-              is_realtime_reporting: true,
-              notification_channels: "email",
-              erp_system: "SAP",
-              irn_template: "{{invoice_id}}-34A843BE-{{YYYYMMDD}}",
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
+            id: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+            reference: "enim-itaque",
+            name: "Test Business Ltd",
+            tin: "61392352-1056",
+            sector: "Technology",
+            annual_turnover: "above 100million",
+            support_peppol: true,
+            is_realtime_reporting: true,
+            notification_channels: "email",
+            erp_system: "SAP",
+            irn_template: "{{invoice_id}}-34A843BE-{{YYYYMMDD}}",
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           };
+          return firsResult;
         } else {
           // FIRS OAuth call
           let credentials = {
@@ -210,9 +209,8 @@ const authRoutes = new Elysia()
             password: body.password,
           };
           try {
-            firsResult = (await firsService.authenticate(credentials)) as {
-              data: FIRSUserInfoBusiness;
-            };
+            const res = await firsService.authenticate(credentials);
+            firsResult = res?.data!;
           } catch (firsError: any) {
             set.status = 401;
             logger.error("FIRS API error", {
@@ -228,22 +226,22 @@ const authRoutes = new Elysia()
         }
 
         logger.info("FIRS OAuth successful", {
-          businessName: firsResult.data.name,
-          tin: firsResult.data.tin,
+          businessName: firsResult.name,
+          tin: firsResult.tin,
         });
 
         // Find tenant by TIN or email
         const tenant = await tenantService.getTenantByTinOrEmail(
-          firsResult.data.tin,
+          firsResult.tin,
         );
 
         // Update FIRS credentials if tenant exists
         if (tenant) {
           try {
             // Get service id from irn template
-            let serviceId = firsResult.data.irn_template.split("-")[1];
+            let serviceId = firsResult.irn_template.split("-")[1];
             const credentials = {
-              clientId: firsResult.data.id,
+              clientId: firsResult.id,
               serviceId,
             };
 
@@ -254,7 +252,7 @@ const authRoutes = new Elysia()
 
             // Update tenant metadata with FIRS info
             await tenantService.updateTenant(tenant.tenantId, {
-              businessName: firsResult.data.name,
+              businessName: firsResult.name,
             });
 
             logger.info("FIRS credentials updated for existing tenant", {
@@ -277,7 +275,7 @@ const authRoutes = new Elysia()
         // Generate JWT token
         const tokenPayload = {
           tenantId: tenant.tenantId,
-          businessId: firsResult.data.id,
+          businessId: firsResult.id,
           email: tenant.contactEmail,
           businessName: tenant.businessName,
           type: "tenant",
@@ -297,13 +295,13 @@ const authRoutes = new Elysia()
           message: "FIRS authentication successful",
           data: {
             business: {
-              id: firsResult.data.id,
-              name: firsResult.data.name,
-              tin: firsResult.data.tin,
-              sector: firsResult.data.sector,
-              erpSystem: firsResult.data.erp_system,
-              irnTemplate: firsResult.data.irn_template,
-              isActive: firsResult.data.is_active,
+              id: firsResult.id,
+              name: firsResult.name,
+              tin: firsResult.tin,
+              sector: firsResult.sector,
+              erpSystem: firsResult.erp_system,
+              irnTemplate: firsResult.irn_template,
+              isActive: firsResult.is_active,
             },
             token,
             tenantExists: !!tenant,
