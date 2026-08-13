@@ -194,8 +194,6 @@ export class FIRSService {
       credentials,
     );
 
-    console.log({ response });
-
     if (response.code !== 200) {
       throw new Error(
         `FIRS authentication failed with status: ${response.code}`,
