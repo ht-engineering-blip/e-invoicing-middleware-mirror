@@ -205,15 +205,21 @@ export class FIRSService {
     let authResponse = response.data;
 
     // Step 2: Get user information using the access token
-    const userInfo: FIRSUserInfo = await this.getFIRSUserInfo(
-      authResponse.entity_id,
-    );
+    const userInfo = await this.getFIRSUserInfo(authResponse.entity_id);
 
     if (userInfo) {
-      let business = userInfo.data.businesses.find(
-        (business: FIRSUserInfoBusiness) =>
-          business.id === userInfo.data.reference,
+      const userData = userInfo.data || userInfo;
+      const businesses: FIRSUserInfoBusiness[] = userData.businesses || [];
+      const reference = userData.reference;
+
+      let business = businesses.find(
+        (b: FIRSUserInfoBusiness) =>
+          b.id === reference || b.reference === reference,
       ) as FIRSUserInfoBusiness;
+
+      if (!business && businesses.length > 0) {
+        business = businesses[0];
+      }
 
       return {
         data: business,
@@ -230,7 +236,9 @@ export class FIRSService {
         `/api/v1/entity/${entity_id}`,
       );
 
-      if (response.code !== 200) {
+      console.log("FIRS User Info Response:", response);
+
+      if (response?.code && response.code !== 200) {
         throw new Error(
           `Failed to get FIRS user info with status: ${response.code}`,
         );
