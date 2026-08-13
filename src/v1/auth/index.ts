@@ -213,15 +213,19 @@ const authRoutes = new Elysia()
             firsResult = res?.data!;
           } catch (firsError: any) {
             set.status = 401;
+            const status =
+              firsError.statusCode ||
+              firsError.response?.status ||
+              firsError.response?.data?.code;
+            const message =
+              firsError.message ||
+              firsError.response?.data?.message ||
+              "FIRS authentication failed";
             logger.error("FIRS API error", {
-              status: firsError.message.response?.data?.code,
-              message: firsError.message.response?.data?.data?.message,
+              status,
+              message,
             });
-            throw new UnauthorizedError(
-              firsError.message.response?.data?.data?.message ||
-                firsError.response?.data?.message ||
-                "FIRS authentication failed",
-            );
+            throw new UnauthorizedError(message);
           }
         }
 
