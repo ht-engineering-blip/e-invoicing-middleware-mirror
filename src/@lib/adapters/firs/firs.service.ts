@@ -115,17 +115,16 @@ export default class FIRSClient extends RestClient {
   }
 
   _handleError(error: AxiosError<any>) {
-    // {
-    //   status: error.response?.status,
-    //   url: error.config?.url,
-    //   message: error.message
-    // }
     let foundError = error?.response?.data?.error;
     console.log("Resp error:", { foundError, error });
+
+    const errorMessage = foundError?.public_message
+      ? `${foundError.public_message}${foundError.details ? ` - ${foundError.details}` : ""}`
+      : HandleErrorResponse(error);
+
     const errorResp = new AppError(
-      error?.response?.data?.code || error?.response?.status,
-      foundError?.public_message + " - " + foundError?.details ||
-        HandleErrorResponse(error),
+      error?.response?.data?.code || error?.response?.status || 500,
+      errorMessage,
       error,
     );
 
@@ -137,27 +136,29 @@ export default class FIRSClient extends RestClient {
     payload: object,
     headers?: { Authorization?: string; verb?: string },
   ) => {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
     console.log(this.client.getUri());
     if (headers && typeof headers === "object") {
       let verb: string = headers["verb"] || "post";
-      return (this.client as any)[verb || "post"](`${path}`, payload, {
+      return (this.client as any)[verb || "post"](normalizedPath, payload, {
         headers: {
           "Content-Type": "application/json",
           ...headers,
         },
       });
     }
-    return this.client.post(`/${path}`, payload);
+    return this.client.post(normalizedPath, payload);
   };
 
   public get = async <T>(
     path: string,
     config?: AxiosRequestConfig,
   ): Promise<T> => {
-    console.log(this.client.getUri(), path);
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    console.log(this.client.getUri(), normalizedPath);
 
     if (config?.headers?.Authorization) {
-      return this.client.get(`${path}`, {
+      return this.client.get(normalizedPath, {
         ...config,
         headers: {
           "Content-Type": "application/json",
@@ -165,7 +166,7 @@ export default class FIRSClient extends RestClient {
         },
       });
     }
-    return this.client.get(`/${path}`, config);
+    return this.client.get(normalizedPath, config);
   };
 }
 
