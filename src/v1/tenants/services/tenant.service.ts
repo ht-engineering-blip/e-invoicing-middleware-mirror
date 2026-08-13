@@ -3,9 +3,9 @@
  * Business logic for tenant lifecycle management
  */
 
+import crypto from "crypto";
 import { appConfig } from "../../../@config";
 import { BaseService, logger } from "../../../@lib";
-import crypto from "crypto";
 import {
   decryptSensitiveData,
   encryptSensitiveData,
@@ -13,16 +13,12 @@ import {
 import {
   ConflictError,
   NotFoundError,
-  ValidationError
+  ValidationError,
 } from "../../../@lib/errors";
-import {
-  MailContent,
-  withTemplate
-} from "../../../@lib/messaging";
+import { MailContent, withTemplate } from "../../../@lib/messaging";
 import { templateEngine } from "../../../templates/engine";
 import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import {
-  ApiKeyDocument,
   ApiKeyStatus,
   OnboardingStatus,
   type TenantDocument,
@@ -32,6 +28,7 @@ import {
 import { ApiKeyRepository } from "../repos/api-key.repo";
 import { TenantOnboardingRepository } from "../repos/tenant-onboarding.repo";
 import { TenantRepository } from "../repos/tenant.repo";
+import { T } from "@faker-js/faker/dist/index-BSUsvzGS";
 
 export interface ApiKeyDTO {
   keyId: string;
@@ -71,7 +68,10 @@ export class TenantService extends BaseService {
   /**
    * Create a new tenant
    */
-  async createTenant(input: CreateTenantInput, actor?: any): Promise<TenantDocument> {
+  async createTenant(
+    input: CreateTenantInput,
+    actor?: any,
+  ): Promise<TenantDocument> {
     // Check if TIN already exists
     const existingTenant = await this.tenantRepo.findByTIN(input.tin);
     if (existingTenant) {
@@ -155,7 +155,7 @@ export class TenantService extends BaseService {
   async getTenantById(
     tenantId: string,
     includeOnboarding: boolean = false,
-  ): Promise<TenantDocument & { onboarding?: any }> {
+  ): Promise<TenantDocument & { onboarding?: TenantOnboardingDocument }> {
     const tenant = await this.tenantRepo.findOne({
       tenantId: { _eq: tenantId },
     });
@@ -166,7 +166,7 @@ export class TenantService extends BaseService {
     if (includeOnboarding) {
       try {
         const onboarding = await this.onboardingRepo.findByTenantId(tenantId);
-        return { ...tenant.toObject(), onboarding } as any;
+        return { ...tenant.toObject(), onboarding };
       } catch (error) {
         // If onboarding not found, return tenant without it
         return tenant;
@@ -182,7 +182,7 @@ export class TenantService extends BaseService {
   async getTenantByEmail(
     contactEmail: string,
     includeOnboarding: boolean = false,
-    includeSensitive: boolean = false
+    includeSensitive: boolean = false,
   ): Promise<TenantDocument & { onboarding?: any }> {
     const tenant = await this.tenantRepo.findOne({
       contactEmail: { _iexact: contactEmail },
@@ -191,7 +191,7 @@ export class TenantService extends BaseService {
       throw new NotFoundError("Tenant");
     }
 
-    if (includeSensitive) return tenant
+    if (includeSensitive) return tenant;
 
     if (includeOnboarding) {
       try {
@@ -249,7 +249,7 @@ export class TenantService extends BaseService {
             const onboarding = await this.onboardingRepo.findByTenantId(
               tenant.tenantId,
             );
-            return { ...tenant.toObject(), onboarding } as any;
+            return { ...tenant.toObject(), onboarding };
           } catch (error) {
             // If onboarding not found, return tenant without it
             return tenant;
@@ -282,7 +282,8 @@ export class TenantService extends BaseService {
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
     if (input.webhookEnabled !== undefined)
       updateData.webhookEnabled = input.webhookEnabled;
-    if (input.passwordChangedAt) updateData.passwordChangedAt = input.passwordChangedAt;
+    if (input.passwordChangedAt)
+      updateData.passwordChangedAt = input.passwordChangedAt;
 
     // Encrypt ERP API key if provided
     if (input.erpApiKey) {
@@ -671,16 +672,20 @@ export class TenantService extends BaseService {
     );
 
     // Create new key with same name and scopes
-    const { apiKey: newApiKey, plainKey } = await this.createApiKey(tenantId, {
-      name: oldApiKey.name,
-      scopes: oldApiKey.scopes,
-      expiresInDays: oldApiKey.expiresAt
-        ? Math.ceil(
-          (oldApiKey.expiresAt.getTime() - Date.now()) /
-          (24 * 60 * 60 * 1000),
-        )
-        : undefined,
-    }, actor);
+    const { apiKey: newApiKey, plainKey } = await this.createApiKey(
+      tenantId,
+      {
+        name: oldApiKey.name,
+        scopes: oldApiKey.scopes,
+        expiresInDays: oldApiKey.expiresAt
+          ? Math.ceil(
+              (oldApiKey.expiresAt.getTime() - Date.now()) /
+                (24 * 60 * 60 * 1000),
+            )
+          : undefined,
+      },
+      actor,
+    );
 
     // Send email notification if requested
     if (options?.sendEmail !== false) {
@@ -696,7 +701,9 @@ export class TenantService extends BaseService {
               newKeyName: newApiKey.name,
               newKeyPrefix: newApiKey.keyPrefix,
               created: new Date().toLocaleString(),
-              expires: newApiKey.expiresAt ? newApiKey.expiresAt.toLocaleString() : undefined,
+              expires: newApiKey.expiresAt
+                ? newApiKey.expiresAt.toLocaleString()
+                : undefined,
               reason: options?.reason,
             }),
           ),
@@ -870,7 +877,11 @@ export class TenantService extends BaseService {
   /**
    * Reject onboarding
    */
-  async rejectOnboarding(tenantId: string, reason: string, actor?: any): Promise<void> {
+  async rejectOnboarding(
+    tenantId: string,
+    reason: string,
+    actor?: any,
+  ): Promise<void> {
     const tenant = await this.getTenantById(tenantId);
     const onboarding = await this.onboardingRepo.findByTenantId(
       tenant.tenantId,
@@ -911,14 +922,14 @@ export class TenantService extends BaseService {
     if (config.baseUrl) {
       if (!(await this.isSafeUrl(config.baseUrl))) {
         throw new ValidationError(
-          `ERP Sync baseUrl is blocked by SSRF guard: ${config.baseUrl}`
+          `ERP Sync baseUrl is blocked by SSRF guard: ${config.baseUrl}`,
         );
       }
     }
-    if (config.endpoint && config.endpoint.startsWith('http')) {
+    if (config.endpoint && config.endpoint.startsWith("http")) {
       if (!(await this.isSafeUrl(config.endpoint))) {
         throw new ValidationError(
-          `ERP Sync endpoint is blocked by SSRF guard: ${config.endpoint}`
+          `ERP Sync endpoint is blocked by SSRF guard: ${config.endpoint}`,
         );
       }
     }
@@ -1075,17 +1086,17 @@ export class TenantService extends BaseService {
           erpSystem: config?.erpSystem,
           erpSyncConfig: erpSyncConfig
             ? {
-              name: erpSyncConfig.name,
-              description: erpSyncConfig.description,
-              enabled: erpSyncConfig.enabled,
-              method: erpSyncConfig.method,
-              baseUrl: erpSyncConfig.baseUrl,
-              endpoint: erpSyncConfig.endpoint,
-              authenticationType: erpSyncConfig.authentication?.type,
-              hasAuthentication: !!erpSyncConfig.authentication,
-              timeout: erpSyncConfig.timeout,
-              retryEnabled: erpSyncConfig.retryConfig?.enabled,
-            }
+                name: erpSyncConfig.name,
+                description: erpSyncConfig.description,
+                enabled: erpSyncConfig.enabled,
+                method: erpSyncConfig.method,
+                baseUrl: erpSyncConfig.baseUrl,
+                endpoint: erpSyncConfig.endpoint,
+                authenticationType: erpSyncConfig.authentication?.type,
+                hasAuthentication: !!erpSyncConfig.authentication,
+                timeout: erpSyncConfig.timeout,
+                retryEnabled: erpSyncConfig.retryConfig?.enabled,
+              }
             : null,
           configuredAt: tenant.updatedAt,
         };
