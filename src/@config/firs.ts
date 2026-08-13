@@ -8,6 +8,16 @@ const firsConfigSchema = z.object({
   appApiKey: z.string().optional(),
   appApiSecret: z.string().optional(),
   rejectUnauthorized: z.boolean().default(false),
+  mockCertificate: z
+    .string()
+    .default(
+      "-----BEGIN CERTIFICATE-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_CERTIFICATE_PEM\n-----END CERTIFICATE-----",
+    ),
+  mockPublicKey: z
+    .string()
+    .default(
+      "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_PUBLIC_KEY_PEM\n-----END PUBLIC KEY-----",
+    ),
 
   timeout: z.coerce.number().int().positive().default(30000),
   retryAttempts: z.number().int().nonnegative().default(3),
@@ -23,6 +33,8 @@ const parseFirsConfig = () => {
       appApiKey: process.env.FIRS_APP_API_KEY,
       appApiSecret: process.env.FIRS_APP_API_SECRET,
       rejectUnauthorized: process.env.FIRS_REJECT_UNAUTHORIZED === 'true',
+      mockCertificate: process.env.FIRS_MOCK_CERTIFICATE,
+      mockPublicKey: process.env.FIRS_MOCK_PUBLIC_KEY,
 
       timeout: process.env.FIRS_TIMEOUT,
       retryAttempts: process.env.FIRS_RETRY_ATTEMPTS

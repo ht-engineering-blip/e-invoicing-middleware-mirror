@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import { requireAuth, getActor } from "../../../middlewares/auth";
 import { logger } from "../../../@lib";
 import { TenantService } from "../services/tenant.service";
-import { jwtConfig, appConfig } from "../../../@config";
+import { jwtConfig, appConfig, firsConfig } from "../../../@config";
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -173,13 +173,14 @@ export const protectedOnboardingRoutes = new Elysia()
         let publicKey = body?.publicKey;
 
         if (isMock) {
-          if (!certificate || !certificate.includes("-----BEGIN CERTIFICATE-----")) {
-            certificate =
-              "-----BEGIN CERTIFICATE-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_CERTIFICATE_PEM\n-----END CERTIFICATE-----";
+          if (
+            !certificate ||
+            !certificate.includes("-----BEGIN CERTIFICATE-----")
+          ) {
+            certificate = firsConfig?.mockCertificate;
           }
           if (!publicKey || !publicKey.includes("-----BEGIN")) {
-            publicKey =
-              "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuMOCK_FIRS_PUBLIC_KEY_PEM\n-----END PUBLIC KEY-----";
+            publicKey = firsConfig?.mockPublicKey;
           }
         } else {
           // Validate certificate format (basic check)
