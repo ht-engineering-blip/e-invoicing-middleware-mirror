@@ -182,27 +182,6 @@ export const protectedOnboardingRoutes = new Elysia()
           if (!publicKey || !publicKey.includes("-----BEGIN")) {
             publicKey = firsConfig?.mockPublicKey;
           }
-        } else {
-          // Validate certificate format (basic check)
-          if (
-            certificate &&
-            !certificate.includes("-----BEGIN CERTIFICATE-----")
-          ) {
-            return {
-              success: false,
-              error: "Invalid certificate format. Must be PEM encoded.",
-              statusCode: 400,
-            };
-          }
-
-          // Validate public key format (basic check)
-          if (publicKey && !publicKey.includes("-----BEGIN")) {
-            return {
-              success: false,
-              error: "Invalid public key format. Must be PEM encoded.",
-              statusCode: 400,
-            };
-          }
         }
 
         // Update credentials
