@@ -3,6 +3,7 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from "axios";
+import https from "node:https";
 import { decryptInvoice } from "firs-einvoicing";
 import { AppError, HandleErrorResponse, RestClient } from "../rest";
 import { generateQRCode } from "./generateQR";
@@ -88,13 +89,18 @@ export interface VATPostPaymentReportData {
 
 export default class FIRSClient extends RestClient {
   constructor(apiKey?: string, apiSecret?: string) {
+    const rejectUnauthorized = firsConfig?.rejectUnauthorized ?? false;
     super({
       baseURL: firsConfig?.baseUrl,
+      timeout: firsConfig?.timeout,
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "x-api-secret": apiSecret,
       },
+      httpsAgent: new https.Agent({
+        rejectUnauthorized,
+      }),
     });
   }
 
@@ -114,7 +120,7 @@ export default class FIRSClient extends RestClient {
     //   message: error.message
     // }
     let foundError = error?.response?.data?.error;
-    console.log("Resp error:", { error: error.response });
+    console.log("Resp error:", { foundError, error });
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status,
       foundError?.public_message + " - " + foundError?.details ||
@@ -179,10 +185,12 @@ export class FIRSService {
   }
 
   public async authenticate(credentials: { email: string; password: string }) {
-    const response = await this.appClient.post<FIRSAuthResponse>(
+    const response = await this.siClient.post<FIRSAuthResponse>(
       "/api/v1/utilities/authenticate",
       credentials,
     );
+
+    console.log({ response });
 
     if (response.code !== 200) {
       throw new Error(
