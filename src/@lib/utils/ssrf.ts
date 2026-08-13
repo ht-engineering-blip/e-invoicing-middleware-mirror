@@ -1,5 +1,5 @@
-import dns from 'node:dns';
-import net from 'node:net';
+import dns from "node:dns";
+import net from "node:net";
 
 /**
  * Checks if a URL is safe from SSRF by:
@@ -15,7 +15,7 @@ import net from 'node:net';
 export async function isSafeUrl(urlString: string): Promise<boolean> {
   try {
     const parsed = new URL(urlString);
-    if (parsed.protocol !== 'https:') {
+    if (parsed.protocol !== "https:") {
       return false;
     }
 
@@ -25,9 +25,9 @@ export async function isSafeUrl(urlString: string): Promise<boolean> {
     // Check known cloud metadata/local hostnames
     const lowerHost = hostname.toLowerCase();
     if (
-      lowerHost === 'metadata.google.internal' ||
-      lowerHost === 'metadata' ||
-      lowerHost.endsWith('.local')
+      lowerHost === "metadata.google.internal" ||
+      lowerHost === "metadata" ||
+      lowerHost.endsWith(".local")
     ) {
       return false;
     }
@@ -51,7 +51,7 @@ export async function isSafeUrl(urlString: string): Promise<boolean> {
  */
 function isPrivateOrReservedIp(ip: string): boolean {
   if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
+    const parts = ip.split(".").map(Number);
     if (parts.length !== 4 || parts.some(isNaN)) return true;
 
     const [p0, p1] = parts;
@@ -69,30 +69,29 @@ function isPrivateOrReservedIp(ip: string): boolean {
 
     // Unspecified, broadcast, and multicast / Class E reserved
     if (p0 === 0 || p0 >= 224) return true;
-
   } else if (net.isIPv6(ip)) {
     const lowerIp = ip.toLowerCase();
 
     // Loopback & Unspecified
-    if (lowerIp === '::1' || lowerIp === '::') return true;
+    if (lowerIp === "::1" || lowerIp === "::") return true;
 
     // Link-local (fe80::/10)
     if (
-      lowerIp.startsWith('fe8') ||
-      lowerIp.startsWith('fe9') ||
-      lowerIp.startsWith('fea') ||
-      lowerIp.startsWith('feb')
+      lowerIp.startsWith("fe8") ||
+      lowerIp.startsWith("fe9") ||
+      lowerIp.startsWith("fea") ||
+      lowerIp.startsWith("feb")
     ) {
       return true;
     }
 
     // IPv6 Unique Local Address (fc00::/7)
-    if (lowerIp.startsWith('fc') || lowerIp.startsWith('fd')) {
+    if (lowerIp.startsWith("fc") || lowerIp.startsWith("fd")) {
       return true;
     }
 
     // Multicast (ff00::/8)
-    if (lowerIp.startsWith('ff')) {
+    if (lowerIp.startsWith("ff")) {
       return true;
     }
   }

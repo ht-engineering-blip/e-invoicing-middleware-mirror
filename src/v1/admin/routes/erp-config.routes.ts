@@ -1,54 +1,54 @@
-import { Elysia } from 'elysia';
-import { requireAdmin } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
+import { Elysia } from "elysia";
 import jsonSpread from "json-spread";
-import { SystemConfigService } from '../services/system-config.service';
-import { TenantService } from '../../tenants/services/tenant.service';
-import { TransformWorkflowService } from '../../workflow/services';
-import { LLMService } from '../../../@lib/adapters/llm/llm.service';
-import { SchemaSourceType } from '../../workflow/models';
-import { onlyAdmin } from '../../auth/utils/access-checks';
+import { logger } from "../../../@lib";
+import { LLMService } from "../../../@lib/adapters/llm/llm.service";
+import { requireAdmin } from "../../../middlewares/auth";
+import { onlyAdmin } from "../../auth/utils/access-checks";
+import { TenantService } from "../../tenants/services/tenant.service";
+import { TransformWorkflowService } from "../../workflow/services";
+import { SystemConfigService } from "../services/system-config.service";
 import {
-  listSupportedERPsValidation,
+  addERPDictionaryValidation,
   getERPDictionaryValidation,
-  addERPDictionaryValidation
-} from '../validations/erp-config.validation';
+  listSupportedERPsValidation,
+} from "../validations/erp-config.validation";
 
 /**
  * ERP Configuration Routes
  */
-export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
+export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
   .use(requireAdmin)
-  .decorate('configService', new SystemConfigService())
-  .decorate('tenantService', new TenantService())
-  .decorate('transformWorkflowService', new TransformWorkflowService())
-  .decorate('llmService', new LLMService())
+  .decorate("configService", new SystemConfigService())
+  .decorate("tenantService", new TenantService())
+  .decorate("transformWorkflowService", new TransformWorkflowService())
+  .decorate("llmService", new LLMService())
   /**
    * GET /admin/config/supported-erps
    * List all supported ERP systems
    */
   .get(
-    '/',
-    async ({ configService, transformWorkflowService }): Promise<any> => {
+    "/",
+    async ({ transformWorkflowService }): Promise<any> => {
       try {
-
-        const supportedERPs = await transformWorkflowService.getSupportedERPTypes();
+        const erps = await transformWorkflowService.getSupportedERPTypes();
 
         return {
           success: true,
-          data: supportedERPs,
-          count: supportedERPs.length,
+          data: erps,
+          count: erps.length,
         };
       } catch (error: any) {
-        logger.error('Failed to fetch supported ERPs', { error: error.message });
+        logger.error("Failed to fetch supported ERPs", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to fetch supported ERPs',
+          error: error.message || "Failed to fetch supported ERPs",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    listSupportedERPsValidation
+    listSupportedERPsValidation,
   )
 
   /**
@@ -56,12 +56,12 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
    * Get a specific ERP configuration
    */
   .get(
-    '/:erpType',
-    async ({ params, configService, transformWorkflowService }) => {
+    "/:erpType",
+    async ({ params, transformWorkflowService }) => {
       try {
-        //const erp = await configService.getERPByType(params.erpType);
-        const erp = await transformWorkflowService.getInvoiceSchema(params.erpType);
-
+        const erp = await transformWorkflowService.getInvoiceSchema(
+          params.erpType,
+        );
 
         if (!erp) {
           return {
@@ -76,15 +76,17 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
           data: erp,
         };
       } catch (error: any) {
-        logger.error('Failed to fetch ERP configuration', { error: error.message });
+        logger.error("Failed to fetch ERP configuration", {
+          error: error.message,
+        });
         return {
           success: false,
-          error: error.message || 'Failed to fetch ERP configuration',
+          error: error.message || "Failed to fetch ERP configuration",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    getERPDictionaryValidation
+    getERPDictionaryValidation,
   )
 
   /**
@@ -92,39 +94,47 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
    * Add a new ERP configuration
    */
   .post(
-    '/',
+    "/",
     async ({ auth, body, query, llmService, transformWorkflowService }) => {
       try {
-        onlyAdmin(auth!)
-        let { erp, invoice, metadata }: any = body
+        onlyAdmin(auth!);
+        let { erp, invoice, metadata }: any = body;
         if (auth && auth.tenantId) {
-          invoice.business_id = auth.businessId
+          invoice.business_id = auth.businessId;
         }
 
         // Flatten the invoice for field extraction
-        let flatInvoice = jsonSpread(invoice)[0]
-        let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined
-        let mapping_rules = metadata && metadata.mapping_rules ? metadata.mapping_rules: [] 
-      
+        let flatInvoice = jsonSpread(invoice)[0];
+        let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined;
+        let mapping_rules =
+          metadata && metadata.mapping_rules ? metadata.mapping_rules : [];
+
         // Generate invoice dictionary using LLM
-        let generatedFields = await llmService.generateInvoiceDictionary(erp, flatInvoice, flatMetadata)
-       
+        let generatedFields = await llmService.generateInvoiceDictionary(
+          erp,
+          flatInvoice,
+          flatMetadata,
+        );
+
         // Upsert the schema to database
         const savedSchema = await transformWorkflowService.upsertERPSchema(
           erp,
           generatedFields,
           {
             tenantId: auth?.tenantId,
-            createdBy: auth?.userId || 'system',
+            createdBy: auth?.userId || "system",
             status: metadata.status,
             metadata: {
               ...(metadata || {}),
-              source_invoice_sample: metadata && metadata.source_invoice_sample ? metadata.source_invoice_sample: flatInvoice,
+              source_invoice_sample:
+                metadata && metadata.source_invoice_sample
+                  ? metadata.source_invoice_sample
+                  : flatInvoice,
               generated_at: new Date().toISOString(),
             },
-            mapping_rules
-          }
-        )
+            mapping_rules,
+          },
+        );
 
         return {
           success: true,
@@ -144,5 +154,5 @@ export const erpConfigRoutes = new Elysia({ prefix: '/config/supported-erps' })
         };
       }
     },
-    addERPDictionaryValidation
+    addERPDictionaryValidation,
   );

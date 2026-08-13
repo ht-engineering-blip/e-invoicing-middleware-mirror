@@ -4,6 +4,8 @@ import {
   FIRSInvoiceTransformer,
 } from "../src/v1/workflow/utils/transformer";
 import { AuthContext } from "../src/middlewares";
+import { connectMongo } from "../src/@lib/adapters/mongo";
+import mongoose from "mongoose";
 
 const definitions: Record<string, Function> = {};
 mock.module("../src/@lib/queue/agenda", () => {
@@ -47,18 +49,15 @@ mock.module("../src/v1/workflow/repos/outbound-invoice.repo", () => {
   };
 });
 
-// Mock the database repos so we don't connect to mongo
-mock.module("../src/v1/workflow/services/workflows/transform.service", () => {
-  return {
-    TransformWorkflowService: class {
-      async getInvoiceSchema() {
-        return { fields: [], mapping_rules: [] };
-      }
-    },
-  };
-});
 
 describe("FIRS Credit Note Invoicing and Validation", () => {
+  beforeAll(async () => {
+    await connectMongo();
+  });
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+  });
   const validSupplier = {
     party_name: "Okeke Technologies Ltd",
     tin: "12345678-0001",
@@ -136,6 +135,7 @@ describe("FIRS Credit Note Invoicing and Validation", () => {
     due_date: "2026-04-11",
     issue_time: "10:30:00",
     invoice_type_code: "396", // standard invoice request
+    invoice_kind: "B2B",
     payment_status: "UNPAID",
     tax_point_date: "2026-04-11",
     document_currency_code: "NGN",
@@ -151,6 +151,54 @@ describe("FIRS Credit Note Invoicing and Validation", () => {
     it("should successfully validate a standard invoice without billing_reference", () => {
       const result = FIRSInvoiceSchema.safeParse(baseInvoicePayload);
       expect(result.success).toBe(true);
+    });
+
+    it("should successfully validate standard invoices (396 and 380) without billing_reference", () => {
+      const result396 = FIRSInvoiceSchema.safeParse({
+        ...baseInvoicePayload,
+        invoice_type_code: "396",
+      });
+      expect(result396.success).toBe(true);
+
+      const result380 = FIRSInvoiceSchema.safeParse({
+        ...baseInvoicePayload,
+        invoice_type_code: "380",
+      });
+      expect(result380.success).toBe(true);
+    });
+
+    it("should fail to validate debit notes (383, 384) and other credit notes (393, 395) without billing_reference", () => {
+      const adjustmentCodes = ["383", "384", "393", "395"];
+      for (const code of adjustmentCodes) {
+        const payload = {
+          ...baseInvoicePayload,
+          invoice_type_code: code,
+        };
+        const result = FIRSInvoiceSchema.safeParse(payload);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          const errors = result.error.flatten();
+          expect(errors.fieldErrors.billing_reference).toBeDefined();
+        }
+      }
+    });
+
+    it("should successfully validate debit notes (383, 384) and other credit notes (393, 395) with billing_reference", () => {
+      const adjustmentCodes = ["383", "384", "393", "395"];
+      for (const code of adjustmentCodes) {
+        const payload = {
+          ...baseInvoicePayload,
+          invoice_type_code: code,
+          billing_reference: [
+            {
+              irn: "INV0042-6AFCD0BD-20260401",
+              issue_date: "2026-04-01",
+            },
+          ],
+        };
+        const result = FIRSInvoiceSchema.safeParse(payload);
+        expect(result.success).toBe(true);
+      }
     });
 
     it("should fail to validate a credit note (381) without billing_reference", () => {
@@ -288,6 +336,7 @@ describe("FIRS Credit Note Invoicing and Validation", () => {
         due_date: "2026-04-11",
         issue_time: "10:30:00",
         invoice_type_code: "381",
+        invoice_kind: "B2B",
         payment_status: "UNPAID",
         tax_point_date: "2026-04-11",
         document_currency_code: "NGN",
@@ -354,7 +403,7 @@ describe("FIRS Credit Note Invoicing and Validation", () => {
       expect(result?.data.billing_reference[0].irn).toBe(
         "INV0042-6AFCD0BD-20260401",
       );
-    });
+    }, 15000);
   });
 
   describe("process_credit_note Agenda Job", () => {

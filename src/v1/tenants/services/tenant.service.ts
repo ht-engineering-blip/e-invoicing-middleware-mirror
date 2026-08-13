@@ -187,6 +187,7 @@ export class TenantService extends BaseService {
     const tenant = await this.tenantRepo.findOne({
       contactEmail: { _iexact: contactEmail },
     });
+
     if (!tenant) {
       throw new NotFoundError("Tenant");
     }
@@ -755,6 +756,65 @@ export class TenantService extends BaseService {
 
     if (!onboarding) {
       throw new NotFoundError("Onboarding record");
+    }
+
+    // Sync step status from actual tenant configuration if needed
+    if (tenant) {
+      let stepUpdated = false;
+
+      // 1. Registration: completed if tenant account exists
+      if (
+        !onboarding.steps?.registration?.completed &&
+        (tenant.tenantId || tenant.password || tenant.metadata?.activationCompleted)
+      ) {
+        await this.onboardingRepo.completeStep(tenant.tenantId, "registration");
+        onboarding.steps.registration = {
+          completed: true,
+          completedAt: tenant.createdAt || new Date(),
+        };
+        stepUpdated = true;
+      }
+
+      // 2. FIRS Provisioning: completed if firs credentials serviceId/clientId exist
+      if (
+        !onboarding.steps?.firsProvisioning?.completed &&
+        (tenant.config?.firsCredentials?.serviceId ||
+          tenant.config?.firsCredentials?.clientId)
+      ) {
+        await this.onboardingRepo.completeStep(
+          tenant.tenantId,
+          "firsProvisioning",
+        );
+        onboarding.steps.firsProvisioning = {
+          completed: true,
+          completedAt: new Date(),
+        };
+        stepUpdated = true;
+      }
+
+      // 3. ERP Configuration: completed if webhookUrl exist
+      if (
+        !onboarding.steps?.erpConfiguration?.completed &&
+        (tenant.config?.webhookUrl || tenant.metadata?.webhookUrl)
+      ) {
+        await this.onboardingRepo.completeStep(
+          tenant.tenantId,
+          "erpConfiguration",
+        );
+        onboarding.steps.erpConfiguration = {
+          completed: true,
+          completedAt: new Date(),
+        };
+        stepUpdated = true;
+      }
+
+      if (stepUpdated && onboarding.status === "pending") {
+        await this.onboardingRepo.updateStatus(
+          tenant.tenantId,
+          OnboardingStatus.IN_PROGRESS,
+        );
+        onboarding.status = OnboardingStatus.IN_PROGRESS;
+      }
     }
 
     return onboarding;

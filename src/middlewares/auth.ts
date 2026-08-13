@@ -207,9 +207,9 @@ export const requireJwt = (instance: Elysia) =>
         throw new UnauthorizedError("Tenant not found");
       }
 
-      const bolcoked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
+      const blocked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
 
-      if (!tenant || bolcoked.includes(tenant.status)) {
+      if (!tenant || blocked.includes(tenant.status)) {
         throw new UnauthorizedError(
           `Tenant account is ${tenant?.status || "inactive"}`,
         );
@@ -448,9 +448,9 @@ export const requireAuth = (instance: Elysia) =>
           const tenantRepo = new TenantRepository();
           const tenant = await tenantRepo.findByTenantId(decoded.tenantId);
 
-          const bolcoked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
+          const blocked = [TenantStatus.INACTIVE, TenantStatus.SUSPENDED];
 
-          if (!tenant || bolcoked.includes(tenant.status)) {
+          if (!tenant || blocked.includes(tenant.status)) {
             throw new UnauthorizedError(
               `Tenant account is ${tenant?.status || "inactive"}`,
             );
@@ -462,7 +462,6 @@ export const requireAuth = (instance: Elysia) =>
           ) {
             throw new UnauthorizedError("Invalid token payload");
           }
-
           if (tenant.passwordChangedAt && decoded.iat) {
             const iatMs = decoded.iat * 1000;
             if (iatMs < tenant.passwordChangedAt.getTime() - 1000) {

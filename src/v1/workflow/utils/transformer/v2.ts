@@ -10,17 +10,25 @@ import {
   sanitizeInvoiceIRNs,
   sanitizeHsnCode,
   sanitizePriceUnit,
+  setDynamicQuantityCodes,
+  setDynamicHsCodes,
+  generateInvoiceRef,
 } from "./utils";
 
 import { FIRS_INVOICE_METADATA } from "../defaults";
 import {
-  FIRS_INVOICE_TYPES,
-  FIRS_TAX_CATEGORIES,
   formatSchemaFields,
   generateTransformPrompt,
   getOptionalFields,
   getRequiredFields,
 } from "../../../../@lib/adapters/llm/prompts";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import {
+  TaxCategory,
+  InvoiceType,
+  QuantityCode,
+  HsCode,
+} from "../../../../@lib/adapters/firs/types";
 import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples";
 
 /* -----------------------------------------------------
@@ -71,11 +79,11 @@ export class FIRSInvoiceTransformerV2 {
       const firsSchemaDoc = await transformService.getInvoiceSchema(
         SchemaSourceType.FIRS_UBL,
       );
-      if (firsSchemaDoc) {
-        firsSchema = firsSchemaDoc.fields;
-      }
+
+      if (firsSchemaDoc) firsSchema = firsSchemaDoc.fields;
+
       // Transform using LLM with schema-based prompts
-      let result: any = await this.transformInvoice(
+      let result = await this.transformInvoice(
         invoice,
         authContext!,
         sourceSchema,
@@ -122,8 +130,24 @@ export class FIRSInvoiceTransformerV2 {
     firsZodSchema: z.ZodSchema,
   ) {
     try {
-      const schemaGraph = this.buildSchemaGraph(firsSchema);
-      //logger.info("Schema Graph", schemaGraph)
+      const firsService = new FIRSService();
+      let taxCategories: TaxCategory[] = [];
+      let invoiceTypes: InvoiceType[] = [];
+      try {
+        const [taxCatRes, invoiceTypeRes, qtyCodesRes, hsCodesRes] =
+          await Promise.all([
+            firsService.getResource<TaxCategory>("tax-categories"),
+            firsService.getResource<InvoiceType>("invoice-types"),
+            firsService.getResource<QuantityCode>("invoice-quantity-codes"),
+            firsService.getResource<HsCode>("hs-codes"),
+          ]);
+        taxCategories = taxCatRes || [];
+        invoiceTypes = invoiceTypeRes || [];
+        if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
+        if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
+      } catch (e) {
+        console.error("Failed to fetch FIRS resources:", e);
+      }
 
       const mapped = this.deterministicTransform(invoice, mappingRules);
       //logger.info("Mapped", mapped)
@@ -133,14 +157,12 @@ export class FIRSInvoiceTransformerV2 {
       // logger.info("resolved", resolved)
 
       // Set expected identity fields securely
+      const refence = invoice.invoice_reference;
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const invoiceRef =
-        invoice.invoice_reference ||
-        `INV${todayStr.replace(/-/g, "")}${Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, "0")}`;
+
+      const invoiceRef = refence || generateInvoiceRef();
+
       const computedIrn = generateIRN(
         invoiceRef,
         authContext?.serviceId,
@@ -174,6 +196,8 @@ export class FIRSInvoiceTransformerV2 {
           sourceSchema,
           firsSchema,
           missing,
+          taxCategories,
+          invoiceTypes,
         );
         //logger.info("prompt", prompt)
         const response = await this.callLLM(prompt);
@@ -254,6 +278,8 @@ export class FIRSInvoiceTransformerV2 {
           validation.errors,
           authContext,
           sourceSchema,
+          taxCategories,
+          invoiceTypes,
         );
         // Deterministic HSN code and price_unit sanitization post-repair
         if (Array.isArray(completed.invoice_line)) {
@@ -284,26 +310,6 @@ export class FIRSInvoiceTransformerV2 {
         originalInvoice: invoice,
       };
     }
-  }
-
-  /* -----------------------------------------------------
-     SCHEMA GRAPH
-    ----------------------------------------------------- */
-
-  private buildSchemaGraph(schema: ISchemaField[]) {
-    const graph: Record<string, string[]> = {};
-
-    for (const field of schema) {
-      if (!field.parent_field_id) continue;
-
-      if (!graph[field.parent_field_id]) {
-        graph[field.parent_field_id] = [];
-      }
-
-      graph[field.parent_field_id].push(field.field_path);
-    }
-
-    return graph;
   }
 
   /* -----------------------------------------------------
@@ -541,6 +547,8 @@ export class FIRSInvoiceTransformerV2 {
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
     missingFields: string[],
+    taxCategories: TaxCategory[],
+    invoiceTypes: InvoiceType[],
   ) {
     const requiredFields = firsSchema
       .filter(
@@ -622,7 +630,7 @@ ${JSON.stringify(missingFields)}
 - irn: Generate unique reference if not provided, use ${invoice.irn ?? irn} as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
 - billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
@@ -640,10 +648,10 @@ Ensure all keys above are not changed
   * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
 
 ## VALID TAX CATEGORIES:
-${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
+${JSON.stringify(taxCategories, null, 2)}
 
 ## VALID INVOICE TYPES:
-${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
+${JSON.stringify(invoiceTypes, null, 2)}
 
 ## DATE/TIME FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
@@ -659,9 +667,12 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 5. telephone: ensure it starts with "+" (country code)
 6. invoice_kind: default to "B2B" if missing
 
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
+## PARTY INFORMATION RULES (STRICT NESTING REQUIRED):
+- accounting_supplier_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- accounting_customer_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- All supplier information MUST be nested EXCLUSIVELY inside the accounting_supplier_party object.
+- All customer/buyer information MUST be nested EXCLUSIVELY inside the accounting_customer_party object.
+- NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
 - TIN format should be preserved from source
@@ -692,9 +703,11 @@ Each invoice_line must contain:
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
-13. Extract nexted keys in payload to match the valid FIRS schema
-14. optional fields should not be included if not provided by invoice input! [allowance_charge]
-15. Descriptions and should have default values derived from product
+13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
+14. Map ERP standard invoice_type_code 380 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note.
+15. Extract nexted keys in payload to match the valid FIRS schema
+16. optional fields should not be included if not provided by invoice input! [allowance_charge]
+17. Descriptions and should have default values derived from product
  
 FIRS SCHEMA EXAMPLE (Use this only as an example for a valid invoice payload):
 ${SAMPLE_INVOICE_BODY}
@@ -786,6 +799,8 @@ Complete the missing fields also generate emails here missing currency should de
     errors: any,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
+    taxCategories: TaxCategory[],
+    invoiceTypes: InvoiceType[],
   ) {
     const expectedBusinessId = authContext?.businessId || json.business_id;
     const expectedSupplierTIN =
@@ -806,71 +821,21 @@ Complete the missing fields also generate emails here missing currency should de
       metaContext,
     );
 
-    const prompt = `
-                The JSON below failed validation.
+    const userRepairPrompt = `
+The JSON below failed validation.
 
-                Errors:
-                ${JSON.stringify(errors)}
+Validation Errors to Fix:
+${JSON.stringify(errors, null, 2)}
 
-                Fix the JSON.
+JSON to Fix:
+${JSON.stringify(json, null, 2)}
 
-                JSON:
-                ${JSON.stringify(json)}
-
-
-## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
-- business_id: Use "${authContext?.businessId || "{{TEST_BUSINESS_ID}}"}" 
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
-- document_currency_code: REQUIRED, default to "NGN"
-- accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
-- accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
-- tax_total: REQUIRED - must include tax_amount and tax_subtotal array
-- legal_monetary_total: REQUIRED with line_extension_amount, tax_exclusive_amount, tax_inclusive_amount, payable_amount
-- invoice_line: REQUIRED array with at least one item
-
-Ensure all keys above are not changed
-
-## TAX TOTAL REQUIREMENTS (CRITICAL):
-- tax_total MUST be present as an array with at least one object
-- Each tax_total object must contain:
-  * tax_amount: total tax amount for this tax type
-  * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
-
-## VALID TAX CATEGORIES:
-${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
-
-## VALID INVOICE TYPES:
-${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
-
-## DATE/TIME FORMATTING RULES:
-1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
-2. NEVER leave date fields empty or as empty strings
-3. For missing dates in document references, use the main invoice's issue_date
-4. Times must be in HH:MM:SS format
-
-## AUTO-POPULATION RULES:
-1. payment_status: default to "PENDING" if missing
-2. document_currency_code: default to "NGN" if missing
-3. tax_currency_code: default to "NGN" if missing
-4. postal_zone: use "100001" if missing
-5. telephone: ensure it starts with "+" (country code)
-6. invoice_kind: default to "B2B" if missing
-
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
-- All party objects require: party_name, tin, email, postal_address
-- Telephone must start with "+" if provided
-- TIN format should be preserved from source
-
-## FIELD METADATA REQUIREMENTS:
-${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
-
-                Return valid JSON only.
+Return valid, corrected JSON only following all system prompt rules.
 `;
 
-    const response = await this.callLLM(prompt);
+    const response = await this.callLLM(
+      `${systemPrompt}\n\n${userRepairPrompt}`,
+    );
 
     const parsed = this.safeParseLLMJSON(response);
 

@@ -1,17 +1,23 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import mongoose from 'mongoose';
-import { faker } from '@faker-js/faker';
-import { connectMongo } from '../src/@lib/adapters/mongo';
-import { TenantService } from '../src/v1/tenants/services/tenant.service';
-import { TeamMemberService, InviteTeamMemberInput } from '../src/v1/tenants/services/team-member.service';
-import { TenantStatus } from '../src/v1/tenants/models/tenant.model';
-import { TeamMemberRole, TeamMemberStatus } from '../src/v1/tenants/models/team-member.model';
-import { hashString } from '../src/@lib/utils/encryption';
-import { TenantRepository } from '../src/v1/tenants/repos/tenant.repo';
-import { TeamMemberRepository } from '../src/v1/tenants/repos/team-member.repo';
-import { TenantOnboardingRepository } from '../src/v1/tenants/repos/tenant-onboarding.repo';
+import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
+import mongoose from "mongoose";
+import { faker } from "@faker-js/faker";
+import { connectMongo } from "../src/@lib/adapters/mongo";
+import { TenantService } from "../src/v1/tenants/services/tenant.service";
+import {
+  TeamMemberService,
+  InviteTeamMemberInput,
+} from "../src/v1/tenants/services/team-member.service";
+import { TenantStatus } from "../src/v1/tenants/models/tenant.model";
+import {
+  TeamMemberRole,
+  TeamMemberStatus,
+} from "../src/v1/tenants/models/team-member.model";
+import { hashString } from "../src/@lib/utils/encryption";
+import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
+import { TeamMemberRepository } from "../src/v1/tenants/repos/team-member.repo";
+import { TenantOnboardingRepository } from "../src/v1/tenants/repos/tenant-onboarding.repo";
 
-describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
+describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
   let tenantService: TenantService;
   let teamMemberService: TeamMemberService;
 
@@ -22,33 +28,22 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
   const testTenants: string[] = [];
   const testTeamMembers: string[] = [];
 
-  beforeAll(async () => {
-    // Try to connect to local MongoDB first
-    const localUri = process.env.MONGODB_LOCAL_URI || 'mongodb://127.0.0.1:27017/e-invoicing-worker';
-    try {
-      await mongoose.connect(localUri, {
-        dbName: 'e-invoicing-middleware-test',
-        serverSelectionTimeoutMS: 2000,
-      });
-      console.info('Successfully connected to local MongoDB at ' + localUri);
-    } catch (localErr: any) {
-      console.warn('Local MongoDB connection failed, trying resolved replica-set Atlas URI...');
+  let sendEmailSpy: any;
 
-      // Attempt resolved standard (non-SRV) Atlas cluster connection string to bypass Node/Bun SRV lookup issues
-      const resolvedAtlasUri = 'mongodb://starter_user:starter_secret@ac-zh3dffy-shard-00-00.f7vocqv.mongodb.net:27017,ac-zh3dffy-shard-00-01.f7vocqv.mongodb.net:27017,ac-zh3dffy-shard-00-02.f7vocqv.mongodb.net:27017/e-invoicing-middleware?ssl=true&authSource=admin';
-      try {
-        await mongoose.connect(resolvedAtlasUri, {
-          serverSelectionTimeoutMS: 5000,
-        });
-        console.info('Successfully connected to Atlas via resolved standard URI');
-      } catch (atlasErr: any) {
-        console.warn('Resolved Atlas connection failed, falling back to default connectMongo...');
-        await connectMongo();
-      }
-    }
+  beforeAll(async () => {
+    // Use the project's standard connectMongo which reads MONGODB_URI from env (with auth)
+    await connectMongo();
 
     tenantService = new TenantService();
     teamMemberService = new TeamMemberService();
+
+    // Mock sendEmail to avoid real SMTP calls that timeout
+    sendEmailSpy = spyOn(
+      teamMemberService as any,
+      "sendEmail",
+    ).mockImplementation(async () => {
+      return { messageId: "mocked-email" };
+    });
 
     tenantRepo = new TenantRepository();
     teamMemberRepo = new TeamMemberRepository();
@@ -73,10 +68,11 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
       }
     }
     // Close mongoose connection
+    if (sendEmailSpy) sendEmailSpy.mockRestore();
     await mongoose.connection.close();
   });
 
-  it('should successfully complete the entire tenant onboarding, activation, and team member invitation flow', async () => {
+  it("should successfully complete the entire tenant onboarding, activation, and team member invitation flow", async () => {
     // --- 1. Create a new Tenant via TenantService ---
     const fakeBusinessName = faker.company.name();
     const fakeTin = faker.string.numeric({ length: 10 });
@@ -90,10 +86,14 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
       contactEmail: fakeEmail,
       contactPhone: fakePhone,
       expectedVolume: 1000,
-      erpSystem: 'dynamics',
+      erpSystem: "dynamics",
     };
 
-    const tenant = await tenantService.createTenant(tenantInput, { id: 'admin-user-1', type: 'user', name: 'Global Admin' });
+    const tenant = await tenantService.createTenant(tenantInput, {
+      id: "admin-user-1",
+      type: "user",
+      name: "Global Admin",
+    });
     expect(tenant).toBeDefined();
     expect(tenant.tenantId).toBeDefined();
     expect(tenant.businessName).toBe(fakeBusinessName);
@@ -112,11 +112,17 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
     expect(tokenExpiry!.getTime()).toBeGreaterThan(Date.now());
 
     // Validate a correct token ID
-    let isValid = tenantService.isActivationTokenValid(tenant, tenant.metadata.activationTokenId);
+    let isValid = tenantService.isActivationTokenValid(
+      tenant,
+      tenant.metadata.activationTokenId,
+    );
     expect(isValid).toBe(true);
 
     // Validate incorrect token ID
-    let isInvalid = tenantService.isActivationTokenValid(tenant, 'some-wrong-token-id');
+    let isInvalid = tenantService.isActivationTokenValid(
+      tenant,
+      "some-wrong-token-id",
+    );
     expect(isInvalid).toBe(false);
 
     // Timeframe is active
@@ -129,25 +135,31 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
 
     // Simulate resending: we should update the tenant metadata with a new ID
     const newActivationTokenId = faker.string.uuid();
-    const newActivationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+    const newActivationTokenExpiresAt = new Date(
+      Date.now() + 12 * 60 * 60 * 1000,
+    );
 
     const updatedTenant = await tenantService.updateTenant(tenant.tenantId, {
       metadata: {
         ...tenant.metadata,
         activationTokenId: newActivationTokenId,
         activationTokenExpiresAt: newActivationTokenExpiresAt,
-      }
+      },
     });
 
     expect(updatedTenant.metadata.activationTokenId).toBe(newActivationTokenId);
     expect(updatedTenant.metadata.activationTokenId).not.toBe(firstTokenId);
 
     // Confirm first token is now invalid, and new token is valid
-    expect(tenantService.isActivationTokenValid(updatedTenant, firstTokenId)).toBe(false);
-    expect(tenantService.isActivationTokenValid(updatedTenant, newActivationTokenId)).toBe(true);
+    expect(
+      tenantService.isActivationTokenValid(updatedTenant, firstTokenId),
+    ).toBe(false);
+    expect(
+      tenantService.isActivationTokenValid(updatedTenant, newActivationTokenId),
+    ).toBe(true);
 
     // --- 4. Activate the Tenant Account (Set Password) ---
-    const rawPassword = 'SecureTenantPassword123!';
+    const rawPassword = "SecureTenantPassword123!";
     const passwordHash = await hashString(rawPassword);
 
     const activatedTenant = await tenantService.updateTenant(tenant.tenantId, {
@@ -157,7 +169,7 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
         activationCompleted: true,
         activationTokenId: null,
         activationTokenExpiresAt: null,
-      }
+      },
     });
 
     expect(activatedTenant.password).toBe(passwordHash);
@@ -166,7 +178,12 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
     expect(activatedTenant.metadata.activationTokenExpiresAt).toBeNull();
 
     // Verify token validation returns false now
-    expect(tenantService.isActivationTokenValid(activatedTenant, newActivationTokenId)).toBe(false);
+    expect(
+      tenantService.isActivationTokenValid(
+        activatedTenant,
+        newActivationTokenId,
+      ),
+    ).toBe(false);
 
     // --- 5. Invite a Team Member via TeamMemberService ---
     const memberEmail = faker.internet.email().toLowerCase();
@@ -178,13 +195,13 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
       firstName: memberFirstName,
       lastName: memberLastName,
       role: TeamMemberRole.ADMIN,
-      permissions: ['read:invoices', 'write:invoices'],
+      permissions: ["read:invoices", "write:invoices"],
     };
 
     const teamMember = await teamMemberService.inviteTeamMember(
       tenant.tenantId,
       inviteInput,
-      'tenant-owner-user-id'
+      "tenant-owner-user-id",
     );
 
     expect(teamMember).toBeDefined();
@@ -196,10 +213,10 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
     testTeamMembers.push(teamMember.userId);
 
     // --- 6. Accept Team Member Invitation ---
-    const memberPassword = 'SecureMemberPassword123!';
+    const memberPassword = "SecureMemberPassword123!";
     const acceptResult = await teamMemberService.acceptInvitation(
       teamMember.invitationToken!,
-      memberPassword
+      memberPassword,
     );
 
     expect(acceptResult).toBeDefined();
@@ -208,13 +225,18 @@ describe('Real DB-Connected Onboarding Flow (Tenant & Team Member)', () => {
     expect(acceptResult.member.password).toBeDefined();
 
     // Verify token can no longer be retrieved/reused
-    const lookupAfterAccept = await teamMemberRepo.findByInvitationToken(teamMember.invitationToken!);
+    const lookupAfterAccept = await teamMemberRepo.findByInvitationToken(
+      teamMember.invitationToken!,
+    );
     expect(lookupAfterAccept).toBeNull();
 
     // --- 7. Login Team Member ---
-    const loginResult = await teamMemberService.loginTeamMember(memberEmail, memberPassword);
+    const loginResult = await teamMemberService.loginTeamMember(
+      memberEmail,
+      memberPassword,
+    );
     expect(loginResult).toBeDefined();
     expect(loginResult.authToken).toBeDefined();
     expect(loginResult.member.email).toBe(memberEmail);
-  }, 30000);
+  }, 60000);
 });

@@ -153,9 +153,12 @@ export function registerSyncErpJob(): void {
       }
 
       if (!erpSyncConfig.enabled) {
-        logger.info("[Job:sync-erp] ERP sync is disabled for tenant — skipping", {
-          tenantId,
-        });
+        logger.info(
+          "[Job:sync-erp] ERP sync is disabled for tenant — skipping",
+          {
+            tenantId,
+          },
+        );
         // Skip gracefully without failing the chain
         await chainNext(job, {
           erpSyncResult: { skipped: true, reason: "disabled" },

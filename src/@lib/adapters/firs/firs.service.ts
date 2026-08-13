@@ -10,7 +10,6 @@ import { generateQRCode } from "./generateQR";
 
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
-import { TenantModel } from "../../../v1/tenants/models/tenant.model";
 
 export interface FIRSUserInfo {
   code: number;
@@ -176,8 +175,6 @@ export default class FIRSClient extends RestClient {
   };
 }
 
-import { decryptSensitiveData } from "../../../@lib/crypto";
-
 export class FIRSService {
   public appClient: FIRSClient;
   public siClient: FIRSClient;
@@ -199,6 +196,8 @@ export class FIRSService {
       "/api/v1/utilities/authenticate",
       credentials,
     );
+
+    console.log({ response });
 
     if (response.code !== 200) {
       throw new Error(
@@ -275,9 +274,12 @@ export class FIRSService {
     irn: string,
   ) {
     const client = this.appClient;
-    return client.get<SearchResponse>(`api/v1/invoice/${business_id}`, {
-      params: { irn },
-    });
+    return client.get<{ data: SearchResponse }>(
+      `api/v1/invoice/${business_id}`,
+      {
+        params: { irn },
+      },
+    );
   }
 
   public async signInvoice(tenantId: string, invoice: any) {
@@ -347,7 +349,7 @@ export class FIRSService {
   public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
     const client = this.appClient;
     return client.execute(
-      `invoice/transmit/${irn}`,
+      `api/v1/invoice/transmit/${irn}`,
       {
         message: "ACKNOWLEDGED",
       },
@@ -366,7 +368,7 @@ export class FIRSService {
     reportData: VATPostPaymentReportData,
   ) {
     const client = this.appClient;
-    return client.post("/api/v1/vat/postpayment", reportData);
+    return client.post("api/v1/vat/postpayment", reportData);
   }
 
   /**
@@ -389,6 +391,24 @@ export class FIRSService {
     return client.execute(`api/v1/invoice/update/${irn}`, body, {
       verb: "patch",
     });
+  }
+
+  /**
+   * Fetch a reference resource list from FIRS
+   * GET /api/v1/invoice/resources/:resourceName
+   *
+   * @param resourceName - The resource endpoint name (e.g. "payment-means", "tax-categories")
+   */
+  public async getResource<T>(resourceName: string): Promise<T[]> {
+    const client = this.appClient;
+    const response: any = await client.get(
+      `api/v1/invoice/resources/${resourceName}`,
+    );
+    // FIRSClient.get() returns the AxiosResponse (via _handleResponse interceptor)
+    // .data gives us the FIRS body { code: 200, data: [...] }
+    // .data.data gives us the actual array
+    const body = response?.data ?? response;
+    return Array.isArray(body) ? body : (body?.data ?? body);
   }
 
   // Database operations

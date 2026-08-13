@@ -12,6 +12,7 @@ import { logger } from "./@lib/logger";
 import { connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
+import mongoose from "mongoose";
 
 if (!appConfig) {
   throw new Error("App configuration is not defined");
@@ -38,9 +39,7 @@ const ensureMongoConnection = async () => {
 // (serves live .d.ts types), so only wire it in outside production. Passing
 // an empty Elysia() as a no-op keeps this a single unbroken method chain.
 const dtsPlugin =
-  process.env.NODE_ENV !== "production"
-    ? dts("./src/index.ts")
-    : new Elysia();
+  process.env.NODE_ENV !== "production" ? dts("./src/index.ts") : new Elysia();
 
 const app = new Elysia()
   .use(cors())
@@ -62,6 +61,29 @@ const app = new Elysia()
     {
       detail: {
         hide: true,
+      },
+    },
+  )
+  .get(
+    "/health",
+    ({ set }) => {
+      const isMongoConnected = mongoose.connection.readyState === 1;
+      if (!isMongoConnected) {
+        set.status = 503;
+      }
+      return {
+        success: isMongoConnected,
+        status: isMongoConnected ? "UP" : "DOWN",
+        timestamp: new Date().toISOString(),
+        services: {
+          mongodb: isMongoConnected ? "connected" : "disconnected",
+        },
+      };
+    },
+    {
+      detail: {
+        summary: "Health Check",
+        description: "Check api health and MongoDB connection status",
       },
     },
   )

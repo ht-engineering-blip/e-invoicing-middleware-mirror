@@ -11,7 +11,7 @@ export interface PaginationParams {
   page?: number;
   limit?: number;
   sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
+  sortOrder?: "asc" | "desc";
 }
 
 export interface PaginatedResponse<T> {
@@ -30,16 +30,16 @@ export interface PaginatedResponse<T> {
 export type NestedPaths<T, D extends number = 4> = [D] extends [never]
   ? never
   : T extends object
-  ? {
-      [K in keyof T & (string | number)]: T[K] extends any[]
-        ? `${K}`
-        : T[K] extends Date | RegExp
-        ? `${K}`
-        : T[K] extends object
-        ? `${K}` | `${K}.${NestedPaths<T[K], PrevDepth[D]>}`
-        : `${K}`;
-    }[keyof T & (string | number)]
-  : never;
+    ? {
+        [K in keyof T & (string | number)]: T[K] extends any[]
+          ? `${K}`
+          : T[K] extends Date | RegExp
+            ? `${K}`
+            : T[K] extends object
+              ? `${K}` | `${K}.${NestedPaths<T[K], PrevDepth[D]>}`
+              : `${K}`;
+      }[keyof T & (string | number)]
+    : never;
 
 type PrevDepth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...0[]];
 
@@ -48,6 +48,6 @@ type PrevDepth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...0[]];
  * while still permitting any other arbitrary string path without type errors.
  * Automatically unwraps array types to suggest paths of the element type.
  */
-export type AutocompletePaths<T> = NestedPaths<T extends (infer U)[] ? U : T> | (string & {});
-
-
+export type AutocompletePaths<T> =
+  | NestedPaths<T extends (infer U)[] ? U : T>
+  | (string & {});

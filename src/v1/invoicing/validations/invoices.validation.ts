@@ -259,3 +259,12 @@ export const confirmInvoiceStatusValidation = {
     tags: ["Invoicing"],
   },
 };
+
+export const getDocumentTypesValidation = {
+  detail: {
+    summary: "Get Document Types",
+    description: "Get all valid document and invoice type codes and names",
+    tags: ["Invoicing"],
+  },
+};
+

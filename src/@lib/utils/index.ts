@@ -1,12 +1,12 @@
 // Utility functions
 
-export * from './validation';
-export * from './encryption';
-export * from './json';
-export * from './ssrf';
+export * from "./validation";
+export * from "./encryption";
+export * from "./json";
+export * from "./ssrf";
 
-import { appConfig } from '../../@config';
-import { AutocompletePaths } from '../types';
+import { appConfig } from "../../@config";
+import { AutocompletePaths } from "../types";
 
 /**
  * Build the public URL for an invoice's QR code image.
@@ -14,13 +14,14 @@ import { AutocompletePaths } from '../types';
  *
  * Format: <API_BASE_URL>/v1/invoice/<IRN>/qr
  */
-export function buildQrUrl(irn: string | undefined, hasQrCode: boolean): string | null {
+export function buildQrUrl(
+  irn: string | undefined,
+  hasQrCode: boolean,
+): string | null {
   if (!irn || !hasQrCode) return null;
-  const base = (appConfig?.apiBaseURL ?? '').replace(/\/$/, '');
+  const base = (appConfig?.apiBaseURL ?? "").replace(/\/$/, "");
   return `${base}/v1/invoice/${encodeURIComponent(irn)}/qr`;
 }
-
-
 
 /**
  * Resolve a dot-notation path against a nested object.
@@ -29,10 +30,10 @@ export function buildQrUrl(irn: string | undefined, hasQrCode: boolean): string 
  */
 export function getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
-  return path.split('.').reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
+  return path
+    .split(".")
+    .reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
 }
-
-
 
 /**
  * Resolve a dot-notation (or bracket-notation) path against a nested object/array.
@@ -52,10 +53,10 @@ export function _getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
   // Normalise bracket notation → dot notation, trim each segment, drop blanks
   const keys = path
-    .replace(/\[(\d+|\*)\]/g, '.$1')
-    .split('.')
-    .map(k => k.trim())
-    .filter(k => k.length > 0);
+    .replace(/\[(\d+|\*)\]/g, ".$1")
+    .split(".")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
   if (keys.length === 0) return undefined;
   return _traverse(obj, keys);
 }
@@ -64,10 +65,16 @@ function _traverse(current: any, keys: string[]): any {
   if (keys.length === 0) return current;
   if (current == null) return undefined;
   const [head, ...rest] = keys;
-  if (head === '*') {
+  if (head === "*") {
     if (!Array.isArray(current)) return undefined;
-    const results = current.map((item: any) => _traverse(item, rest)).filter((v: any) => v !== undefined);
-    return results.length === 0 ? undefined : results.length === 1 ? results[0] : results;
+    const results = current
+      .map((item: any) => _traverse(item, rest))
+      .filter((v: any) => v !== undefined);
+    return results.length === 0
+      ? undefined
+      : results.length === 1
+        ? results[0]
+        : results;
   }
   return _traverse(current[head], rest);
 }
@@ -76,13 +83,13 @@ function _traverse(current: any, keys: string[]): any {
  * Safely escape HTML characters to prevent XSS (Cross-Site Scripting).
  */
 export function escapeHtml(unsafe: string | undefined | null): string {
-  if (unsafe == null) return '';
+  if (unsafe == null) return "";
   return String(unsafe)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -91,44 +98,52 @@ export function escapeHtml(unsafe: string | undefined | null): string {
 export function html(strings: TemplateStringsArray, ...values: any[]): string {
   return strings.reduce((result, string, i) => {
     const value = values[i - 1];
-    const escapedValue = typeof value === 'string' ? escapeHtml(value) : String(value ?? '');
+    const escapedValue =
+      typeof value === "string" ? escapeHtml(value) : String(value ?? "");
     return result + escapedValue + string;
   });
 }
 
-const DEFAULT_SENSITIVE_KEYS = ['password', 'passwordChange', 'passwordChangedAt', 'privateKey', 'clientSecret', 'certificate'];
+const DEFAULT_SENSITIVE_KEYS = [
+  "password",
+  "passwordChange",
+  "passwordChangedAt",
+  "privateKey",
+  "clientSecret",
+  "certificate",
+];
 
 /**
  * Omit keys recursively from an object, Mongoose document, or array of objects.
- * 
+ *
  * @param data - The object or array of objects to filter
  * @param keysToOmit - List of keys to exclude (defaults to standard sensitive fields)
  */
 export function omitKeys<T>(
   data: T,
   keysToOmit: AutocompletePaths<T>[] = DEFAULT_SENSITIVE_KEYS as AutocompletePaths<T>[],
-  currentPath: string = ""
+  currentPath: string = "",
 ): T {
   if (data == null) return data;
 
   if (Array.isArray(data)) {
-    return data.map(item => omitKeys(item, keysToOmit, currentPath)) as T;
+    return data.map((item) => omitKeys(item, keysToOmit, currentPath)) as T;
   }
 
-  if (typeof data === 'object') {
+  if (typeof data === "object") {
     // Convert Mongoose Document to plain object if toObject method exists
     let obj: Record<string, unknown>;
     const target = data as { toObject?: () => Record<string, unknown> };
-    if (typeof target.toObject === 'function') {
+    if (typeof target.toObject === "function") {
       obj = target.toObject();
     } else {
-      obj = { ...data as Record<string, unknown> };
+      obj = { ...(data as Record<string, unknown>) };
     }
 
     const result: Record<string, unknown> = {};
     const omitList = keysToOmit as string[];
     for (const key of Object.keys(obj)) {
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
         continue;
       }
       if (!Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -140,8 +155,17 @@ export function omitKeys<T>(
       }
 
       const val = obj[key];
-      if (val !== null && typeof val === 'object' && !(val instanceof Date) && !(val instanceof RegExp)) {
-        result[key] = omitKeys(val, keysToOmit as AutocompletePaths<unknown>[], keyPath);
+      if (
+        val !== null &&
+        typeof val === "object" &&
+        !(val instanceof Date) &&
+        !(val instanceof RegExp)
+      ) {
+        result[key] = omitKeys(
+          val,
+          keysToOmit as AutocompletePaths<unknown>[],
+          keyPath,
+        );
       } else {
         result[key] = val;
       }
@@ -151,4 +175,3 @@ export function omitKeys<T>(
 
   return data;
 }
-

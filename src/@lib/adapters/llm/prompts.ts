@@ -1,3 +1,5 @@
+import { FIRSService } from "../firs/firs.service";
+import { TaxCategory, InvoiceType } from "../firs/types";
 import { AuthContext } from "../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../../v1/workflow/models";
 import { TransformWorkflowService } from "../../../v1/workflow/services/workflows/transform.service";
@@ -61,18 +63,29 @@ export const formatSchemaFields = (
   }
 
   const fieldLines = fields.map((field) => {
-    const required =
-      field.is_required || field.validation_rules!.indexOf("required") > -1
-        ? "REQUIRED"
-        : "optional";
-    const format = field.format ? ` (format: ${field.format})` : "";
-    const validation = field.validation_rules
-      ? ` [${field.validation_rules}]`
-      : "";
-    const example =
-      field.example_value !== undefined
-        ? ` e.g., ${JSON.stringify(field.example_value)}`
-        : "";
+    let required = "optional";
+    if (
+      field.is_required ||
+      (field.validation_rules &&
+        field.validation_rules.indexOf("required") > -1)
+    ) {
+      required = "REQUIRED";
+    }
+
+    let format = "";
+    if (field.format) {
+      format = ` (format: ${field.format})`;
+    }
+
+    let validation = "";
+    if (field.validation_rules) {
+      validation = ` [${field.validation_rules}]`;
+    }
+
+    let example = "";
+    if (field.example_value !== undefined) {
+      example = ` e.g., ${JSON.stringify(field.example_value)}`;
+    }
 
     return `  - ${field.field_id}: ${field.data_type}${format} | path: ${field.field_path} | ${required}${validation}${example}`;
   });
@@ -99,143 +112,6 @@ export const getOptionalFields = (fields: ISchemaField[]): string[] => {
 };
 
 /**
- * FIRS Tax Categories reference
- */
-export const FIRS_TAX_CATEGORIES: {
-  code: string;
-  value: string;
-  percent: number;
-}[] = [
-  {
-    code: "STANDARD_GST",
-    value: "Standard Goods and Services Tax",
-    percent: 7.5,
-  },
-  {
-    code: "REDUCED_GST",
-    value: "Reduced Goods and Services Tax",
-    percent: 5.0,
-  },
-  { code: "ZERO_GST", value: "Zero Goods and Services Tax", percent: 0.0 },
-  { code: "STANDARD_VAT", value: "Standard Value-Added Tax", percent: 7.5 },
-  { code: "REDUCED_VAT", value: "Reduced Value-Added Tax", percent: 5.0 },
-  { code: "ZERO_VAT", value: "Zero Value-Added Tax", percent: 0.0 },
-  { code: "STATE_SALES_TAX", value: "State Sales Tax", percent: 0.0 },
-  { code: "LOCAL_SALES_TAX", value: "Local Sales Tax", percent: 0.0 },
-  { code: "ALCOHOL_EXCISE_TAX", value: "Alcohol Excise Tax", percent: 20.0 },
-  { code: "TOBACCO_EXCISE_TAX", value: "Tobacco Excise Tax", percent: 20.0 },
-  { code: "FUEL_EXCISE_TAX", value: "Fuel Excise Tax", percent: 0.0 },
-  {
-    code: "CORPORATE_INCOME_TAX",
-    value: "Corporate Income Tax",
-    percent: 30.0,
-  },
-  { code: "PERSONAL_INCOME_TAX", value: "Personal Income Tax", percent: 24.0 },
-  { code: "SOCIAL_SECURITY_TAX", value: "Social Security Tax", percent: 0.0 },
-  { code: "MEDICARE_TAX", value: "Medicare Tax", percent: 0.0 },
-  { code: "REAL_ESTATE_TAX", value: "Real Estate Tax", percent: 0.0 },
-  {
-    code: "PERSONAL_PROPERTY_TAX",
-    value: "Personal Property Tax",
-    percent: 0.0,
-  },
-  { code: "CARBON_TAX", value: "Carbon Tax", percent: 0.0 },
-  { code: "PLASTIC_TAX", value: "Plastic Tax", percent: 0.0 },
-  { code: "IMPORT_DUTY", value: "Import Duty", percent: 0.0 },
-  { code: "EXPORT_DUTY", value: "Export Duty", percent: 0.0 },
-  { code: "LUXURY_TAX", value: "Luxury Tax", percent: 0.0 },
-  { code: "SERVICE_TAX", value: "Service Tax", percent: 0.0 },
-  { code: "TOURISM_TAX", value: "Tourism Tax", percent: 0.0 },
-  { code: "WITHHOLDING_TAX", value: "Withholding Tax", percent: 10.0 },
-  { code: "STAMP_DUTY", value: "Stamp Duty", percent: 0.0 },
-  { code: "EXEMPTED", value: "Tax Exemption", percent: 0.0 },
-];
-
-/* FIRS Invoice Types reference */
-export const FIRS_INVOICE_TYPES = [
-  {
-    code: "380",
-    value: "Commercial Invoice",
-  },
-  {
-    code: "381",
-    value: "Credit Note",
-  },
-  {
-    code: "384",
-    value: "Debit Note",
-  },
-  {
-    code: "385",
-    value: "Self Billed Invoice",
-  },
-  {
-    code: "386",
-    value: "Factored Invoice",
-  },
-  {
-    code: "388",
-    value: "Statement of Account",
-  },
-  {
-    code: "389",
-    value: "Purchase Order",
-  },
-  {
-    code: "390",
-    value: "Proforma Invoice",
-  },
-  {
-    code: "392",
-    value: "Consignment Invoice",
-  },
-  {
-    code: "393",
-    value: "Self-billed Credit Note",
-  },
-  {
-    code: "394",
-    value: "Self-billed Invoice",
-  },
-  {
-    code: "395",
-    value: "Credit Note Request",
-  },
-  {
-    code: "396",
-    value: "Invoice Request",
-  },
-  {
-    code: "397",
-    value: "Final Settlement",
-  },
-  {
-    code: "399",
-    value: "Bill of Lading",
-  },
-  {
-    code: "400",
-    value: "Waybill",
-  },
-  {
-    code: "402",
-    value: "Shipping Instructions",
-  },
-  {
-    code: "404",
-    value: "Certificate of Origin",
-  },
-  {
-    code: "406",
-    value: "Customs Declaration",
-  },
-  {
-    code: "408",
-    value: "Packing List",
-  },
-];
-
-/**
  * Generate transformation prompt using schemas from database
  * @param invoice - The input invoice data to transform
  * @param authContext - Authentication context with tenant/business info
@@ -245,6 +121,8 @@ export const FIRS_INVOICE_TYPES = [
  */
 export const SYSTEM_PROMPT_V2 = (
   invoice: any,
+  taxCategories: TaxCategory[],
+  invoiceTypes: InvoiceType[],
   authContext?: AuthContext,
   sourceSchema?: ISchemaField[],
   firsSchema?: ISchemaField[],
@@ -257,12 +135,15 @@ export const SYSTEM_PROMPT_V2 = (
   )
     .toString()
     .padStart(3, "0")}`;
-  const invoiceDate = invoice?.date || invoice?.issue_date || invoice?.issueDate;
-  let irn = invoice?.irn || generateIRN(
-    invoiceRef,
-    authContext?.serviceId,
-    invoiceDate ? new Date(invoiceDate) : undefined,
-  );
+  const invoiceDate =
+    invoice?.date || invoice?.issue_date || invoice?.issueDate;
+  let irn =
+    invoice?.irn ||
+    generateIRN(
+      invoiceRef,
+      authContext?.serviceId,
+      invoiceDate ? new Date(invoiceDate) : undefined,
+    );
   // Build source schema section
   let sourceSchemaSection = "";
   if (sourceSchema && sourceSchema.length > 0) {
@@ -293,11 +174,13 @@ FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
   // Build business context section
   let businessContext = "";
   if (authContext) {
-    irn = invoice?.irn || generateIRN(
-      invoiceRef,
-      authContext?.serviceId,
-      invoiceDate ? new Date(invoiceDate) : undefined,
-    );
+    irn =
+      invoice?.irn ||
+      generateIRN(
+        invoiceRef,
+        authContext?.serviceId,
+        invoiceDate ? new Date(invoiceDate) : undefined,
+      );
     businessContext = `
             ## BUSINESS CONTEXT:
             - Business ID: ${authContext.businessId || "{{TEST_BUSINESS_ID}}"}
@@ -322,8 +205,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice, "380" / "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("380", "381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -340,10 +223,10 @@ Ensure all keys above are not changed
   * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
 
 ## VALID TAX CATEGORIES:
-${JSON.stringify(FIRS_TAX_CATEGORIES, null, 2)}
+${JSON.stringify(taxCategories, null, 2)}
 
 ## VALID INVOICE TYPES:
-${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
+${JSON.stringify(invoiceTypes, null, 2)}
 
 ## DATE/TIME FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
@@ -359,9 +242,12 @@ ${JSON.stringify(FIRS_INVOICE_TYPES, null, 2)}
 5. telephone: ensure it starts with "+" (country code)
 6. invoice_type: default to "B2B" if missing
 
-## PARTY INFORMATION RULES:
-- accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, postal_address)
+## PARTY INFORMATION RULES (STRICT NESTING REQUIRED):
+- accounting_supplier_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- accounting_customer_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
+- All supplier information MUST be nested EXCLUSIVELY inside the accounting_supplier_party object.
+- All customer/buyer information MUST be nested EXCLUSIVELY inside the accounting_customer_party object.
+- NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
 - TIN format should be preserved from source
@@ -391,6 +277,8 @@ Each invoice_line must contain:
 10. Ensure email, phone, postal codes are valid per FIRS rules
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
+13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
+14. Map ERP standard invoice_type_code 380 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note.
 
 ## MAPPING RULES TO USE INCASE THE FIELDS EXIST:
 ${JSON.stringify(mappingRules)}
@@ -418,10 +306,27 @@ export const generateTransformPrompt = async (
   metaContext?: string,
 ): Promise<string> => {
   const transformService = new TransformWorkflowService();
+  const firsService = new FIRSService();
 
   //let sourceSchema: ISchemaField[] = [];
   let mappingRules: Array<Record<string, any>> = [];
   let firsSchema: ISchemaField[] = [];
+  let taxCategories: TaxCategory[] = [];
+  let invoiceTypes: InvoiceType[] = [];
+
+  try {
+    const [taxCatRes, invoiceTypeRes] = await Promise.all([
+      firsService.getResource<TaxCategory>("tax-categories"),
+      firsService.getResource<InvoiceType>("invoice-types"),
+    ]);
+    taxCategories = taxCatRes || [];
+    invoiceTypes = invoiceTypeRes || [];
+  } catch (error) {
+    console.error(
+      "Error fetching FIRS resources for prompt generation:",
+      error,
+    );
+  }
 
   try {
     // Fetch source ERP schema if source type is provided
@@ -448,6 +353,8 @@ export const generateTransformPrompt = async (
 
   return SYSTEM_PROMPT_V2(
     invoice,
+    taxCategories,
+    invoiceTypes,
     authContext,
     sourceSchema,
     firsSchema,

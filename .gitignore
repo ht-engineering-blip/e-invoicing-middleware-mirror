@@ -23,6 +23,7 @@ log
 # Editor directories and files
 .vscode/* 
 .claude/* 
+e-invoicing-middleware/src/scripts
 !.vscode/extensions.json
 IMPLEMENTATION_PLAN.md
 .idea

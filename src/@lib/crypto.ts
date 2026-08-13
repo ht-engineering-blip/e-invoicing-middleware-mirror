@@ -4,7 +4,9 @@ export function encryptSensitiveData(data: string, key?: any): string {
   const algorithm = "aes-256-gcm";
   key = crypto.scryptSync(key || process.env.ENCRYPTION_KEY, "salt", 32);
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, key, iv, { authTagLength: 16 });
+  const cipher = crypto.createCipheriv(algorithm, key, iv, {
+    authTagLength: 16,
+  });
 
   let encrypted = cipher.update(data, "utf8", "hex");
   encrypted += cipher.final("hex");
@@ -28,7 +30,9 @@ export function decryptSensitiveData(encryptedData: string, key?: any): string {
   const authTag = Buffer.from(parts[1], "hex");
   const encrypted = parts[2];
 
-  const decipher = crypto.createDecipheriv(algorithm, key, iv, { authTagLength: 16 });
+  const decipher = crypto.createDecipheriv(algorithm, key, iv, {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(authTag);
 
   let decrypted = decipher.update(encrypted, "hex", "utf8");
