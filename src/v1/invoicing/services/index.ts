@@ -444,7 +444,7 @@ export class InvoiceWorkflowService {
   async reportInvoice(reportData: VATPostPaymentReportData): Promise<any> {
     try {
       // Call FIRS VAT post-payment API
-      const reportResult = await this.firsService.reportVATPostPayment(
+      const reportResult: any = await this.firsService.reportVATPostPayment(
         reportData.integrator_service_id || reportData.agent_tin,
         reportData,
       );

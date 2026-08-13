@@ -1,0 +1,79 @@
+name: Deploy to ECR & EC2 (Dev)
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
+jobs:
+  deploy:
+    name: Build, Push & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Configure AWS
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          region: ${{ env.AWS_REGION }}
+
+      # Login to ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -f Dockerfile.worker -t $ECR_REPOSITORY:latest .
+
+      # Tag image
+      - name: Tag image
+        run: |
+          docker tag $ECR_REPOSITORY:latest \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
+
+      # Push image
+      - name: Push image to ECR
+        run: |
+          docker push \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
+
+      - name: Debug SSH connectivity
+        run: |
+          echo "=== Runner's public IP ==="
+          curl -s https://api.ipify.org && echo
+          echo "=== Host value length (for sanity) ==="
+          echo -n "${{ secrets.EC2_HOST }}" | wc -c
+          echo "=== DNS resolution ==="
+          getent hosts ${{ secrets.EC2_HOST }} || echo "DNS failed"
+          echo "=== TCP reachability ==="
+          nc -vz -w 10 ${{ secrets.EC2_HOST }} 22 || echo "Port 22 unreachable"
+          echo "=== Traceroute ==="
+          sudo apt-get install -y traceroute >/dev/null 2>&1 || true
+          traceroute -n -m 15 -w 3 ${{ secrets.EC2_HOST }} || true
+
+      # Deploy to EC2
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region eu-west-1 \
+            | docker login --username AWS --password-stdin \
+            231399651855.dkr.ecr.eu-west-1.amazonaws.com
+          
+            cd /home/ubuntu/middleware
+          
+            docker compose up -d --pull always --force-recreate
+          
+            docker system prune -f

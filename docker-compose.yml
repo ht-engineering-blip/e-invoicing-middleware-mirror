@@ -92,8 +92,7 @@ volumes:
     driver: local
   mongodb_config:
     driver: local
-  redis_data:
-    driver: local
+
 
 networks:
   e-invoicing-middleware-network:
