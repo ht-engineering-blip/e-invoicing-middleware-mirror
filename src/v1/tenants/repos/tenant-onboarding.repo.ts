@@ -103,15 +103,20 @@ export class TenantOnboardingRepository {
     data: Partial<TenantOnboardingDocument>,
   ): Promise<TenantOnboardingDocument> {
     try {
+      const defaultSteps = {
+        registration: { completed: false },
+        firsProvisioning: { completed: false },
+        erpConfiguration: { completed: false },
+        testing: { completed: false },
+        goLive: { completed: false },
+      };
+
       const doc = await this.onboardingModel.create({
-        ...data,
         status: OnboardingStatus.PENDING,
+        ...data,
         steps: {
-          registration: { completed: false },
-          firsProvisioning: { completed: false },
-          erpConfiguration: { completed: false },
-          testing: { completed: false },
-          goLive: { completed: false },
+          ...defaultSteps,
+          ...(data.steps || {}),
         },
       });
 

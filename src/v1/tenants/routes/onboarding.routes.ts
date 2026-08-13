@@ -6,7 +6,6 @@ import { jwtConfig, appConfig } from '../../../@config';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import axios from 'axios';
-import { encryptSensitiveData } from '../../../@lib/crypto';
 import { onlySelf } from '../../auth/utils/access-checks';
 import { WebhookService } from '../../webhook/services/webhook.service';
 import { signWebhookPayload } from '../../webhook';
@@ -237,9 +236,6 @@ export const protectedOnboardingRoutes = new Elysia()
         // Persist invoiceIdKey if provided; otherwise keep existing value
         const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
 
-        // Encrypt webhook secret
-        const encryptedSecret = encryptSensitiveData(webhookSecret);
-
         await tenantService.updateTenant(params.tenantId, {
           webhookUrl,
           webhookEnabled: true,
@@ -256,6 +252,16 @@ export const protectedOnboardingRoutes = new Elysia()
         } as any, getActor(auth));
 
         await webhookService.configureWebhook({ enabled: true, tenantId: params.tenantId, webhookUrl, webhookSecret })
+
+        // Update onboarding step
+        try {
+          const onboarding = await tenantService.getOnboardingStatus(params.tenantId);
+          if (onboarding && !onboarding.steps?.erpConfiguration?.completed) {
+            await tenantService.completeOnboardingStep(params.tenantId, 'erpConfiguration', getActor(auth));
+          }
+        } catch (onboardingError) {
+          logger.warn('Failed to update onboarding step erpConfiguration', { error: onboardingError });
+        }
 
         return {
           success: true,
