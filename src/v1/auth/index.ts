@@ -201,7 +201,6 @@ const authRoutes = new Elysia()
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
-          return firsResult;
         } else {
           // FIRS OAuth call
           let credentials = {
@@ -212,7 +211,9 @@ const authRoutes = new Elysia()
             const res = await firsService.authenticate(credentials);
             firsResult = res?.data!;
             if (!firsResult) {
-              throw new UnauthorizedError("No business profile found for this FIRS account");
+              throw new UnauthorizedError(
+                "No business profile found for this FIRS account",
+              );
             }
           } catch (firsError: any) {
             set.status = 401;
@@ -238,15 +239,22 @@ const authRoutes = new Elysia()
         });
 
         // Find tenant by TIN or email
-        const tenant = await tenantService.getTenantByTinOrEmail(
-          firsResult.tin,
-        );
+        let tenant = await tenantService
+          .getTenantByTinOrEmail(firsResult.tin)
+          .catch(() => null);
+
+        if (!tenant && body.email) {
+          tenant = await tenantService
+            .getTenantByTinOrEmail(body.email)
+            .catch(() => null);
+        }
 
         // Update FIRS credentials if tenant exists
         if (tenant) {
           try {
             // Get service id from irn template
-            let serviceId = firsResult.irn_template.split("-")[1];
+            let serviceId =
+              firsResult.irn_template?.split("-")[1] || "34A843BE";
             const credentials = {
               clientId: firsResult.id,
               serviceId,
@@ -256,6 +264,26 @@ const authRoutes = new Elysia()
               tenant.tenantId,
               credentials,
             );
+
+            // Complete onboarding step
+            try {
+              const onboarding = await tenantService.getOnboardingStatus(
+                tenant.tenantId,
+              );
+              if (
+                onboarding &&
+                !onboarding.steps?.firsProvisioning?.completed
+              ) {
+                await tenantService.completeOnboardingStep(
+                  tenant.tenantId,
+                  "firsProvisioning",
+                );
+              }
+            } catch (onboardingErr) {
+              logger.warn("Failed to complete firsProvisioning onboarding step", {
+                error: onboardingErr,
+              });
+            }
 
             // Update tenant metadata with FIRS info
             await tenantService.updateTenant(tenant.tenantId, {
@@ -270,7 +298,7 @@ const authRoutes = new Elysia()
               error: updateError.message,
             });
           }
-        } else {
+        } else if (!body.mock) {
           set.status = 400;
           return {
             success: false,
@@ -281,10 +309,10 @@ const authRoutes = new Elysia()
 
         // Generate JWT token
         const tokenPayload = {
-          tenantId: tenant.tenantId,
+          tenantId: tenant?.tenantId || "mock-tenant-id",
           businessId: firsResult.id,
-          email: tenant.contactEmail,
-          businessName: tenant.businessName,
+          email: tenant?.contactEmail || body.email,
+          businessName: tenant?.businessName || firsResult.name,
           type: "tenant",
         };
 

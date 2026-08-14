@@ -27,25 +27,60 @@ export const updateCredentialsValidation = {
   }),
   body: t.Object(
     {
-      publicKey: t.String({
-        minLength: 1,
-        example: updateCredentialsExample.publicKey,
-      }),
-      certificate: t.String({
-        minLength: 1,
-        example: updateCredentialsExample.certificate,
-      }),
+      publicKey: t.Optional(
+        t.String({
+          description: "PEM encoded RSA public key",
+          example: updateCredentialsExample.publicKey,
+        }),
+      ),
+      certificate: t.Optional(
+        t.String({
+          description: "PEM encoded X.509 certificate",
+          example: updateCredentialsExample.certificate,
+        }),
+      ),
+      mock: t.Optional(
+        t.Boolean({
+          description: "If true, populates mock FIRS credentials for testing",
+          example: false,
+          default: false,
+        }),
+      ),
+      clientId: t.Optional(t.String({ description: "FIRS Client ID" })),
+      serviceId: t.Optional(t.String({ description: "FIRS Service ID" })),
     },
     { examples: [updateCredentialsExample] },
   ),
+  beforeHandle({ body, set }: any) {
+    if (!body?.mock) {
+      if (
+        body?.certificate &&
+        !body.certificate.includes("-----BEGIN CERTIFICATE-----")
+      ) {
+        set.status = 400;
+        return {
+          success: false,
+          error: "Invalid certificate format. Must be PEM encoded.",
+          statusCode: 400,
+        };
+      }
+      if (body?.publicKey && !body.publicKey.includes("-----BEGIN")) {
+        set.status = 400;
+        return {
+          success: false,
+          error: "Invalid public key format. Must be PEM encoded.",
+          statusCode: 400,
+        };
+      }
+    }
+  },
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "Update Credentials",
     description:
-      "Update tenant public key and certificate for FIRS integration",
+      "Update tenant public key and certificate for FIRS integration. Pass mock: true for test provisioning.",
   },
-  
 };
 
 export const generateWebhookValidation = {
