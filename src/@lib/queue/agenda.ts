@@ -149,7 +149,17 @@ MongoJobRepository.prototype.queryJobs = async function (
     query.disabled = true;
   }
 
-  const mongoSort = this.toMongoSort(sort);
+  // Ensure sorting returns most recent jobs first (_id timestamp / lastRunAt)
+  // Default Agendash passes sort: { nextRunAt: 'desc' }, which places 5-month-old completed jobs at top.
+  let mongoSort: any = { _id: -1 };
+  if (sort) {
+    if (sort.nextRunAt === "desc" || sort.nextRunAt === -1) {
+      mongoSort = { _id: -1 };
+    } else {
+      mongoSort = this.toMongoSort(sort);
+      if (!mongoSort._id) mongoSort._id = -1;
+    }
+  }
 
   // allowDiskUse(true) prevents memory limit exceptions during sorting on unindexed large collections
   let cursor = this.collection.find(query).sort(mongoSort).allowDiskUse(true);
