@@ -43,6 +43,16 @@ async function startWorker() {
 
   // 4. Mount Agendash dashboard on a dedicated Express server
   const dashApp = express();
+
+  // Intercept SSE real-time events endpoint to prevent browser EventSource 501 infinite reconnect loop
+  dashApp.get("/api/events", (_req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.write('event: connected\ndata: {"connected":true}\n\n');
+  });
+
   dashApp.use("/", createExpressMiddleware(agenda));
   dashApp.listen(AGENDASH_PORT, () => {
     logger.info(
