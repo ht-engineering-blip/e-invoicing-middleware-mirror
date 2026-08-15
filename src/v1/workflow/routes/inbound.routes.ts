@@ -1,13 +1,13 @@
 import Elysia from "elysia";
 import { requireAuth } from "../../../middlewares";
+import { logger, ResponseBuilder } from "../../../@lib";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { InboundWorkflowService } from "../services";
 import { secureAndValidateInvoice } from "../utils/security";
 import { inboundInvoiceValidation } from "../validations/inbound.validation";
 
 /**
- * Admin-protected tenant routes
- * All mutation operations require admin key
+ * Inbound invoice routes
  */
 const inboundInvoiceRoutes = new Elysia({ prefix: "/inbound" })
   .use(requireAuth)
@@ -19,28 +19,40 @@ const inboundInvoiceRoutes = new Elysia({ prefix: "/inbound" })
    */
   .post(
     "/",
-    async ({ auth, body, query, tenantService, inboundWorkflowService, set }) => {
+    async ({ auth, body, query, inboundWorkflowService, set }) => {
       try {
-        console.log({ query });
-        const transmit = Boolean(query.transmit === "true");
-
+        const transmit = Boolean(query?.transmit === "true");
         const invoice = secureAndValidateInvoice(body, auth);
 
-        let qrCode = await inboundWorkflowService.handleInboundWorkflow(
+        const result = await inboundWorkflowService.handleInboundWorkflow(
           invoice,
           transmit,
         );
-        return { status: true, data: qrCode };
+
+        if (!result.status) {
+          set.status = 400;
+          return ResponseBuilder.error(
+            result.error || "Inbound workflow failed",
+            400
+          );
+        }
+
+        return ResponseBuilder.success(
+          result.data,
+          undefined,
+          "Inbound invoice processed successfully"
+        );
       } catch (error: any) {
-        set.status = 500
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Inbound workflow route error:", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to process inbound invoice",
+          error.statusCode || 500
+        );
       }
     },
-    inboundInvoiceValidation
+    inboundInvoiceValidation,
   );
 
 export default inboundInvoiceRoutes;
+

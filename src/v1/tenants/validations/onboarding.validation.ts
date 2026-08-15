@@ -71,7 +71,7 @@ export const updateCredentialsValidation = {
   },
   detail: {
     tags: ["Onboarding"],
-    security: [{ apiKey: [] }, { bearerAuth: [] }],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "Update Credentials",
     description:
       "Update tenant public key and certificate for FIRS integration. Pass mock: true for test provisioning.",
@@ -94,7 +94,7 @@ export const generateWebhookValidation = {
   ),
   detail: {
     tags: ["Onboarding"],
-    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
     summary: "Generate Webhook URL",
     description:
       "Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.",
@@ -115,7 +115,7 @@ export const updateInvoiceIdKeyValidation = {
   ),
   detail: {
     tags: ["Onboarding"],
-    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
     summary: "Update Invoice ID Key for tenant",
     description:
       "Update invoiceIdKey to configure which payload field identifies the ERP invoice.",

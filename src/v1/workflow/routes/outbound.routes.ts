@@ -1,13 +1,13 @@
 import Elysia from "elysia";
 import { requireAuth } from "../../../middlewares";
+import { logger, ResponseBuilder } from "../../../@lib";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { OutboundWorkflowService } from "../services";
 import { secureAndValidateInvoice } from "../utils/security";
 import { outboundInvoiceValidation } from "../validations/outbound.validation";
 
 /**
- * Admin-protected tenant routes
- * All mutation operations require admin key
+ * Outbound invoice routes
  */
 const outboundInvoiceRoutes = new Elysia({ prefix: "/outbound" })
   .use(requireAuth)
@@ -20,27 +20,32 @@ const outboundInvoiceRoutes = new Elysia({ prefix: "/outbound" })
    */
   .post(
     "/",
-    async ({ auth, body, query, tenantService, outboundWorkflowService, set }) => {
+    async ({ auth, body, query, outboundWorkflowService, set }) => {
       try {
-        console.log({ query });
-        const transmit = Boolean(query.transmit === "true");
+        const transmit = Boolean(query?.transmit === "true");
         const invoice = secureAndValidateInvoice(body, auth);
 
-        let qrCode = await outboundWorkflowService.handleOutboundWorkflow(
+        const result = await outboundWorkflowService.handleOutboundWorkflow(
           invoice,
           transmit,
         );
-        return { status: true, data: qrCode };
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          "Outbound invoice processed successfully"
+        );
       } catch (error: any) {
-        set.status = 500
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Outbound workflow route error:", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to process outbound invoice",
+          error.statusCode || 500
+        );
       }
     },
     outboundInvoiceValidation
   );
 
 export default outboundInvoiceRoutes;
+

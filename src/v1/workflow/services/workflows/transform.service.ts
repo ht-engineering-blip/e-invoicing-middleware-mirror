@@ -244,9 +244,8 @@ export class TransformWorkflowService {
     sourceType: SchemaSourceType | string,
   ): Promise<InvoiceSchemaDictionaryDocument | null> => {
     // Try to find default schema for this source type
-    const defaultSchema =
-      await this.invoiceSchemaRepo.findDefaultBySourceType(sourceType);
-    if (defaultSchema) return defaultSchema;
+    const s = await this.invoiceSchemaRepo.findDefaultBySourceType(sourceType);
+    if (s) return s;
 
     // If no default, try to find any active schema
     const schemas = await this.invoiceSchemaRepo.findBySourceType(

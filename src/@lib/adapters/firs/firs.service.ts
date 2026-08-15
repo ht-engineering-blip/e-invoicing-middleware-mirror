@@ -10,6 +10,11 @@ import { generateQRCode } from "./generateQR";
 
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
+import type {
+  FIRSDownloadInvoiceResponse,
+  FIRSDecryptInvoiceInput,
+} from "./types";
+
 
 export interface FIRSUserInfo {
   code: number;
@@ -291,9 +296,15 @@ export class FIRSService {
     const client = this.appClient;
     return client.post(`api/v1/invoice/transmit/${irn}`, {});
   }
-  public async downloadInvoice(tenantId: string, irn: string) {
+  public async downloadInvoice(
+    tenantId: string,
+    irn: string,
+  ): Promise<FIRSDownloadInvoiceResponse> {
     const client = this.appClient;
-    return client.get(`api/v1/invoice/download/${irn}`, {});
+    return client.get<FIRSDownloadInvoiceResponse>(
+      `api/v1/invoice/download/${irn}`,
+      {},
+    );
   }
 
   public async confirmSignedInvoice(tenantId: string, irn: string) {
@@ -338,13 +349,14 @@ export class FIRSService {
     }
   }
 
-  public async decryptInvoice(invoice: any) {
+  public async decryptInvoice(invoice: FIRSDecryptInvoiceInput): Promise<any> {
     try {
       return await decryptInvoice(invoice);
     } catch (error: any) {
       console.error("Decryption failed:", error.message);
     }
   }
+
 
   public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
     const client = this.appClient;
