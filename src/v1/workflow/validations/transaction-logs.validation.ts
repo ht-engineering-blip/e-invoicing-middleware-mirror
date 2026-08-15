@@ -7,6 +7,8 @@ export const listOutboundInvoicesValidation = {
     status: t.Optional(t.String()),
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
+    search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
@@ -91,6 +93,8 @@ export const listInboundInvoicesValidation = {
     limit: t.Optional(t.String()),
     status: t.Optional(t.String()),
     paymentStatus: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
+    search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
@@ -121,6 +125,7 @@ export const listAllInvoicesValidation = {
     businessId: t.Optional(t.String()),
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
     type: t.Optional(
       t.String({
         description:

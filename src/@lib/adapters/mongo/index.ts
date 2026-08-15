@@ -6,9 +6,11 @@ export const connectMongo = async () => {
    return await mongoose.connect(databaseConfig?.data?.mongoUri as string, {
       dbName: databaseConfig?.data?.dbName,
       // Additional MongoDB connection options
-      maxPoolSize: 10,
+      maxPoolSize: 20,
       minPoolSize: 2,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 30000,
     }).then(() => {
       console.info(`MongoDB connected successfully to database: ${databaseConfig?.data?.dbName}`);
     }).catch((err: any) => {

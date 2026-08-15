@@ -284,11 +284,18 @@ export class InvoiceWorkflowService {
   async decryptInvoice(authContext: AuthContext, irn: string): Promise<any> {
     try {
       // Download invoice from FIRS
-      const { data: invoiceResponse }: any =
-        await this.firsService.downloadInvoice(authContext.tenantId, irn);
+      const invoiceResponse = await this.firsService.downloadInvoice(
+        authContext.tenantId,
+        irn,
+      );
       const encryptedInvoice = invoiceResponse?.data;
 
-      if (!encryptedInvoice) {
+      if (
+        !encryptedInvoice ||
+        !encryptedInvoice.iv_hex ||
+        !encryptedInvoice.pub ||
+        !encryptedInvoice.data
+      ) {
         throw new NotFoundError("Invoice not found on FIRS");
       }
 

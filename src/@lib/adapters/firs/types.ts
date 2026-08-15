@@ -36,4 +36,26 @@ export interface Lga {
   stateCode: string;
 }
 
+/**
+ * FIRS Inbound Download and Decryption types
+ */
+export interface FIRSDownloadedInvoiceData {
+  iv_hex: string;
+  pub: string;
+  data: string;
+}
+
+export interface FIRSDownloadInvoiceResponse {
+  code: number;
+  data: FIRSDownloadedInvoiceData;
+}
+
+export interface FIRSDecryptInvoiceInput {
+  iv_hex: string;
+  pub: string;
+  ciphertext: string;
+  api_key?: string;
+}
+
 // Extend with other resources as needed (states, countries, currencies, paymentMeans, etc.)
+

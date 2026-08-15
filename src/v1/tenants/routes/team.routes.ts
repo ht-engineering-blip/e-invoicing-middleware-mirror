@@ -1,9 +1,9 @@
-import { Elysia } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
-import { TeamMemberService } from '../services/team-member.service';
-import { TeamMemberRole, TeamMemberStatus } from '../models/team-member.model';
-import { onlySelf } from '../../auth/utils/access-checks';
+import { Elysia } from "elysia";
+import { requireAuth } from "../../../middlewares/auth";
+import { logger, ResponseBuilder } from "../../../@lib";
+import { TeamMemberService } from "../services/team-member.service";
+import { TeamMemberRole, TeamMemberStatus } from "../models/team-member.model";
+import { onlySelf } from "../../auth/utils/access-checks";
 import {
   acceptInviteValidation,
   listTeamMembersValidation,
@@ -11,103 +11,111 @@ import {
   getTeamMemberValidation,
   updateTeamMemberValidation,
   removeTeamMemberValidation,
-  resendInviteValidation
-} from '../validations/team.validation';
+  resendInviteValidation,
+} from "../validations/team.validation";
 
 /**
  * Public Team Routes (for accepting invitations)
  */
-export const publicTeamRoutes = new Elysia({ prefix: '/team' })
-  .decorate('teamService', new TeamMemberService())
+export const publicTeamRoutes = new Elysia({ prefix: "/team" })
+  .decorate("teamService", new TeamMemberService())
 
   /**
    * POST /team/accept-invite/:token
    * Accept team invitation
    */
   .post(
-    '/accept-invite/:token',
-    async ({ params, body, teamService }) => {
+    "/accept-invite/:token",
+    async ({ params, body, teamService, set }) => {
       try {
-        logger.info('Team invitation acceptance attempt');
+        logger.info("Team invitation acceptance attempt");
 
-        const result = await teamService.acceptInvitation(params.token, body.password);
+        const result = await teamService.acceptInvitation(
+          params.token,
+          body.password,
+        );
 
-        return {
-          success: true,
-          message: 'Invitation accepted successfully',
-          data: {
+        return ResponseBuilder.success(
+          {
             userId: result.member.userId,
             email: result.member.email,
             firstName: result.member.firstName,
             lastName: result.member.lastName,
             role: result.member.role,
             token: result.authToken,
-            tokenType: 'Bearer',
+            tokenType: "Bearer",
           },
-        };
+          undefined,
+          "Invitation accepted successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to accept invitation', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to accept invitation',
-          statusCode: error.statusCode || 400,
-        };
+        set.status = error.statusCode || 400;
+        logger.error("Failed to accept invitation", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to accept invitation",
+          error.statusCode || 400,
+        );
       }
     },
-    acceptInviteValidation
+    acceptInviteValidation,
   );
 
 /**
  * Protected Team Routes
  */
-export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
+export const protectedTeamRoutes = new Elysia({ prefix: "/:tenantId/team" })
   .use(requireAuth)
-  .decorate('teamService', new TeamMemberService())
+  .decorate("teamService", new TeamMemberService())
 
   /**
    * GET /tenants/:tenantId/team
    * List team members
    */
   .get(
-    '/',
-    async ({ params, query, auth, teamService }) => {
+    "/",
+    async ({ params, query, auth, teamService, set }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
-        
+        onlySelf(auth!, params.tenantId);
+
+        const page = query.page ? parseInt(query.page) : 1;
+        const limit = query.limit ? parseInt(query.limit) : 20;
 
         const result = await teamService.listTeamMembers(params.tenantId, {
           status: query.status as TeamMemberStatus,
           role: query.role as TeamMemberRole,
-          page: query.page ? parseInt(query.page) : 1,
-          limit: query.limit ? parseInt(query.limit) : 20,
+          page,
+          limit,
         });
 
-        return {
-          success: true,
-          data: result.data.map((member) => ({
-            userId: member.userId,
-            email: member.email,
-            firstName: member.firstName,
-            lastName: member.lastName,
-            role: member.role,
-            status: member.status,
-            invitedAt: member.invitedAt,
-            acceptedAt: member.acceptedAt,
-            permissions: member.permissions,
-          })),
-          pagination: result.pagination,
-        };
+        const formattedMembers = result.data.map((member) => ({
+          userId: member.userId,
+          email: member.email,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          role: member.role,
+          status: member.status,
+          invitedAt: member.invitedAt,
+          acceptedAt: member.acceptedAt,
+          permissions: member.permissions,
+        }));
+
+        return ResponseBuilder.paginate(
+          formattedMembers,
+          result.pagination.total,
+          page,
+          limit,
+        );
       } catch (error: any) {
-        logger.error('Failed to list team members', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to list team members',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to list team members", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to list team members",
+          error.statusCode || 500,
+        );
       }
     },
-    listTeamMembersValidation
+    listTeamMembersValidation,
   )
 
   /**
@@ -115,11 +123,11 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
    * Invite team member
    */
   .post(
-    '/',
-    async ({ params, body, auth, teamService }) => {
+    "/",
+    async ({ params, body, auth, teamService, set }) => {
       try {
         // Check authorization
-           onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
         const member = await teamService.inviteTeamMember(
           params.tenantId,
@@ -130,13 +138,11 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
             role: body.role as TeamMemberRole,
             permissions: body.permissions,
           },
-          auth?.userId || auth!.tenantId
+          auth?.userId || auth!.tenantId,
         );
 
-        return {
-          success: true,
-          message: 'Team member invited successfully',
-          data: {
+        return ResponseBuilder.success(
+          {
             userId: member.userId,
             email: member.email,
             firstName: member.firstName,
@@ -145,17 +151,19 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
             status: member.status,
             invitedAt: member.invitedAt,
           },
-        };
+          undefined,
+          "Team member invited successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to invite team member', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to invite team member',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to invite team member", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to invite team member",
+          error.statusCode || 500,
+        );
       }
     },
-    inviteTeamMemberValidation
+    inviteTeamMemberValidation,
   )
 
   /**
@@ -163,40 +171,40 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
    * Get team member details
    */
   .get(
-    '/:userId',
-    async ({ params, auth, teamService }) => {
+    "/:userId",
+    async ({ params, auth, teamService, set }) => {
       try {
         // Check authorization
-       onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
-        const member = await teamService.getTeamMember(params.tenantId, params.userId);
+        const member = await teamService.getTeamMember(
+          params.tenantId,
+          params.userId,
+        );
 
-        return {
-          success: true,
-          data: {
-            userId: member.userId,
-            email: member.email,
-            firstName: member.firstName,
-            lastName: member.lastName,
-            role: member.role,
-            status: member.status,
-            invitedAt: member.invitedAt,
-            invitedBy: member.invitedBy,
-            acceptedAt: member.acceptedAt,
-            permissions: member.permissions,
-            lastLoginAt: member.lastLoginAt,
-          },
-        };
+        return ResponseBuilder.success({
+          userId: member.userId,
+          email: member.email,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          role: member.role,
+          status: member.status,
+          invitedAt: member.invitedAt,
+          invitedBy: member.invitedBy,
+          acceptedAt: member.acceptedAt,
+          permissions: member.permissions,
+          lastLoginAt: member.lastLoginAt,
+        });
       } catch (error: any) {
-        logger.error('Failed to get team member', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to get team member',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to get team member", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to get team member",
+          error.statusCode || 500,
+        );
       }
     },
-    getTeamMemberValidation
+    getTeamMemberValidation,
   )
 
   /**
@@ -204,12 +212,12 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
    * Update team member
    */
   .patch(
-    '/:userId',
-    async ({ params, body, auth, teamService }) => {
+    "/:userId",
+    async ({ params, body, auth, teamService, set }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
-        
+        onlySelf(auth!, params.tenantId);
+
         const member = await teamService.updateTeamMember(
           params.tenantId,
           params.userId,
@@ -220,13 +228,11 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
             permissions: body.permissions,
             status: body.status as TeamMemberStatus,
           },
-          auth!.userId || auth!.tenantId
+          auth!.userId || auth!.tenantId,
         );
 
-        return {
-          success: true,
-          message: 'Team member updated successfully',
-          data: {
+        return ResponseBuilder.success(
+          {
             userId: member.userId,
             email: member.email,
             firstName: member.firstName,
@@ -235,17 +241,19 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
             status: member.status,
             permissions: member.permissions,
           },
-        };
+          undefined,
+          "Team member updated successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to update team member', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to update team member',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to update team member", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to update team member",
+          error.statusCode || 500,
+        );
       }
     },
-    updateTeamMemberValidation
+    updateTeamMemberValidation,
   )
 
   /**
@@ -253,33 +261,33 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
    * Remove team member
    */
   .delete(
-    '/:userId',
-    async ({ params, auth, teamService }) => {
+    "/:userId",
+    async ({ params, auth, teamService, set }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
-       
+        onlySelf(auth!, params.tenantId);
 
         await teamService.removeTeamMember(
           params.tenantId,
           params.userId,
-          auth!.userId || auth!.tenantId
+          auth!.userId || auth!.tenantId,
         );
 
-        return {
-          success: true,
-          message: 'Team member removed successfully',
-        };
+        return ResponseBuilder.success(
+          undefined,
+          undefined,
+          "Team member removed successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to remove team member', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to remove team member',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to remove team member", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to remove team member",
+          error.statusCode || 500,
+        );
       }
     },
-    removeTeamMemberValidation
+    removeTeamMemberValidation,
   )
 
   /**
@@ -287,27 +295,27 @@ export const protectedTeamRoutes = new Elysia({ prefix: '/:tenantId/team' })
    * Resend invitation email
    */
   .post(
-    '/:userId/resend-invite',
-    async ({ params, auth, teamService }) => {
+    "/:userId/resend-invite",
+    async ({ params, auth, teamService, set }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
-       
+        onlySelf(auth!, params.tenantId);
 
         await teamService.resendInvitation(params.tenantId, params.userId);
 
-        return {
-          success: true,
-          message: 'Invitation resent successfully',
-        };
+        return ResponseBuilder.success(
+          undefined,
+          undefined,
+          "Invitation resent successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to resend invitation', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to resend invitation',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to resend invitation", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to resend invitation",
+          error.statusCode || 500,
+        );
       }
     },
-    resendInviteValidation
+    resendInviteValidation,
   );

@@ -1,4 +1,3 @@
-import { TenantSchema } from "../../shared/validations/models.schema";
 import { t } from "elysia";
 import {
   apiKeyIdParamValidator,
@@ -14,7 +13,7 @@ import {
 
 export const createTenantValidation = {
   body: createTenantValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -26,7 +25,7 @@ export const createTenantValidation = {
 
 export const listTenantsValidation = {
   query: listTenantsQueryValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -37,7 +36,7 @@ export const listTenantsValidation = {
 
 export const getTenantByIdValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants", "Tenant"],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
@@ -48,7 +47,7 @@ export const getTenantByIdValidation = {
 
 export const getKeyConfigValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Onboarding"],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
@@ -61,7 +60,7 @@ export const getKeyConfigValidation = {
 export const updateTenantValidation = {
   params: tenantIdParamValidator,
   body: updateTenantValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -73,7 +72,7 @@ export const updateTenantValidation = {
 
 export const activateTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -84,7 +83,7 @@ export const activateTenantValidation = {
 
 export const suspendTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -95,7 +94,7 @@ export const suspendTenantValidation = {
 
 export const deleteTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -107,7 +106,7 @@ export const deleteTenantValidation = {
 export const updateOnboardingStatusValidation = {
   params: tenantIdParamValidator,
   body: updateOnboardingStatusValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -119,7 +118,7 @@ export const updateOnboardingStatusValidation = {
 export const createApiKeyValidation = {
   params: tenantIdParamValidator,
   body: createApiKeyValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -130,7 +129,7 @@ export const createApiKeyValidation = {
 
 export const listApiKeysValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -142,7 +141,7 @@ export const listApiKeysValidation = {
 export const revokeApiKeyValidation = {
   params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
   body: revokeApiKeyValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -157,7 +156,7 @@ export const rotateApiKeyValidation = {
     reason: t.Optional(t.String()),
     sendEmail: t.Optional(t.Boolean({ default: true })),
   }),
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -174,7 +173,7 @@ export const listAllApiKeysValidation = {
     status: t.Optional(t.String()),
     tenantId: t.Optional(t.String()),
   }),
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -191,7 +190,7 @@ export const listAllERPConfigsValidation = {
     erpSystem: t.Optional(t.String()),
     enabled: t.Optional(t.String()),
   }),
-  
+
   detail: {
     tags: ["Admin - ERP Integration"],
     security: [{ adminKey: [] }],
@@ -204,7 +203,7 @@ export const listAllERPConfigsValidation = {
 export const configureERPSyncValidation = {
   params: tenantIdParamValidator,
   body: erpSyncConfigValidator,
-  
+
   detail: {
     tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
@@ -219,7 +218,7 @@ export const getERPSyncConfigValidation = {
   query: t.Object({
     decrypt: t.Optional(t.String({ default: "true" })),
   }),
-  
+
   detail: {
     tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
@@ -231,7 +230,7 @@ export const getERPSyncConfigValidation = {
 
 export const resendTenantTokenValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],

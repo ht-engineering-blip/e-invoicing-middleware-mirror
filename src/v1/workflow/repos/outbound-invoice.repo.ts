@@ -22,43 +22,59 @@ export class OutboundInvoiceRepository {
    * Build MongoDB query from where conditions
    */
   private buildOutboundInvoiceQuery(where?: any): any {
-    if (!where) return {};
+    if (!where || typeof where !== "object") return {};
 
     const query: any = {};
 
-    // Simple equality checks
-    if (where.id?._eq) query._id = where.id._eq;
-    if (where.tenantId?._eq) query.tenantId = where.tenantId._eq;
-    if (where.businessId?._eq) query.businessId = where.businessId._eq;
-    if (where.irn?._eq) query.irn = where.irn._eq;
-    if (where.invoiceNumber?._eq) query.invoiceNumber = where.invoiceNumber._eq;
-    if (where.status?._eq) query.status = where.status._eq;
-    if (where.customerTIN?._eq) query.customerTIN = where.customerTIN._eq;
+    for (const [key, value] of Object.entries(where)) {
+      if (key === "_and" && Array.isArray(value)) {
+        query.$and = value.map((cond) => this.buildOutboundInvoiceQuery(cond));
+      } else if (key === "_or" && Array.isArray(value)) {
+        query.$or = value.map((cond) => this.buildOutboundInvoiceQuery(cond));
+      } else if (key === "search" && typeof value === "string") {
+        query.$or = [
+          { invoiceNumber: safeSearchRegExp(value) },
+          { customerName: safeSearchRegExp(value) },
+          { customerTIN: safeSearchRegExp(value) },
+          { irn: safeSearchRegExp(value) },
+        ];
+      } else if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date) &&
+        !(value instanceof RegExp)
+      ) {
+        const valObj = value as Record<string, any>;
+        const hasCustomOps = Object.keys(valObj).some((k) => k.startsWith("_"));
 
-    // IN conditions
-    if (where.status?._in) query.status = { $in: where.status._in };
+        if (hasCustomOps) {
+          if (valObj._eq !== undefined) {
+            query[key === "id" ? "_id" : key] = valObj._eq;
+            continue;
+          }
 
-    // Date range
-    if (where.issueDate?._gte)
-      query.issueDate = { ...query.issueDate, $gte: where.issueDate._gte };
-    if (where.issueDate?._lte)
-      query.issueDate = { ...query.issueDate, $lte: where.issueDate._lte };
+          const fieldQuery: any = {};
+          if (valObj._in !== undefined) fieldQuery.$in = valObj._in;
+          if (valObj._nin !== undefined) fieldQuery.$nin = valObj._nin;
+          if (valObj._gte !== undefined) fieldQuery.$gte = valObj._gte;
+          if (valObj._lte !== undefined) fieldQuery.$lte = valObj._lte;
+          if (valObj._gt !== undefined) fieldQuery.$gt = valObj._gt;
+          if (valObj._lt !== undefined) fieldQuery.$lt = valObj._lt;
+          if (valObj._ne !== undefined) fieldQuery.$ne = valObj._ne;
+          if (valObj._like !== undefined) fieldQuery.$regex = valObj._like;
+          if (valObj._ilike !== undefined) {
+            fieldQuery.$regex = valObj._ilike;
+            fieldQuery.$options = "i";
+          }
 
-    // Search
-    if (where.search) {
-      query.$or = [
-        { invoiceNumber: safeSearchRegExp(where.search) },
-        { customerName: safeSearchRegExp(where.search) },
-        { customerTIN: safeSearchRegExp(where.search) },
-        { irn: safeSearchRegExp(where.search) },
-      ];
-    }
-
-    // AND conditions
-    if (where._and && where._and.length > 0) {
-      query.$and = where._and.map((andCondition: any) => {
-        return this.buildOutboundInvoiceQuery(andCondition);
-      });
+          query[key === "id" ? "_id" : key] = fieldQuery;
+        } else {
+          query[key === "id" ? "_id" : key] = value;
+        }
+      } else {
+        query[key === "id" ? "_id" : key] = value;
+      }
     }
 
     return query;
@@ -89,9 +105,10 @@ export class OutboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
+        .lean()
         .exec();
 
-      return docs;
+      return docs as unknown as OutboundInvoiceDocument[];
     } catch (error) {
       console.error("Error finding outbound invoices:", error);
       throw new AppError(500, "Failed to fetch outbound invoices");
