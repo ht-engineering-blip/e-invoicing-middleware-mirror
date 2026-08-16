@@ -7,6 +7,7 @@ import {
   OutboundPaymentStatus,
   IOutboundPaymentDetails,
 } from "../models/outbound-invoice.model";
+import { InboundInvoiceModel } from "../models/inbound-invoice.model";
 import { WebhookEventModel } from "../../webhook/models/webhook-event.model";
 
 export class OutboundInvoiceRepository {
@@ -93,6 +94,306 @@ export class OutboundInvoiceRepository {
       decryptedData: 0,
       signedXml: 0,
     };
+  }
+
+  /**
+   * Unified Aggregation Pipeline across outbound, inbound, or both invoice streams
+   */
+  async getUnifiedInvoiceStream(params: {
+    tenantId?: string;
+    businessId?: string;
+    isAdmin?: boolean;
+    type?: string;
+    direction?: string;
+    status?: string;
+    source?: string;
+    erpInvoiceId?: string;
+    paymentStatus?: string;
+    irn?: string;
+    search?: string;
+    from?: Date;
+    to?: Date;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: any[]; total: number }> {
+    try {
+      const page = Math.max(1, params.page || 1);
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const offset = (page - 1) * limit;
+      const requestedType = (params.type || params.direction || "all")
+        .toLowerCase()
+        .trim();
+
+      // 1. Build outbound match query
+      const outboundMatch: any = {};
+      if (!params.isAdmin && params.tenantId) {
+        outboundMatch.tenantId = params.tenantId;
+      }
+      if (params.status?.trim()) outboundMatch.status = params.status.trim();
+      if (params.source?.trim()) outboundMatch.source = params.source.trim();
+      if (params.erpInvoiceId?.trim())
+        outboundMatch.erpInvoiceId = params.erpInvoiceId.trim();
+      if (params.irn?.trim())
+        outboundMatch.irn = safeSearchRegExp(params.irn.trim());
+      if (params.search?.trim()) {
+        const searchRegex = safeSearchRegExp(params.search.trim());
+        outboundMatch.$or = [
+          { invoiceNumber: searchRegex },
+          { customerName: searchRegex },
+          { customerTIN: searchRegex },
+          { irn: searchRegex },
+        ];
+      }
+      if (params.from || params.to) {
+        outboundMatch.createdAt = {};
+        if (params.from) outboundMatch.createdAt.$gte = params.from;
+        if (params.to) outboundMatch.createdAt.$lte = params.to;
+      }
+
+      // 2. Build inbound match query
+      const inboundMatch: any = {};
+      if (params.businessId?.trim()) {
+        inboundMatch.businessId = params.businessId.trim();
+      } else if (!params.isAdmin && params.tenantId) {
+        inboundMatch.tenantId = params.tenantId;
+      }
+      if (params.status?.trim()) inboundMatch.status = params.status.trim();
+      if (params.paymentStatus?.trim()) {
+        inboundMatch["payment.paymentStatus"] = params.paymentStatus.trim();
+      }
+      if (params.irn?.trim())
+        inboundMatch.irn = safeSearchRegExp(params.irn.trim());
+      if (params.search?.trim()) {
+        const searchRegex = safeSearchRegExp(params.search.trim());
+        inboundMatch.$or = [
+          { invoiceNumber: searchRegex },
+          { supplierName: searchRegex },
+          { supplierTIN: searchRegex },
+          { irn: searchRegex },
+        ];
+      }
+      if (params.from || params.to) {
+        inboundMatch.createdAt = {};
+        if (params.from) inboundMatch.createdAt.$gte = params.from;
+        if (params.to) inboundMatch.createdAt.$lte = params.to;
+      }
+
+      const outboundProjectStage = {
+        $project: {
+          irn: { $ifNull: ["$irn", null] },
+          erpInvoiceId: { $ifNull: ["$erpInvoiceId", null] },
+          source: { $ifNull: ["$source", "api"] },
+          type: { $literal: "outbound" },
+          direction: { $literal: "OUTBOUND" },
+          invoiceNumber: {
+            $ifNull: [
+              "$invoiceNumber",
+              "$metadata.invoiceNumber",
+              "$metadata.InvoiceNumber",
+              "$metadata.invoice_number",
+              null,
+            ],
+          },
+          status: { $ifNull: ["$status", "CREATED"] },
+          paymentStatus: {
+            $ifNull: [
+              "$paymentStatus",
+              "$paymentDetails.paymentStatus",
+              "PENDING",
+            ],
+          },
+          qrCode: { $ifNull: ["$qrCode", null] },
+          erp: { $ifNull: ["$erpSystem", null] },
+          workflowState: { $ifNull: ["$workflowState", null] },
+          lastJobError: { $ifNull: ["$lastJobError", null] },
+          customerName: {
+            $ifNull: [
+              "$customerName",
+              "$metadata.AccountingCustomerParty.Party.PartyName.0.Name",
+              "$metadata.accounting_customer_party.party_name",
+              "$metadata.customerName",
+              null,
+            ],
+          },
+          supplierName: {
+            $ifNull: [
+              "$supplierName",
+              "$metadata.AccountingSupplierParty.Party.PartyName.0.Name",
+              "$metadata.accounting_supplier_party.party_name",
+              "$metadata.supplierName",
+              null,
+            ],
+          },
+          totalAmount: {
+            $ifNull: [
+              "$totalAmount",
+              "$metadata.LegalMonetaryTotal.PayableAmount.value",
+              "$metadata.legal_monetary_total.payable_amount",
+              "$metadata.totalAmount",
+              0,
+            ],
+          },
+          currency: {
+            $ifNull: [
+              "$currency",
+              "$metadata.DocumentCurrencyCode",
+              "$metadata.document_currency_code",
+              "NGN",
+            ],
+          },
+          webhookEventCount: {
+            $cond: {
+              if: { $isArray: "$webhookEvents" },
+              then: { $size: "$webhookEvents" },
+              else: 0,
+            },
+          },
+          createdAt: { $ifNull: ["$createdAt", "$$NOW"] },
+          updatedAt: { $ifNull: ["$updatedAt", "$$NOW"] },
+        },
+      };
+
+      const inboundProjectStage = {
+        $project: {
+          irn: { $ifNull: ["$irn", null] },
+          erpInvoiceId: { $literal: null },
+          source: { $literal: "inbound" },
+          type: { $literal: "inbound" },
+          direction: { $literal: "INBOUND" },
+          invoiceNumber: {
+            $ifNull: ["$invoiceNumber", "$invoice.invoiceNumber", null],
+          },
+          status: { $ifNull: ["$status", "TRANSMITTED"] },
+          paymentStatus: {
+            $ifNull: [
+              "$paymentStatus",
+              "$payment.paymentStatus",
+              "PENDING",
+            ],
+          },
+          qrCode: { $ifNull: ["$qrCode", null] },
+          erp: { $literal: null },
+          workflowState: { $ifNull: ["$workflowState", null] },
+          lastJobError: { $literal: null },
+          customerName: {
+            $ifNull: [
+              "$customerName",
+              "$invoice.accounting_customer_party.party_name",
+              "$invoice.customerName",
+              null,
+            ],
+          },
+          supplierName: {
+            $ifNull: [
+              "$supplierName",
+              "$invoice.accounting_supplier_party.party_name",
+              "$invoice.supplierName",
+              null,
+            ],
+          },
+          totalAmount: {
+            $ifNull: [
+              "$totalAmount",
+              "$invoice.legal_monetary_total.payable_amount",
+              "$invoice.totalAmount",
+              0,
+            ],
+          },
+          currency: {
+            $ifNull: [
+              "$currency",
+              "$invoice.document_currency_code",
+              "$invoice.currency",
+              "NGN",
+            ],
+          },
+          webhookEventCount: {
+            $cond: {
+              if: { $isArray: "$webhookEvents" },
+              then: { $size: "$webhookEvents" },
+              else: 0,
+            },
+          },
+          createdAt: { $ifNull: ["$createdAt", "$$NOW"] },
+          updatedAt: { $ifNull: ["$updatedAt", "$$NOW"] },
+        },
+      };
+
+      let aggregationResult: any;
+
+      if (requestedType === "inbound") {
+        const inboundPipeline: any[] = [
+          { $match: inboundMatch },
+          inboundProjectStage,
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await InboundInvoiceModel.aggregate(
+          inboundPipeline,
+        )
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      } else if (requestedType === "outbound") {
+        const outboundPipeline: any[] = [
+          { $match: outboundMatch },
+          outboundProjectStage,
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await OutboundInvoiceModel.aggregate(
+          outboundPipeline,
+        )
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      } else {
+        const unifiedPipeline: any[] = [
+          { $match: outboundMatch },
+          outboundProjectStage,
+          {
+            $unionWith: {
+              coll: "inbound_invoices",
+              pipeline: [{ $match: inboundMatch }, inboundProjectStage],
+            },
+          },
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await OutboundInvoiceModel.aggregate(
+          unifiedPipeline,
+        )
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      }
+
+      const total = aggregationResult?.totalCount?.[0]?.count || 0;
+      const items = aggregationResult?.items || [];
+
+      return { items, total };
+    } catch (error) {
+      console.error(
+        "Error executing unified invoice aggregation stream:",
+        error,
+      );
+      throw new AppError(
+        500,
+        "Failed to retrieve unified invoice aggregation stream",
+      );
+    }
   }
 
   /**
@@ -218,7 +519,7 @@ export class OutboundInvoiceRepository {
             webhookEvents: [],
           },
         },
-        { upsert: true, returnDocument: 'after', runValidators: true },
+        { upsert: true, returnDocument: "after", runValidators: true },
       );
 
       return doc!;
@@ -255,7 +556,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           query,
           { $set: updateData },
-          { returnDocument: 'after', runValidators: true },
+          { returnDocument: "after", runValidators: true },
         )
         .exec();
 
@@ -417,7 +718,11 @@ export class OutboundInvoiceRepository {
   ): Promise<OutboundInvoiceDocument> {
     try {
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: { status } }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: { status } },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
@@ -455,7 +760,11 @@ export class OutboundInvoiceRepository {
       });
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateFields }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: updateFields },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
@@ -495,7 +804,7 @@ export class OutboundInvoiceRepository {
             },
             $inc: { validationAttempts: 1 },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -525,7 +834,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           { irn },
           { $addToSet: { webhookEvents: eventId } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -605,7 +914,11 @@ export class OutboundInvoiceRepository {
       if (paymentDetails) update.paymentDetails = paymentDetails;
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: update }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: update },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) throw new AppError(404, "Outbound invoice not found");
