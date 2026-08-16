@@ -73,7 +73,12 @@ const app = new Elysia()
   )
   .get(
     "/health",
-    ({ set }) => {
+    async ({ set }) => {
+      try {
+        await connectMongo();
+      } catch (e) {
+        // ignore
+      }
       const isMongoConnected = mongoose.connection.readyState === 1;
       if (!isMongoConnected) {
         set.status = 503;
