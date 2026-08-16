@@ -253,111 +253,6 @@ async function fetchInboundInvoices(
 }
 
 /**
- * Handler for listing unified / all invoices stream
- */
-const handleListAllInvoices = async ({
-  query,
-  auth,
-  outboundRepo,
-  inboundRepo,
-  set,
-}: any) => {
-  try {
-    const page = Math.max(1, parseInt(query.page || "1") || 1);
-    const limit = Math.min(
-      Math.max(1, parseInt(query.limit || "20") || 20),
-      100,
-    );
-    const offset = (page - 1) * limit;
-
-    const requestedType = (query.type || query.direction || "all")
-      .toLowerCase()
-      .trim();
-
-    if (requestedType === "outbound") {
-      const { items, total } = await fetchOutboundInvoices(
-        outboundRepo,
-        auth,
-        query,
-        limit,
-        offset,
-      );
-      return ResponseBuilder.paginate(items, total, page, limit, {
-        countsByType: { outbound: total, inbound: 0 },
-      });
-    }
-
-    if (requestedType === "inbound") {
-      const { items, total } = await fetchInboundInvoices(
-        inboundRepo,
-        auth,
-        query,
-        limit,
-        offset,
-      );
-      return ResponseBuilder.paginate(items, total, page, limit, {
-        countsByType: { outbound: 0, inbound: total },
-      });
-    }
-
-    // Unified stream: Query outbound and inbound in controlled order with fault isolation
-    const fetchLimit = Math.min(offset + limit, 100);
-
-    const outboundData = await fetchOutboundInvoices(
-      outboundRepo,
-      auth,
-      query,
-      fetchLimit,
-      0,
-    ).catch((err) => {
-      logger.warn("Outbound invoice fetch error in unified stream:", err);
-      return { items: [], total: 0 };
-    });
-
-    const inboundData = await fetchInboundInvoices(
-      inboundRepo,
-      auth,
-      query,
-      fetchLimit,
-      0,
-    ).catch((err) => {
-      logger.warn("Inbound invoice fetch error in unified stream:", err);
-      return { items: [], total: 0 };
-    });
-
-    const combinedItems = [...outboundData.items, ...inboundData.items];
-
-    combinedItems.sort((a, b) => {
-      const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    const totalCount = outboundData.total + inboundData.total;
-    const paginatedData = combinedItems.slice(offset, offset + limit);
-
-    return ResponseBuilder.paginate(paginatedData, totalCount, page, limit, {
-      countsByType: {
-        outbound: outboundData.total,
-        inbound: inboundData.total,
-      },
-    });
-  } catch (error: any) {
-    console.error("FATAL /invoices ERROR:", error);
-    logger.error("Failed to list unified invoices stream", {
-      error: error?.message || error,
-      stack: error?.stack,
-    });
-    set.status = error?.statusCode || 500;
-    const errorMsg =
-      error?.message ||
-      (typeof error === "string" ? error : JSON.stringify(error)) ||
-      "Failed to retrieve unified invoice stream";
-    return ResponseBuilder.error(errorMsg, error?.statusCode || 500);
-  }
-};
-
-/**
  * Transaction Logs & Invoices Routes
  */
 export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
@@ -373,10 +268,112 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
    * GET /workflow/invoices
    * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
    */
-  .get("/", handleListAllInvoices, listAllInvoicesValidation)
-  .get("/all", handleListAllInvoices, listAllInvoicesValidation)
-  .get("/stream", handleListAllInvoices, listAllInvoicesValidation)
-  .get("/unified", handleListAllInvoices, listAllInvoicesValidation)
+
+  .get(
+    "/unified",
+    async ({ query, auth, outboundRepo, set, inboundRepo }) => {
+      try {
+        const page = Math.max(1, parseInt(query.page || "1") || 1);
+        const limit = Math.min(
+          Math.max(1, parseInt(query.limit || "20") || 20),
+          100,
+        );
+        const offset = (page - 1) * limit;
+
+        const requestedType = (query.type || query.direction || "all")
+          .toLowerCase()
+          .trim();
+
+        if (requestedType === "outbound") {
+          const { items, total } = await fetchOutboundInvoices(
+            outboundRepo,
+            auth,
+            query,
+            limit,
+            offset,
+          );
+          return ResponseBuilder.paginate(items, total, page, limit, {
+            countsByType: { outbound: total, inbound: 0 },
+          });
+        }
+
+        if (requestedType === "inbound") {
+          const { items, total } = await fetchInboundInvoices(
+            inboundRepo,
+            auth,
+            query,
+            limit,
+            offset,
+          );
+          return ResponseBuilder.paginate(items, total, page, limit, {
+            countsByType: { outbound: 0, inbound: total },
+          });
+        }
+
+        // Unified stream: Query outbound and inbound in controlled order with fault isolation
+        const fetchLimit = Math.min(offset + limit, 100);
+
+        const outboundData = await fetchOutboundInvoices(
+          outboundRepo,
+          auth,
+          query,
+          fetchLimit,
+          0,
+        ).catch((err) => {
+          logger.warn("Outbound invoice fetch error in unified stream:", err);
+          return { items: [], total: 0 };
+        });
+
+        const inboundData = await fetchInboundInvoices(
+          inboundRepo,
+          auth,
+          query,
+          fetchLimit,
+          0,
+        ).catch((err) => {
+          logger.warn("Inbound invoice fetch error in unified stream:", err);
+          return { items: [], total: 0 };
+        });
+
+        const combinedItems = [...outboundData.items, ...inboundData.items];
+
+        combinedItems.sort((a, b) => {
+          const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        });
+
+        const totalCount = outboundData.total + inboundData.total;
+        const paginatedData = combinedItems.slice(offset, offset + limit);
+
+        return ResponseBuilder.paginate(
+          paginatedData,
+          totalCount,
+          page,
+          limit,
+          {
+            countsByType: {
+              outbound: outboundData.total,
+              inbound: inboundData.total,
+            },
+          },
+        );
+      } catch (error: any) {
+        console.error("FATAL /invoices ERROR:", error);
+        logger.error("Failed to list unified invoices stream", {
+          error: error?.message || error,
+          stack: error?.stack,
+        });
+        set.status = error?.statusCode || 500;
+        const errorMsg =
+          error?.message ||
+          (typeof error === "string" ? error : JSON.stringify(error)) ||
+          "Failed to retrieve unified invoice stream";
+        return ResponseBuilder.error(errorMsg, error?.statusCode || 500);
+      }
+    },
+    listAllInvoicesValidation,
+  )
 
   // ==================== OUTBOUND INVOICES ====================
 
