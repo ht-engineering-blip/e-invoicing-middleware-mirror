@@ -193,7 +193,6 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           outboundFilters.erpInvoiceId = { _eq: query.erpInvoiceId };
         }
         if (query.businessId) {
-          outboundFilters.businessId = { _eq: query.businessId };
           inboundFilters.businessId = { _eq: query.businessId };
         }
         if (query.irn) {
@@ -248,62 +247,42 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         }
 
         const fetchLimit = Math.min(offset + limit, 100);
+
+        const [outboundResult, inboundResult] = await Promise.allSettled([
+          Promise.all([
+            outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
+            outboundRepo.count(outboundFilters),
+          ]),
+          Promise.all([
+            inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
+            inboundRepo.count(inboundFilters),
+          ]),
+        ]);
+
         let outboundDocs: any[] = [];
-        let inboundDocs: any[] = [];
         let outboundTotal = 0;
+        let inboundDocs: any[] = [];
         let inboundTotal = 0;
 
-        const promises: Promise<any>[] = [];
-
-        if (fetchOutbound) {
-          promises.push(
-            outboundRepo
-              .findMany(outboundFilters, undefined, fetchLimit, 0)
-              .then((docs) => (outboundDocs = docs))
-              .catch((err) => {
-                logger.warn(
-                  "Failed to query outbound invoices in unified stream:",
-                  err,
-                );
-              }),
-            outboundRepo
-              .count(outboundFilters)
-              .then((count) => (outboundTotal = count))
-              .catch((err) => {
-                logger.warn(
-                  "Failed to count outbound invoices in unified stream:",
-                  err,
-                );
-              }),
+        if (outboundResult.status === "fulfilled") {
+          outboundDocs = outboundResult.value[0] || [];
+          outboundTotal = outboundResult.value[1] || 0;
+        } else {
+          logger.warn(
+            "Failed to query outbound invoices in unified stream:",
+            outboundResult.reason,
           );
         }
 
-        if (fetchInbound) {
-          promises.push(
-            inboundRepo
-              .findMany(inboundFilters, undefined, fetchLimit, 0)
-              .then((docs) => {
-                inboundDocs = docs;
-              })
-              .catch((err) => {
-                logger.warn(
-                  "Failed to query inbound invoices in unified stream:",
-                  err,
-                );
-              }),
-            inboundRepo
-              .count(inboundFilters)
-              .then((count) => (inboundTotal = count))
-              .catch((err) => {
-                logger.warn(
-                  "Failed to count inbound invoices in unified stream:",
-                  err,
-                );
-              }),
+        if (inboundResult.status === "fulfilled") {
+          inboundDocs = inboundResult.value[0] || [];
+          inboundTotal = inboundResult.value[1] || 0;
+        } else {
+          logger.warn(
+            "Failed to query inbound invoices in unified stream:",
+            inboundResult.reason,
           );
         }
-
-        await Promise.all(promises);
 
         const formattedOutbound = outboundDocs
           .map(formatOutboundInvoiceItem)
