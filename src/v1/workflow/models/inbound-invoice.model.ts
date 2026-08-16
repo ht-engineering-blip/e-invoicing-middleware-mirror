@@ -221,6 +221,9 @@ const InboundInvoiceSchema = new Schema<InboundInvoiceDocument>(
 
 // Compound Indexes for performance
 InboundInvoiceSchema.index({ tenantId: 1, status: 1 });
+InboundInvoiceSchema.index({ tenantId: 1, createdAt: -1 });
+InboundInvoiceSchema.index({ businessId: 1, createdAt: -1 });
+InboundInvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 });
 InboundInvoiceSchema.index({ businessId: 1, irn: 1 }, { unique: true });
 InboundInvoiceSchema.index({ createdAt: -1 });
 
