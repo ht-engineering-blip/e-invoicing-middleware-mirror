@@ -329,7 +329,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         });
         set.status = error?.statusCode || 500;
         return ResponseBuilder.error(
-          error?.message || "Failed to retrieve unified invoice stream",
+          error || "Failed to retrieve unified invoice stream",
           error?.statusCode || 500,
         );
       }
