@@ -136,6 +136,28 @@ function parseDate(d?: string): Date | undefined {
   return isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+const INVOICE_LIST_PROJECTION = {
+  irn: 1,
+  erpInvoiceId: 1,
+  source: 1,
+  invoiceNumber: 1,
+  status: 1,
+  paymentStatus: 1,
+  paymentDetails: 1,
+  qrCode: 1,
+  erpSystem: 1,
+  workflowState: 1,
+  lastJobError: 1,
+  customerName: 1,
+  supplierName: 1,
+  totalAmount: 1,
+  currency: 1,
+  metadata: 1,
+  webhookEvents: 1,
+  createdAt: 1,
+  updatedAt: 1,
+};
+
 /**
  * Reusable helper to fetch and format outbound invoices
  */
@@ -167,10 +189,13 @@ async function fetchOutboundInvoices(
     filters.createdAt = dateFilter;
   }
 
-  const [invoices, total] = await Promise.all([
-    outboundRepo.findMany(filters, undefined, limit, offset),
-    outboundRepo.count(filters),
-  ]);
+  const invoices = await outboundRepo.findMany(
+    filters,
+    INVOICE_LIST_PROJECTION,
+    limit,
+    offset,
+  );
+  const total = await outboundRepo.count(filters);
 
   return {
     items: (invoices || []).map(formatOutboundInvoiceItem).filter(Boolean),
@@ -213,10 +238,13 @@ async function fetchInboundInvoices(
     filters.createdAt = dateFilter;
   }
 
-  const [invoices, total] = await Promise.all([
-    inboundRepo.findMany(filters, undefined, limit, offset),
-    inboundRepo.count(filters),
-  ]);
+  const invoices = await inboundRepo.findMany(
+    filters,
+    INVOICE_LIST_PROJECTION,
+    limit,
+    offset,
+  );
+  const total = await inboundRepo.count(filters);
 
   return {
     items: (invoices || []).map(formatInboundInvoiceItem).filter(Boolean),
@@ -272,22 +300,30 @@ const handleListAllInvoices = async ({
       });
     }
 
-    // Unified stream: Query both in parallel with full fault isolation
+    // Unified stream: Query outbound and inbound in controlled order with fault isolation
     const fetchLimit = Math.min(offset + limit, 100);
 
-    const [outboundRes, inboundRes] = await Promise.allSettled([
-      fetchOutboundInvoices(outboundRepo, auth, query, fetchLimit, 0),
-      fetchInboundInvoices(inboundRepo, auth, query, fetchLimit, 0),
-    ]);
+    const outboundData = await fetchOutboundInvoices(
+      outboundRepo,
+      auth,
+      query,
+      fetchLimit,
+      0,
+    ).catch((err) => {
+      logger.warn("Outbound invoice fetch error in unified stream:", err);
+      return { items: [], total: 0 };
+    });
 
-    const outboundData =
-      outboundRes.status === "fulfilled"
-        ? outboundRes.value
-        : { items: [], total: 0 };
-    const inboundData =
-      inboundRes.status === "fulfilled"
-        ? inboundRes.value
-        : { items: [], total: 0 };
+    const inboundData = await fetchInboundInvoices(
+      inboundRepo,
+      auth,
+      query,
+      fetchLimit,
+      0,
+    ).catch((err) => {
+      logger.warn("Inbound invoice fetch error in unified stream:", err);
+      return { items: [], total: 0 };
+    });
 
     const combinedItems = [...outboundData.items, ...inboundData.items];
 
