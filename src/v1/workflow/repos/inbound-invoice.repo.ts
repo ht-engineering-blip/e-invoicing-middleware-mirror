@@ -87,7 +87,10 @@ export class InboundInvoiceRepository {
    * Build select projection
    */
   private buildInboundInvoiceProjection(select?: any): any {
-    return select && Object.keys(select).length > 0 ? select : null;
+    if (select && Object.keys(select).length > 0) {
+      return select;
+    }
+    return { decryptedData: 0 };
   }
 
   /**
