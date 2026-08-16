@@ -69,7 +69,12 @@ export const listTenantsQueryValidator = t.Object({
   page: t.Optional(t.Number({ minimum: 1 })),
   limit: t.Optional(t.Number({ minimum: 1, })),
   status: t.Optional(
-    t.Union([t.Literal('active'), t.Literal('suspended'), t.Literal('inactive')])
+    t.Union([
+      t.Literal('onboarding'),
+      t.Literal('active'),
+      t.Literal('suspended'),
+      t.Literal('inactive'),
+    ])
   ),
   onboarding: t.Optional(t.Boolean({ default: true })),
   search: t.Optional(t.String()),

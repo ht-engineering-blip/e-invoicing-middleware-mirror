@@ -31,11 +31,21 @@ import {
   getERPSyncConfigValidation,
   resendTenantTokenValidation,
   getKeyConfigValidation,
+  updateKeyConfigValidation,
 } from "../validations/admin.validation";
 import {
   updateKeyMapValidation,
   updateReferenceKeyMapValidation,
 } from "../validations/onboarding.validation";
+import {
+  KEY_CONFIG_REGISTRY,
+  VALID_ERP_EVENT_TYPES,
+  findKeyTypeDefinition,
+  isValidErpEventType,
+  resolveKeyConfig,
+  parseMapToRecord,
+  KeyTypeDefinition,
+} from "../utils/key-config.helper";
 import { INVOICE_EVENT_TYPES } from "../../admin/routes/reference.routes";
 
 const VALID_EVENT_IDS = INVOICE_EVENT_TYPES.map((e) => e.id) as string[];
@@ -544,14 +554,14 @@ const adminTenantRoutes = new Elysia({
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        if (!VALID_EVENT_IDS.includes(body.eventType)) {
+        if (!isValidErpEventType(body.eventType)) {
           return ResponseBuilder.error(
-            `Unknown event '${body.eventType}'.`,
+            `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
             400,
           );
         }
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
@@ -602,14 +612,14 @@ const adminTenantRoutes = new Elysia({
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        if (!VALID_EVENT_IDS.includes(body.eventType)) {
+        if (!isValidErpEventType(body.eventType)) {
           return ResponseBuilder.error(
-            `Unknown event '${body.eventType}'.`,
+            `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
             400,
           );
         }
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
@@ -649,57 +659,155 @@ const adminTenantRoutes = new Elysia({
 
   /**
    * GET /api/v1/tenants/:tenantId/key-config
-   * Get invoiceIdKey, idKeyMap, and referenceIdKeyMap configuration
+   * Get invoiceIdKey, idKeyMap, and referenceIdKeyMap configuration with dynamic keyType filtering
    */
   .get(
     "/:tenantId/key-config",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, query, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
-        console.log({ tenant });
+        const tenant = await tenantService.getTenantById(params.tenantId);
 
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
 
-        const parseMap = (m: any) => {
-          if (!m) return {};
-          if (typeof m.entries === "function") {
-            return Object.fromEntries(m.entries());
+        const requestedKeyType = query?.keyType?.toLowerCase()?.trim();
+
+        if (requestedKeyType && requestedKeyType !== "all") {
+          const matchedDef = findKeyTypeDefinition(requestedKeyType);
+
+          if (!matchedDef) {
+            return ResponseBuilder.error(
+              `Invalid keyType '${requestedKeyType}'. Must be one of: ${KEY_CONFIG_REGISTRY.map((d) => d.keyType).join(", ")}`,
+              400,
+            );
           }
-          return m;
-        };
 
-        const rawIdKeyMap = parseMap(tenant.config?.idKeyMap);
+          return ResponseBuilder.success(
+            resolveKeyConfig(matchedDef, tenant.config),
+          );
+        }
 
-        const idKeyMap = Object.fromEntries(
-          Object.entries(rawIdKeyMap).map(([k, v]) => [
-            k.replace(/_/g, "."),
-            v,
-          ]),
+        // Return all registered key groups dynamically
+        const keyGroups: Record<string, any> = {};
+        for (const def of KEY_CONFIG_REGISTRY) {
+          keyGroups[def.keyType] = resolveKeyConfig(def, tenant.config);
+        }
+
+        const rawIdKeyMap = parseMapToRecord(tenant.config?.idKeyMap);
+        const rawRefIdKeyMap = parseMapToRecord(
+          tenant.config?.referenceIdKeyMap,
         );
 
-        const rawRefIdKeyMap = parseMap(tenant.config?.referenceIdKeyMap);
-
-        const referenceIdKeyMap = Object.fromEntries(
-          Object.entries(rawRefIdKeyMap).map(([k, v]) => [
-            k.replace(/_/g, "."),
-            v,
-          ]),
-        );
+        const standardKey = (tenant.config?.invoiceIdKey ||
+          keyGroups["standard_invoice"]?.idKey ||
+          "invoiceId") as string;
 
         return ResponseBuilder.success({
-          invoiceIdKey: (tenant.config?.invoiceIdKey || "invoiceId") as string,
-          idKeyMap: idKeyMap as Record<string, string>,
-          referenceIdKeyMap: referenceIdKeyMap as Record<string, string>,
+          ...keyGroups,
+          invoiceIdKey: standardKey,
+          idKeyMap: Object.fromEntries(
+            Object.entries(rawIdKeyMap).map(([k, v]) => [
+              k.replace(/_/g, "."),
+              v,
+            ]),
+          ),
+          referenceIdKeyMap: Object.fromEntries(
+            Object.entries(rawRefIdKeyMap).map(([k, v]) => [
+              k.replace(/_/g, "."),
+              v,
+            ]),
+          ),
         });
       } catch (error: any) {
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     getKeyConfigValidation,
+  )
+
+  /**
+   * PUT /api/v1/tenants/:tenantId/key-config
+   * Update ID key mapping by keyType (standard_invoice, credit_note, debit_note, payment) or explicit eventType
+   */
+  .put(
+    "/:tenantId/key-config",
+    async ({ auth, params, body, tenantService }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        if (!tenant) {
+          return ResponseBuilder.error("Tenant not found", 404);
+        }
+
+        const idKeyMap = { ...parseMapToRecord(tenant.config?.idKeyMap) };
+        const referenceIdKeyMap = {
+          ...parseMapToRecord(tenant.config?.referenceIdKeyMap),
+        };
+        let invoiceIdKey = (tenant.config?.invoiceIdKey ||
+          "invoiceId") as string;
+
+        const matchedDef = findKeyTypeDefinition(body.keyType);
+
+        if (matchedDef) {
+          for (const key of matchedDef.eventKeys) {
+            idKeyMap[key.replace(/\./g, "_")] = body.idKey;
+          }
+
+          if (matchedDef.keyType === "standard_invoice") {
+            invoiceIdKey = body.idKey;
+          }
+
+          if (body.referenceIdKey && matchedDef.hasReferenceKey) {
+            for (const key of matchedDef.eventKeys) {
+              referenceIdKeyMap[key.replace(/\./g, "_")] = body.referenceIdKey;
+            }
+          }
+        } else if (body.eventType && isValidErpEventType(body.eventType)) {
+          const safeKey = body.eventType.replace(/\./g, "_");
+          idKeyMap[safeKey] = body.idKey;
+          if (body.referenceIdKey) {
+            referenceIdKeyMap[safeKey] = body.referenceIdKey;
+          }
+        } else {
+          return ResponseBuilder.error(
+            `Invalid keyType or eventType. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
+            400,
+          );
+        }
+
+        const updatedConfig = {
+          ...tenant.config,
+          invoiceIdKey,
+          idKeyMap,
+          referenceIdKeyMap,
+        };
+
+        await tenantService.updateTenant(
+          params.tenantId,
+          { config: updatedConfig } as any,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          {
+            keyType: matchedDef?.keyType || body.keyType,
+            eventType: matchedDef?.eventType || body.eventType,
+            idKey: body.idKey,
+            referenceIdKey: body.referenceIdKey,
+            invoiceIdKey,
+          },
+          undefined,
+          "Key configuration updated successfully",
+        );
+      } catch (error: any) {
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
+      }
+    },
+    updateKeyConfigValidation,
   )
 
   /**

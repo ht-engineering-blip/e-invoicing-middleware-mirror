@@ -235,7 +235,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         if (fetchOutbound && !fetchInbound) {
           const [docs, count] = await Promise.all([
-            outboundRepo.findMany(outboundFilters, outboundProjection, limit, offset),
+            outboundRepo.findMany(
+              outboundFilters,
+              outboundProjection,
+              limit,
+              offset,
+            ),
             outboundRepo.count(outboundFilters),
           ]);
           const formatted = docs.map(formatOutboundInvoiceItem);
@@ -246,7 +251,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         if (fetchInbound && !fetchOutbound) {
           const [docs, count] = await Promise.all([
-            inboundRepo.findMany(inboundFilters, inboundProjection, limit, offset),
+            inboundRepo.findMany(
+              inboundFilters,
+              inboundProjection,
+              limit,
+              offset,
+            ),
             inboundRepo.count(inboundFilters),
           ]);
           const formatted = docs.map(formatInboundInvoiceItem);
@@ -263,7 +273,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         if (fetchOutbound) {
           tasks.push(
             Promise.all([
-              outboundRepo.findMany(outboundFilters, outboundProjection, fetchLimit, 0),
+              outboundRepo.findMany(
+                outboundFilters,
+                outboundProjection,
+                fetchLimit,
+                0,
+              ),
               outboundRepo.count(outboundFilters),
             ]).then(([docs, count]) => {
               outboundTotal = count;
@@ -275,7 +290,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         if (fetchInbound) {
           tasks.push(
             Promise.all([
-              inboundRepo.findMany(inboundFilters, inboundProjection, fetchLimit, 0),
+              inboundRepo.findMany(
+                inboundFilters,
+                inboundProjection,
+                fetchLimit,
+                0,
+              ),
               inboundRepo.count(inboundFilters),
             ]).then(([docs, count]) => {
               inboundTotal = count;
@@ -303,12 +323,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         const paginatedData = combinedInvoices.slice(offset, offset + limit);
 
-        return ResponseBuilder.paginate(paginatedData, totalCount, page, limit, {
-          countsByType: {
-            outbound: outboundTotal,
-            inbound: inboundTotal,
+        return ResponseBuilder.paginate(
+          paginatedData,
+          totalCount,
+          page,
+          limit,
+          {
+            countsByType: {
+              outbound: outboundTotal,
+              inbound: inboundTotal,
+            },
           },
-        });
+        );
       } catch (error: any) {
         logger.error("Failed to list unified invoices stream", {
           error: error.message,
@@ -316,7 +342,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         set.status = 500;
         return ResponseBuilder.error(
           "Failed to retrieve unified invoice stream",
-          500
+          500,
         );
       }
     },
@@ -365,7 +391,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           invoices.map(formatOutboundInvoiceItem),
           total,
           page,
-          limit
+          limit,
         );
       } catch (error: any) {
         set.status = 500;
@@ -374,7 +400,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         });
         return ResponseBuilder.error(
           error.message || "Failed to list outbound invoices",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
@@ -475,49 +501,49 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         });
 
         return ResponseBuilder.success({
-            invoice: {
-              irn: invoice.irn,
-              erpInvoiceId: invoice.erpInvoiceId,
-              source: invoice.source,
-              tenantId: invoice.tenantId,
-              status: invoice.status,
-              paymentStatus: invoice.paymentStatus,
-              paymentDetails: invoice.paymentDetails,
-              workflowState: invoice.workflowState,
-              lastJobError: invoice.lastJobError,
-              qrCode: invoice.qrCode,
-              erpSystem: invoice.erpSystem,
-              validationAttempts: invoice.validationAttempts,
-              validationErrors: invoice.validationErrors,
-              metadata: invoice.metadata,
-              createdAt: invoice.createdAt,
-              updatedAt: invoice.updatedAt,
-            },
-            webhookEvents: webhookEvents.map((ev: any) => ({
-              eventId: ev.eventId,
-              eventType: ev.eventType,
-              status: ev.status,
-              payload: ev.payload,
-              jobErrors: ev.jobErrors ?? [],
-              jobSteps: buildJobSteps(ev.jobIds ?? []),
-              routing: ev.metadata?.matchedRoutes,
-              receivedAt: ev.createdAt,
-              deliveredAt: ev.deliveredAt,
-              failedAt: ev.failedAt,
-              failureReason: ev.failureReason,
-            })),
-            statusHistory,
-          });
-        } catch (error: any) {
-          set.status = 500;
-          logger.error("Failed to get outbound invoice", {
-            error: error.message,
-          });
-          return ResponseBuilder.error(
-            error.message || "Failed to get outbound invoice",
-            error.statusCode || 500
-          );
-        }
+          invoice: {
+            irn: invoice.irn,
+            erpInvoiceId: invoice.erpInvoiceId,
+            source: invoice.source,
+            tenantId: invoice.tenantId,
+            status: invoice.status,
+            paymentStatus: invoice.paymentStatus,
+            paymentDetails: invoice.paymentDetails,
+            workflowState: invoice.workflowState,
+            lastJobError: invoice.lastJobError,
+            qrCode: invoice.qrCode,
+            erpSystem: invoice.erpSystem,
+            validationAttempts: invoice.validationAttempts,
+            validationErrors: invoice.validationErrors,
+            metadata: invoice.metadata,
+            createdAt: invoice.createdAt,
+            updatedAt: invoice.updatedAt,
+          },
+          webhookEvents: webhookEvents.map((ev: any) => ({
+            eventId: ev.eventId,
+            eventType: ev.eventType,
+            status: ev.status,
+            payload: ev.payload,
+            jobErrors: ev.jobErrors ?? [],
+            jobSteps: buildJobSteps(ev.jobIds ?? []),
+            routing: ev.metadata?.matchedRoutes,
+            receivedAt: ev.createdAt,
+            deliveredAt: ev.deliveredAt,
+            failedAt: ev.failedAt,
+            failureReason: ev.failureReason,
+          })),
+          statusHistory,
+        });
+      } catch (error: any) {
+        set.status = 500;
+        logger.error("Failed to get outbound invoice", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to get outbound invoice",
+          error.statusCode || 500,
+        );
+      }
     },
     getOutboundInvoiceValidation,
   )
@@ -592,7 +618,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             jobChainId: jobChainId ?? null,
           },
           undefined,
-          "Payment status updated"
+          "Payment status updated",
         );
       } catch (error: any) {
         logger.error("Failed to update payment status", {
@@ -600,7 +626,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         });
         return ResponseBuilder.error(
           error.message || "Failed to update payment status",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
@@ -730,14 +756,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         return ResponseBuilder.success(
           { irn: params.irn, fromStep: startAction, actions, jobChainId },
           undefined,
-          `Retry scheduled from step: ${startAction}`
+          `Retry scheduled from step: ${startAction}`,
         );
       } catch (error: any) {
         set.status = 500;
         logger.error("Failed to retry invoice", { error: error.message });
         return ResponseBuilder.error(
           error.message || "Failed to retry invoice",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
@@ -771,7 +797,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         // Check if invoice is in failed state
         if (invoice.status !== OutboundInvoiceStatus.FAILED) {
           set.status = 400;
-          return ResponseBuilder.error("Only failed invoices can be resent", 400);
+          return ResponseBuilder.error(
+            "Only failed invoices can be resent",
+            400,
+          );
         }
 
         // Determine the failure point and restart from there
@@ -819,14 +848,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             result: result,
           },
           undefined,
-          "Invoice workflow restarted"
+          "Invoice workflow restarted",
         );
       } catch (error: any) {
         set.status = 500;
         logger.error("Failed to resend invoice", { error: error.message });
         return ResponseBuilder.error(
           error.message || "Failed to resend invoice",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
@@ -888,7 +917,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           invoices.map(formatInboundInvoiceItem),
           total,
           page,
-          limit
+          limit,
         );
       } catch (error: any) {
         set.status = 500;
@@ -897,7 +926,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         });
         return ResponseBuilder.error(
           error.message || "Failed to list inbound invoices",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
@@ -965,7 +994,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         logger.error("Failed to get inbound invoice", { error: error.message });
         return ResponseBuilder.error(
           error.message || "Failed to get inbound invoice",
-          error.statusCode || 500
+          error.statusCode || 500,
         );
       }
     },
