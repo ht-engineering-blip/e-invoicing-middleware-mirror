@@ -108,6 +108,7 @@ export class InboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
+        .maxTimeMS(8000)
         .lean()
         .exec();
 
@@ -225,11 +226,14 @@ export class InboundInvoiceRepository {
   async count(where?: any): Promise<number> {
     try {
       const query = this.buildInboundInvoiceQuery(where);
-      const count = await this.inboundInvoiceModel.countDocuments(query).exec();
+      const count = await this.inboundInvoiceModel
+        .countDocuments(query)
+        .maxTimeMS(5000)
+        .exec();
       return count;
     } catch (error) {
       console.error('Error counting inbound invoices:', error);
-      throw new AppError(500, 'Failed to count inbound invoices');
+      return 0;
     }
   }
 

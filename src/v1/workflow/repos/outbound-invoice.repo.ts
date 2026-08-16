@@ -105,6 +105,7 @@ export class OutboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
+        .maxTimeMS(8000)
         .lean()
         .exec();
 
@@ -293,11 +294,12 @@ export class OutboundInvoiceRepository {
       const query = this.buildOutboundInvoiceQuery(where);
       const count = await this.outboundInvoiceModel
         .countDocuments(query)
+        .maxTimeMS(5000)
         .exec();
       return count;
     } catch (error) {
       console.error("Error counting outbound invoices:", error);
-      throw new AppError(500, "Failed to count outbound invoices");
+      return 0;
     }
   }
 

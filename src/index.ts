@@ -18,14 +18,11 @@ if (!appConfig) {
   throw new Error("App configuration is not defined");
 }
 
-// Initialize MongoDB connection (will be lazy-loaded on first request)
-let mongoConnected = false;
+// Ensure MongoDB connection (reuses cached connection across serverless invocations)
 const ensureMongoConnection = async () => {
-  if (!mongoConnected) {
+  if (mongoose.connection.readyState !== 1) {
     try {
       await connectMongo();
-      mongoConnected = true;
-      logger.info("MongoDB connected successfully");
     } catch (err) {
       logger.error("Failed to connect to MongoDB:", err);
       throw err;
