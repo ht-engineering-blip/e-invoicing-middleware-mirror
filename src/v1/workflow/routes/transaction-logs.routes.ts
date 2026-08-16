@@ -230,7 +230,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             outboundRepo.findMany(outboundFilters, undefined, limit, offset),
             outboundRepo.count(outboundFilters),
           ]);
-          const formatted = docs.map(formatOutboundInvoiceItem);
+          const formatted = docs.map(formatOutboundInvoiceItem).filter(Boolean);
           return ResponseBuilder.paginate(formatted, count, page, limit, {
             countsByType: { outbound: count, inbound: 0 },
           });
@@ -241,74 +241,86 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             inboundRepo.findMany(inboundFilters, undefined, limit, offset),
             inboundRepo.count(inboundFilters),
           ]);
-          const formatted = docs.map(formatInboundInvoiceItem);
+          const formatted = docs.map(formatInboundInvoiceItem).filter(Boolean);
           return ResponseBuilder.paginate(formatted, count, page, limit, {
             countsByType: { outbound: 0, inbound: count },
           });
         }
 
         const fetchLimit = Math.min(offset + limit, 100);
-        const tasks: Promise<any>[] = [];
+        let outboundDocs: any[] = [];
+        let inboundDocs: any[] = [];
         let outboundTotal = 0;
         let inboundTotal = 0;
 
+        const promises: Promise<any>[] = [];
+
         if (fetchOutbound) {
-          tasks.push(
-            Promise.all([
-              outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
-              outboundRepo.count(outboundFilters),
-            ])
-              .then(([docs, count]) => {
-                outboundTotal = count;
-                return docs.map(formatOutboundInvoiceItem);
-              })
+          promises.push(
+            outboundRepo
+              .findMany(outboundFilters, undefined, fetchLimit, 0)
+              .then((docs) => (outboundDocs = docs))
               .catch((err) => {
                 logger.warn(
                   "Failed to query outbound invoices in unified stream:",
                   err,
                 );
-                return [];
+              }),
+            outboundRepo
+              .count(outboundFilters)
+              .then((count) => (outboundTotal = count))
+              .catch((err) => {
+                logger.warn(
+                  "Failed to count outbound invoices in unified stream:",
+                  err,
+                );
               }),
           );
         }
 
         if (fetchInbound) {
-          tasks.push(
-            Promise.all([
-              inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
-              inboundRepo.count(inboundFilters),
-            ])
-              .then(([docs, count]) => {
-                inboundTotal = count;
-                return docs.map(formatInboundInvoiceItem);
+          promises.push(
+            inboundRepo
+              .findMany(inboundFilters, undefined, fetchLimit, 0)
+              .then((docs) => {
+                inboundDocs = docs;
               })
               .catch((err) => {
                 logger.warn(
                   "Failed to query inbound invoices in unified stream:",
                   err,
                 );
-                return [];
+              }),
+            inboundRepo
+              .count(inboundFilters)
+              .then((count) => (inboundTotal = count))
+              .catch((err) => {
+                logger.warn(
+                  "Failed to count inbound invoices in unified stream:",
+                  err,
+                );
               }),
           );
         }
 
-        const results = await Promise.all(tasks);
-        const combinedInvoices = results.flat();
+        await Promise.all(promises);
+
+        const formattedOutbound = outboundDocs
+          .map(formatOutboundInvoiceItem)
+          .filter(Boolean);
+        const formattedInbound = inboundDocs
+          .map(formatInboundInvoiceItem)
+          .filter(Boolean);
+
+        const combinedInvoices = [...formattedOutbound, ...formattedInbound];
 
         combinedInvoices.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
           return dateB - dateA;
         });
 
-        let totalCount = 0;
-        if (fetchOutbound) {
-          totalCount += outboundTotal;
-        }
-        if (fetchInbound) {
-          totalCount += inboundTotal;
-        }
-
+        const totalCount = outboundTotal + inboundTotal;
         const paginatedData = combinedInvoices.slice(offset, offset + limit);
 
         return ResponseBuilder.paginate(
