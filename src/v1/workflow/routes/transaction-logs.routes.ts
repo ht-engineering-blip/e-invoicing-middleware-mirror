@@ -31,46 +31,55 @@ import { decryptSensitiveData } from "../../../@lib/crypto";
  * Format outbound invoice document matching standard outbound schema
  */
 function formatOutboundInvoiceItem(inv: any): any {
+  if (!inv) return null;
+  const meta = inv.metadata || {};
   return {
-    irn: inv.irn,
+    irn: inv.irn || null,
     erpInvoiceId: inv.erpInvoiceId ?? null,
     source: inv.source ?? "api",
     type: "outbound",
     direction: "OUTBOUND",
     invoiceNumber:
       inv.invoiceNumber ||
-      inv.metadata?.invoiceNumber ||
-      inv.metadata?.InvoiceNumber ||
+      meta.invoiceNumber ||
+      meta.InvoiceNumber ||
+      meta.invoice_number ||
       null,
-    status: inv.status,
-    paymentStatus: inv.paymentStatus || inv.payment?.paymentStatus || "PENDING",
+    status: inv.status || "CREATED",
+    paymentStatus:
+      inv.paymentStatus || inv.paymentDetails?.paymentStatus || "PENDING",
     qrCode: inv.qrCode ?? null,
     erp: inv.erpSystem ?? null,
     workflowState: inv.workflowState ?? null,
     lastJobError: inv.lastJobError ?? null,
     customerName:
       inv.customerName ||
-      inv.metadata?.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name ||
-      inv.accounting_customer_party?.party_name ||
+      meta.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name ||
+      meta.accounting_customer_party?.party_name ||
+      meta.customerName ||
       null,
     supplierName:
       inv.supplierName ||
-      inv.metadata?.AccountingSupplierParty?.Party?.PartyName?.[0]?.Name ||
-      inv.accounting_supplier_party?.party_name ||
+      meta.AccountingSupplierParty?.Party?.PartyName?.[0]?.Name ||
+      meta.accounting_supplier_party?.party_name ||
+      meta.supplierName ||
       null,
     totalAmount:
       inv.totalAmount ||
-      inv.metadata?.LegalMonetaryTotal?.PayableAmount?.value ||
-      inv.legal_monetary_total?.payable_amount ||
+      meta.LegalMonetaryTotal?.PayableAmount?.value ||
+      meta.legal_monetary_total?.payable_amount ||
+      meta.totalAmount ||
       0,
     currency:
       inv.currency ||
-      inv.metadata?.DocumentCurrencyCode ||
-      inv.document_currency_code ||
+      meta.DocumentCurrencyCode ||
+      meta.document_currency_code ||
       "NGN",
-    webhookEventCount: (inv.webhookEvents ?? []).length,
-    createdAt: inv.createdAt,
-    updatedAt: inv.updatedAt,
+    webhookEventCount: Array.isArray(inv.webhookEvents)
+      ? inv.webhookEvents.length
+      : 0,
+    createdAt: inv.createdAt || new Date(),
+    updatedAt: inv.updatedAt || new Date(),
   };
 }
 
@@ -78,26 +87,46 @@ function formatOutboundInvoiceItem(inv: any): any {
  * Format inbound invoice document matching standard inbound schema
  */
 function formatInboundInvoiceItem(inv: any): any {
+  if (!inv) return null;
+  const invData = inv.invoice || {};
   return {
-    irn: inv.irn,
+    irn: inv.irn || null,
     erpInvoiceId: null,
     source: "inbound",
     type: "inbound",
     direction: "INBOUND",
-    invoiceNumber: inv.invoiceNumber ?? null,
-    status: inv.status,
+    invoiceNumber: inv.invoiceNumber || invData.invoiceNumber || null,
+    status: inv.status || "TRANSMITTED",
     paymentStatus: inv.paymentStatus || inv.payment?.paymentStatus || "PENDING",
     qrCode: inv.qrCode ?? null,
     erp: null,
-    workflowState: null,
+    workflowState: inv.workflowState ?? null,
     lastJobError: null,
-    customerName: inv.customerName ?? null,
-    supplierName: inv.supplierName ?? null,
-    totalAmount: inv.totalAmount ?? 0,
-    currency: inv.currency ?? "NGN",
-    webhookEventCount: 0,
-    createdAt: inv.createdAt,
-    updatedAt: inv.updatedAt,
+    customerName:
+      inv.customerName ||
+      invData.accounting_customer_party?.party_name ||
+      invData.customerName ||
+      null,
+    supplierName:
+      inv.supplierName ||
+      invData.accounting_supplier_party?.party_name ||
+      invData.supplierName ||
+      null,
+    totalAmount:
+      inv.totalAmount ||
+      invData.legal_monetary_total?.payable_amount ||
+      invData.totalAmount ||
+      0,
+    currency:
+      inv.currency ||
+      invData.document_currency_code ||
+      invData.currency ||
+      "NGN",
+    webhookEventCount: Array.isArray(inv.webhookEvents)
+      ? inv.webhookEvents.length
+      : 0,
+    createdAt: inv.createdAt || new Date(),
+    updatedAt: inv.updatedAt || new Date(),
   };
 }
 
@@ -196,53 +225,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           }
         }
 
-        const outboundProjection = {
-          _id: 1,
-          irn: 1,
-          invoiceNumber: 1,
-          invoiceTypeCode: 1,
-          issueDate: 1,
-          dueDate: 1,
-          status: 1,
-          paymentStatus: 1,
-          legalMonetaryTotal: 1,
-          taxTotal: 1,
-          accountingSupplierParty: 1,
-          accountingCustomerParty: 1,
-          currency: 1,
-          source: 1,
-          erpInvoiceId: 1,
-          businessId: 1,
-          tenantId: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        };
-
-        const inboundProjection = {
-          _id: 1,
-          irn: 1,
-          invoiceNumber: 1,
-          invoiceTypeCode: 1,
-          issueDate: 1,
-          dueDate: 1,
-          status: 1,
-          payment: 1,
-          invoice: 1,
-          decryptedData: 1,
-          businessId: 1,
-          tenantId: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        };
-
         if (fetchOutbound && !fetchInbound) {
           const [docs, count] = await Promise.all([
-            outboundRepo.findMany(
-              outboundFilters,
-              outboundProjection,
-              limit,
-              offset,
-            ),
+            outboundRepo.findMany(outboundFilters, undefined, limit, offset),
             outboundRepo.count(outboundFilters),
           ]);
           const formatted = docs.map(formatOutboundInvoiceItem);
@@ -253,12 +238,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         if (fetchInbound && !fetchOutbound) {
           const [docs, count] = await Promise.all([
-            inboundRepo.findMany(
-              inboundFilters,
-              inboundProjection,
-              limit,
-              offset,
-            ),
+            inboundRepo.findMany(inboundFilters, undefined, limit, offset),
             inboundRepo.count(inboundFilters),
           ]);
           const formatted = docs.map(formatInboundInvoiceItem);
@@ -275,12 +255,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         if (fetchOutbound) {
           tasks.push(
             Promise.all([
-              outboundRepo.findMany(
-                outboundFilters,
-                outboundProjection,
-                fetchLimit,
-                0,
-              ),
+              outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
               outboundRepo.count(outboundFilters),
             ])
               .then(([docs, count]) => {
@@ -300,12 +275,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         if (fetchInbound) {
           tasks.push(
             Promise.all([
-              inboundRepo.findMany(
-                inboundFilters,
-                inboundProjection,
-                fetchLimit,
-                0,
-              ),
+              inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
               inboundRepo.count(inboundFilters),
             ])
               .then(([docs, count]) => {
