@@ -617,4 +617,81 @@ describe("Tenant Admin Routes & Credentials Redaction Security Tests", () => {
       expect(body.statusCode).toBe(403);
     });
   });
+
+  describe("4. Key Config Endpoint & Filtering by keyType", () => {
+    it("should return all key groups when keyType is omitted", async () => {
+      const response = await adminTenantRoutes.handle(
+        new Request("http://localhost/tenant-123/key-config", {
+          method: "GET",
+          headers: ownerTokenHeader,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.standard_invoice).toBeDefined();
+      expect(body.data.credit_note).toBeDefined();
+      expect(body.data.debit_note).toBeDefined();
+      expect(body.data.payment).toBeDefined();
+      expect(body.data.invoiceIdKey).toBeDefined();
+    });
+
+    it("should return only standard invoice key when keyType=standard", async () => {
+      const response = await adminTenantRoutes.handle(
+        new Request("http://localhost/tenant-123/key-config?keyType=standard", {
+          method: "GET",
+          headers: ownerTokenHeader,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.keyType).toBe("standard_invoice");
+      expect(body.data.eventType).toBe("erp.invoice.submitted");
+      expect(body.data.idKey).toBeDefined();
+    });
+
+    it("should return only credit note keys when keyType=credit_note", async () => {
+      const response = await adminTenantRoutes.handle(
+        new Request(
+          "http://localhost/tenant-123/key-config?keyType=credit_note",
+          {
+            method: "GET",
+            headers: ownerTokenHeader,
+          },
+        ),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.keyType).toBe("credit_note");
+      expect(body.data.eventType).toBe("erp.creditnote.issued");
+      expect(body.data.idKey).toBeDefined();
+      expect(body.data.referenceIdKey).toBeDefined();
+    });
+
+    it("should update key config via PUT /key-config by keyType", async () => {
+      const response = await adminTenantRoutes.handle(
+        new Request("http://localhost/tenant-123/key-config", {
+          method: "PUT",
+          headers: {
+            ...ownerTokenHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            keyType: "credit_note",
+            idKey: "customCreditNote.id",
+            referenceIdKey: "customCreditNote.originalIrn",
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.keyType).toBe("credit_note");
+      expect(body.data.idKey).toBe("customCreditNote.id");
+      expect(body.data.referenceIdKey).toBe("customCreditNote.originalIrn");
+    });
+  });
 });
+
