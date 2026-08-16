@@ -130,6 +130,100 @@ function formatInboundInvoiceItem(inv: any): any {
   };
 }
 
+function parseDate(d?: string): Date | undefined {
+  if (!d || typeof d !== "string" || d.trim() === "") return undefined;
+  const parsed = new Date(d.trim());
+  return isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+/**
+ * Reusable helper to fetch and format outbound invoices
+ */
+async function fetchOutboundInvoices(
+  outboundRepo: OutboundInvoiceRepository,
+  auth: any,
+  query: any,
+  limit: number,
+  offset: number,
+) {
+  const filters: any = {};
+  if (!auth?.isAdmin && auth?.tenantId) {
+    filters.tenantId = { _eq: auth.tenantId };
+  }
+
+  if (query.status?.trim()) filters.status = { _eq: query.status.trim() };
+  if (query.source?.trim()) filters.source = { _eq: query.source.trim() };
+  if (query.erpInvoiceId?.trim())
+    filters.erpInvoiceId = { _eq: query.erpInvoiceId.trim() };
+  if (query.irn?.trim()) filters.irn = { _ilike: query.irn.trim() };
+  if (query.search?.trim()) filters.search = query.search.trim();
+
+  const fromDate = parseDate(query.from);
+  const toDate = parseDate(query.to);
+  if (fromDate || toDate) {
+    const dateFilter: any = {};
+    if (fromDate) dateFilter._gte = fromDate;
+    if (toDate) dateFilter._lte = toDate;
+    filters.createdAt = dateFilter;
+  }
+
+  const [invoices, total] = await Promise.all([
+    outboundRepo.findMany(filters, undefined, limit, offset),
+    outboundRepo.count(filters),
+  ]);
+
+  return {
+    items: (invoices || []).map(formatOutboundInvoiceItem).filter(Boolean),
+    total: total || 0,
+  };
+}
+
+/**
+ * Reusable helper to fetch and format inbound invoices
+ */
+async function fetchInboundInvoices(
+  inboundRepo: InboundInvoiceRepository,
+  auth: any,
+  query: any,
+  limit: number,
+  offset: number,
+) {
+  const filters: any = {};
+
+  if (query.businessId?.trim()) {
+    filters.businessId = { _eq: query.businessId.trim() };
+  } else if (auth?.businessId) {
+    filters.businessId = { _eq: auth.businessId };
+  } else if (!auth?.isAdmin && auth?.tenantId) {
+    filters.tenantId = { _eq: auth.tenantId };
+  }
+
+  if (query.status?.trim()) filters.status = { _eq: query.status.trim() };
+  if (query.paymentStatus?.trim())
+    filters.paymentStatus = { _eq: query.paymentStatus.trim() };
+  if (query.irn?.trim()) filters.irn = { _ilike: query.irn.trim() };
+  if (query.search?.trim()) filters.search = query.search.trim();
+
+  const fromDate = parseDate(query.from);
+  const toDate = parseDate(query.to);
+  if (fromDate || toDate) {
+    const dateFilter: any = {};
+    if (fromDate) dateFilter._gte = fromDate;
+    if (toDate) dateFilter._lte = toDate;
+    filters.createdAt = dateFilter;
+  }
+
+  const [invoices, total] = await Promise.all([
+    inboundRepo.findMany(filters, undefined, limit, offset),
+    inboundRepo.count(filters),
+  ]);
+
+  return {
+    items: (invoices || []).map(formatInboundInvoiceItem).filter(Boolean),
+    total: total || 0,
+  };
+}
+
 /**
  * Transaction Logs & Invoices Routes
  */
@@ -157,165 +251,63 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         );
         const offset = (page - 1) * limit;
 
-        const requestedType = (
-          query.type ||
-          query.direction ||
-          "all"
-        )
+        const requestedType = (query.type || query.direction || "all")
           .toLowerCase()
           .trim();
-        const statusFilter = query.status?.trim();
-        const paymentStatusFilter = query.paymentStatus?.trim();
-        const searchTerm = query.search?.trim();
 
-        const parseDate = (d?: string) => {
-          if (!d || typeof d !== "string" || d.trim() === "") return undefined;
-          const parsed = new Date(d);
-          return isNaN(parsed.getTime()) ? undefined : parsed;
-        };
-
-        const fromDate = parseDate(query.from);
-        const toDate = parseDate(query.to);
-
-        const isAll = requestedType === "all";
-        const fetchOutbound = isAll || requestedType === "outbound";
-        const fetchInbound = isAll || requestedType === "inbound";
-
-        const outboundFilters: any = {};
-        const inboundFilters: any = {};
-
-        if (!auth?.isAdmin) {
-          if (auth?.tenantId) {
-            outboundFilters.tenantId = { _eq: auth.tenantId };
-          }
-          if (auth?.businessId) {
-            inboundFilters.businessId = { _eq: auth.businessId };
-          } else if (auth?.tenantId) {
-            inboundFilters.tenantId = { _eq: auth.tenantId };
-          }
-        }
-
-        if (query.source?.trim()) {
-          outboundFilters.source = { _eq: query.source.trim() };
-        }
-        if (query.erpInvoiceId?.trim()) {
-          outboundFilters.erpInvoiceId = { _eq: query.erpInvoiceId.trim() };
-        }
-        if (query.businessId?.trim()) {
-          inboundFilters.businessId = { _eq: query.businessId.trim() };
-        }
-        if (query.irn?.trim()) {
-          outboundFilters.irn = { _ilike: query.irn.trim() };
-          inboundFilters.irn = { _ilike: query.irn.trim() };
-        }
-        if (searchTerm) {
-          outboundFilters.search = searchTerm;
-          inboundFilters.search = searchTerm;
-        }
-        if (statusFilter) {
-          outboundFilters.status = { _eq: statusFilter };
-          inboundFilters.status = { _eq: statusFilter };
-        }
-        if (paymentStatusFilter) {
-          outboundFilters.paymentStatus = { _eq: paymentStatusFilter };
-          inboundFilters.paymentStatus = { _eq: paymentStatusFilter };
-        }
-        if (fromDate || toDate) {
-          const dateFilter: any = {};
-          if (fromDate) dateFilter._gte = fromDate;
-          if (toDate) dateFilter._lte = toDate;
-          outboundFilters.createdAt = dateFilter;
-          inboundFilters.createdAt = dateFilter;
-        }
-
-        if (fetchOutbound && !fetchInbound) {
-          const [docs, count] = await Promise.all([
-            outboundRepo.findMany(outboundFilters, undefined, limit, offset),
-            outboundRepo.count(outboundFilters),
-          ]);
-          const formatted = (docs || [])
-            .map(formatOutboundInvoiceItem)
-            .filter(Boolean);
-          return ResponseBuilder.paginate(formatted, count || 0, page, limit, {
-            countsByType: { outbound: count || 0, inbound: 0 },
+        if (requestedType === "outbound") {
+          const { items, total } = await fetchOutboundInvoices(
+            outboundRepo,
+            auth,
+            query,
+            limit,
+            offset,
+          );
+          return ResponseBuilder.paginate(items, total, page, limit, {
+            countsByType: { outbound: total, inbound: 0 },
           });
         }
 
-        if (fetchInbound && !fetchOutbound) {
-          const [docs, count] = await Promise.all([
-            inboundRepo.findMany(inboundFilters, undefined, limit, offset),
-            inboundRepo.count(inboundFilters),
-          ]);
-          const formatted = (docs || [])
-            .map(formatInboundInvoiceItem)
-            .filter(Boolean);
-          return ResponseBuilder.paginate(formatted, count || 0, page, limit, {
-            countsByType: { outbound: 0, inbound: count || 0 },
+        if (requestedType === "inbound") {
+          const { items, total } = await fetchInboundInvoices(
+            inboundRepo,
+            auth,
+            query,
+            limit,
+            offset,
+          );
+          return ResponseBuilder.paginate(items, total, page, limit, {
+            countsByType: { outbound: 0, inbound: total },
           });
         }
 
+        // Unified stream: Query both in parallel with full fault isolation
         const fetchLimit = Math.min(offset + limit, 100);
 
-        const [
-          outboundDocsRes,
-          outboundCountRes,
-          inboundDocsRes,
-          inboundCountRes,
-        ] = await Promise.allSettled([
-          outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
-          outboundRepo.count(outboundFilters),
-          inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
-          inboundRepo.count(inboundFilters),
+        const [outboundRes, inboundRes] = await Promise.allSettled([
+          fetchOutboundInvoices(outboundRepo, auth, query, fetchLimit, 0),
+          fetchInboundInvoices(inboundRepo, auth, query, fetchLimit, 0),
         ]);
 
-        const outboundDocs =
-          outboundDocsRes.status === "fulfilled"
-            ? outboundDocsRes.value || []
-            : [];
-        const outboundTotal =
-          outboundCountRes.status === "fulfilled"
-            ? outboundCountRes.value || 0
-            : 0;
+        const outboundData =
+          outboundRes.status === "fulfilled"
+            ? outboundRes.value
+            : { items: [], total: 0 };
+        const inboundData =
+          inboundRes.status === "fulfilled"
+            ? inboundRes.value
+            : { items: [], total: 0 };
 
-        const inboundDocs =
-          inboundDocsRes.status === "fulfilled"
-            ? inboundDocsRes.value || []
-            : [];
-        const inboundTotal =
-          inboundCountRes.status === "fulfilled"
-            ? inboundCountRes.value || 0
-            : 0;
+        const combinedItems = [...outboundData.items, ...inboundData.items];
 
-        if (outboundDocsRes.status === "rejected") {
-          logger.warn(
-            "Outbound findMany failed in unified stream:",
-            outboundDocsRes.reason,
-          );
-        }
-        if (inboundDocsRes.status === "rejected") {
-          logger.warn(
-            "Inbound findMany failed in unified stream:",
-            inboundDocsRes.reason,
-          );
-        }
-
-        const formattedOutbound = outboundDocs
-          .map(formatOutboundInvoiceItem)
-          .filter(Boolean);
-        const formattedInbound = inboundDocs
-          .map(formatInboundInvoiceItem)
-          .filter(Boolean);
-
-        const combinedInvoices = [...formattedOutbound, ...formattedInbound];
-
-        combinedInvoices.sort((a, b) => {
+        combinedItems.sort((a, b) => {
           const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
           const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
           return dateB - dateA;
         });
 
-        const totalCount = outboundTotal + inboundTotal;
-        const paginatedData = combinedInvoices.slice(offset, offset + limit);
+        const totalCount = outboundData.total + inboundData.total;
+        const paginatedData = combinedItems.slice(offset, offset + limit);
 
         return ResponseBuilder.paginate(
           paginatedData,
@@ -324,8 +316,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           limit,
           {
             countsByType: {
-              outbound: outboundTotal,
-              inbound: inboundTotal,
+              outbound: outboundData.total,
+              inbound: inboundData.total,
             },
           },
         );
@@ -355,42 +347,24 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
     "/outbound",
     async ({ query, auth, outboundRepo, set }) => {
       try {
-        const page = parseInt(query.page || "1");
-        const limit = Math.min(parseInt(query.limit || "20"), 100);
+        const page = Math.max(1, parseInt(query.page || "1") || 1);
+        const limit = Math.min(
+          Math.max(1, parseInt(query.limit || "20") || 20),
+          100,
+        );
         const offset = (page - 1) * limit;
 
-        // Build filters
-        const filters: any = {};
-        if (!auth?.isAdmin) {
-          filters.tenantId = { _eq: auth!.tenantId };
-        }
-
-        if (query.status) filters.status = { _eq: query.status };
-        if (query.source) filters.source = { _eq: query.source };
-        if (query.erpInvoiceId)
-          filters.erpInvoiceId = { _eq: query.erpInvoiceId };
-        if (query.irn) filters.irn = { _ilike: query.irn };
-        if (query.search) filters.search = query.search;
-
-        if (query.from || query.to) {
-          filters.createdAt = {};
-          if (query.from) filters.createdAt._gte = new Date(query.from);
-          if (query.to) filters.createdAt._lte = new Date(query.to);
-        }
-
-        const [invoices, total] = await Promise.all([
-          outboundRepo.findMany(filters, undefined, limit, offset),
-          outboundRepo.count(filters),
-        ]);
-
-        return ResponseBuilder.paginate(
-          invoices.map(formatOutboundInvoiceItem),
-          total,
-          page,
+        const { items, total } = await fetchOutboundInvoices(
+          outboundRepo,
+          auth,
+          query,
           limit,
+          offset,
         );
+
+        return ResponseBuilder.paginate(items, total, page, limit);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to list outbound invoices", {
           error: error.message,
         });
@@ -868,55 +842,24 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
     "/inbound",
     async ({ query, auth, inboundRepo, set }) => {
       try {
-        const page = parseInt(query.page || "1");
-        const limit = Math.min(parseInt(query.limit || "20"), 100);
+        const page = Math.max(1, parseInt(query.page || "1") || 1);
+        const limit = Math.min(
+          Math.max(1, parseInt(query.limit || "20") || 20),
+          100,
+        );
         const offset = (page - 1) * limit;
 
-        // Build filters
-        const filters: any = {};
-
-        // Filter by businessId or tenantId
-        if (auth!.businessId) {
-          filters.businessId = { _eq: auth!.businessId };
-        } else {
-          filters.tenantId = { _eq: auth!.tenantId };
-        }
-
-        if (query.status) {
-          filters.status = { _eq: query.status };
-        }
-
-        if (query.paymentStatus) {
-          filters.paymentStatus = { _eq: query.paymentStatus };
-        }
-
-        if (query.irn) {
-          filters.irn = { _ilike: query.irn };
-        }
-
-        if (query.search) {
-          filters.search = query.search;
-        }
-
-        if (query.from || query.to) {
-          filters.createdAt = {};
-          if (query.from) filters.createdAt._gte = new Date(query.from);
-          if (query.to) filters.createdAt._lte = new Date(query.to);
-        }
-
-        const [invoices, total] = await Promise.all([
-          inboundRepo.findMany(filters, undefined, limit, offset),
-          inboundRepo.count(filters),
-        ]);
-
-        return ResponseBuilder.paginate(
-          invoices.map(formatInboundInvoiceItem),
-          total,
-          page,
+        const { items, total } = await fetchInboundInvoices(
+          inboundRepo,
+          auth,
+          query,
           limit,
+          offset,
         );
+
+        return ResponseBuilder.paginate(items, total, page, limit);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to list inbound invoices", {
           error: error.message,
         });
