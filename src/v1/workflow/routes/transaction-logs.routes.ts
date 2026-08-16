@@ -138,20 +138,22 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const fromDate = query.from;
         const toDate = query.to;
 
-        const fetchOutbound =
-          requestedType === "all" || requestedType === "outbound";
-        const fetchInbound =
-          requestedType === "all" || requestedType === "inbound";
+        const isAll = requestedType === "all";
+
+        const fetchOutbound = isAll || requestedType === "outbound";
+        const fetchInbound = isAll || requestedType === "inbound";
 
         const outboundFilters: any = {};
         const inboundFilters: any = {};
 
         if (!auth?.isAdmin) {
-          outboundFilters.tenantId = { _eq: auth!.tenantId };
+          if (auth?.tenantId) {
+            outboundFilters.tenantId = { _eq: auth.tenantId };
+          }
           if (auth?.businessId) {
             inboundFilters.businessId = { _eq: auth.businessId };
-          } else {
-            inboundFilters.tenantId = { _eq: auth!.tenantId };
+          } else if (auth?.tenantId) {
+            inboundFilters.tenantId = { _eq: auth.tenantId };
           }
         }
 
@@ -280,10 +282,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
                 0,
               ),
               outboundRepo.count(outboundFilters),
-            ]).then(([docs, count]) => {
-              outboundTotal = count;
-              return docs.map(formatOutboundInvoiceItem);
-            }),
+            ])
+              .then(([docs, count]) => {
+                outboundTotal = count;
+                return docs.map(formatOutboundInvoiceItem);
+              })
+              .catch((err) => {
+                logger.warn(
+                  "Failed to query outbound invoices in unified stream:",
+                  err,
+                );
+                return [];
+              }),
           );
         }
 
@@ -297,10 +307,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
                 0,
               ),
               inboundRepo.count(inboundFilters),
-            ]).then(([docs, count]) => {
-              inboundTotal = count;
-              return docs.map(formatInboundInvoiceItem);
-            }),
+            ])
+              .then(([docs, count]) => {
+                inboundTotal = count;
+                return docs.map(formatInboundInvoiceItem);
+              })
+              .catch((err) => {
+                logger.warn(
+                  "Failed to query inbound invoices in unified stream:",
+                  err,
+                );
+                return [];
+              }),
           );
         }
 
@@ -308,8 +326,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const combinedInvoices = results.flat();
 
         combinedInvoices.sort((a, b) => {
-          const dateA = new Date(a.createdAt).getTime();
-          const dateB = new Date(b.createdAt).getTime();
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return dateB - dateA;
         });
 
@@ -338,11 +356,12 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
       } catch (error: any) {
         logger.error("Failed to list unified invoices stream", {
           error: error.message,
+          stack: error.stack,
         });
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(
-          "Failed to retrieve unified invoice stream",
-          500,
+          error.message || "Failed to retrieve unified invoice stream",
+          error.statusCode || 500,
         );
       }
     },
