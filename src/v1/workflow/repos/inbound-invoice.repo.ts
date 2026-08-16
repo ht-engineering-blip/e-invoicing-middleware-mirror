@@ -111,7 +111,7 @@ export class InboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
-        .maxTimeMS(8000)
+        .maxTimeMS(20000)
         .lean()
         .exec();
 
@@ -231,7 +231,7 @@ export class InboundInvoiceRepository {
       const query = this.buildInboundInvoiceQuery(where);
       const count = await this.inboundInvoiceModel
         .countDocuments(query)
-        .maxTimeMS(5000)
+        .maxTimeMS(20000)
         .exec();
       return count;
     } catch (error) {

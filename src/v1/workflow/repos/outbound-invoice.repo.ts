@@ -84,7 +84,15 @@ export class OutboundInvoiceRepository {
    * Build select projection
    */
   private buildOutboundInvoiceProjection(select?: any): any {
-    return select && Object.keys(select).length > 0 ? select : null;
+    if (select && Object.keys(select).length > 0) {
+      return select;
+    }
+    return {
+      rawPayload: 0,
+      encryptedData: 0,
+      decryptedData: 0,
+      signedXml: 0,
+    };
   }
 
   /**
@@ -105,7 +113,7 @@ export class OutboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
-        .maxTimeMS(8000)
+        .maxTimeMS(20000)
         .lean()
         .exec();
 
@@ -294,7 +302,7 @@ export class OutboundInvoiceRepository {
       const query = this.buildOutboundInvoiceQuery(where);
       const count = await this.outboundInvoiceModel
         .countDocuments(query)
-        .maxTimeMS(5000)
+        .maxTimeMS(20000)
         .exec();
       return count;
     } catch (error) {
