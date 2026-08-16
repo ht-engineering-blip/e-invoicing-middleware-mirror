@@ -27,229 +27,10 @@ import {
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { decryptSensitiveData } from "../../../@lib/crypto";
 
-/**
- * Format outbound invoice document matching standard outbound schema
- */
-function formatOutboundInvoiceItem(inv: any): any {
-  if (!inv) return null;
-  const meta = inv.metadata || {};
-  return {
-    irn: inv.irn || null,
-    erpInvoiceId: inv.erpInvoiceId ?? null,
-    source: inv.source ?? "api",
-    type: "outbound",
-    direction: "OUTBOUND",
-    invoiceNumber:
-      inv.invoiceNumber ||
-      meta.invoiceNumber ||
-      meta.InvoiceNumber ||
-      meta.invoice_number ||
-      null,
-    status: inv.status || "CREATED",
-    paymentStatus:
-      inv.paymentStatus || inv.paymentDetails?.paymentStatus || "PENDING",
-    qrCode: inv.qrCode ?? null,
-    erp: inv.erpSystem ?? null,
-    workflowState: inv.workflowState ?? null,
-    lastJobError: inv.lastJobError ?? null,
-    customerName:
-      inv.customerName ||
-      meta.AccountingCustomerParty?.Party?.PartyName?.[0]?.Name ||
-      meta.accounting_customer_party?.party_name ||
-      meta.customerName ||
-      null,
-    supplierName:
-      inv.supplierName ||
-      meta.AccountingSupplierParty?.Party?.PartyName?.[0]?.Name ||
-      meta.accounting_supplier_party?.party_name ||
-      meta.supplierName ||
-      null,
-    totalAmount:
-      inv.totalAmount ||
-      meta.LegalMonetaryTotal?.PayableAmount?.value ||
-      meta.legal_monetary_total?.payable_amount ||
-      meta.totalAmount ||
-      0,
-    currency:
-      inv.currency ||
-      meta.DocumentCurrencyCode ||
-      meta.document_currency_code ||
-      "NGN",
-    webhookEventCount: Array.isArray(inv.webhookEvents)
-      ? inv.webhookEvents.length
-      : 0,
-    createdAt: inv.createdAt || new Date(),
-    updatedAt: inv.updatedAt || new Date(),
-  };
-}
-
-/**
- * Format inbound invoice document matching standard inbound schema
- */
-function formatInboundInvoiceItem(inv: any): any {
-  if (!inv) return null;
-  const invData = inv.invoice || {};
-  return {
-    irn: inv.irn || null,
-    erpInvoiceId: null,
-    source: "inbound",
-    type: "inbound",
-    direction: "INBOUND",
-    invoiceNumber: inv.invoiceNumber || invData.invoiceNumber || null,
-    status: inv.status || "TRANSMITTED",
-    paymentStatus: inv.paymentStatus || inv.payment?.paymentStatus || "PENDING",
-    qrCode: inv.qrCode ?? null,
-    erp: null,
-    workflowState: inv.workflowState ?? null,
-    lastJobError: null,
-    customerName:
-      inv.customerName ||
-      invData.accounting_customer_party?.party_name ||
-      invData.customerName ||
-      null,
-    supplierName:
-      inv.supplierName ||
-      invData.accounting_supplier_party?.party_name ||
-      invData.supplierName ||
-      null,
-    totalAmount:
-      inv.totalAmount ||
-      invData.legal_monetary_total?.payable_amount ||
-      invData.totalAmount ||
-      0,
-    currency:
-      inv.currency ||
-      invData.document_currency_code ||
-      invData.currency ||
-      "NGN",
-    webhookEventCount: Array.isArray(inv.webhookEvents)
-      ? inv.webhookEvents.length
-      : 0,
-    createdAt: inv.createdAt || new Date(),
-    updatedAt: inv.updatedAt || new Date(),
-  };
-}
-
 function parseDate(d?: string): Date | undefined {
   if (!d || typeof d !== "string" || d.trim() === "") return undefined;
   const parsed = new Date(d.trim());
   return isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
-const INVOICE_LIST_PROJECTION = {
-  irn: 1,
-  erpInvoiceId: 1,
-  source: 1,
-  invoiceNumber: 1,
-  status: 1,
-  paymentStatus: 1,
-  paymentDetails: 1,
-  qrCode: 1,
-  erpSystem: 1,
-  workflowState: 1,
-  lastJobError: 1,
-  customerName: 1,
-  supplierName: 1,
-  totalAmount: 1,
-  currency: 1,
-  metadata: 1,
-  webhookEvents: 1,
-  createdAt: 1,
-  updatedAt: 1,
-};
-
-/**
- * Reusable helper to fetch and format outbound invoices
- */
-async function fetchOutboundInvoices(
-  outboundRepo: OutboundInvoiceRepository,
-  auth: any,
-  query: any,
-  limit: number,
-  offset: number,
-) {
-  const filters: any = {};
-  if (!auth?.isAdmin && auth?.tenantId) {
-    filters.tenantId = { _eq: auth.tenantId };
-  }
-
-  if (query.status?.trim()) filters.status = { _eq: query.status.trim() };
-  if (query.source?.trim()) filters.source = { _eq: query.source.trim() };
-  if (query.erpInvoiceId?.trim())
-    filters.erpInvoiceId = { _eq: query.erpInvoiceId.trim() };
-  if (query.irn?.trim()) filters.irn = { _ilike: query.irn.trim() };
-  if (query.search?.trim()) filters.search = query.search.trim();
-
-  const fromDate = parseDate(query.from);
-  const toDate = parseDate(query.to);
-  if (fromDate || toDate) {
-    const dateFilter: any = {};
-    if (fromDate) dateFilter._gte = fromDate;
-    if (toDate) dateFilter._lte = toDate;
-    filters.createdAt = dateFilter;
-  }
-
-  const invoices = await outboundRepo.findMany(
-    filters,
-    INVOICE_LIST_PROJECTION,
-    limit,
-    offset,
-  );
-  const total = await outboundRepo.count(filters);
-
-  return {
-    items: (invoices || []).map(formatOutboundInvoiceItem).filter(Boolean),
-    total: total || 0,
-  };
-}
-
-/**
- * Reusable helper to fetch and format inbound invoices
- */
-async function fetchInboundInvoices(
-  inboundRepo: InboundInvoiceRepository,
-  auth: any,
-  query: any,
-  limit: number,
-  offset: number,
-) {
-  const filters: any = {};
-
-  if (query.businessId?.trim()) {
-    filters.businessId = { _eq: query.businessId.trim() };
-  } else if (auth?.businessId) {
-    filters.businessId = { _eq: auth.businessId };
-  } else if (!auth?.isAdmin && auth?.tenantId) {
-    filters.tenantId = { _eq: auth.tenantId };
-  }
-
-  if (query.status?.trim()) filters.status = { _eq: query.status.trim() };
-  if (query.paymentStatus?.trim())
-    filters.paymentStatus = { _eq: query.paymentStatus.trim() };
-  if (query.irn?.trim()) filters.irn = { _ilike: query.irn.trim() };
-  if (query.search?.trim()) filters.search = query.search.trim();
-
-  const fromDate = parseDate(query.from);
-  const toDate = parseDate(query.to);
-  if (fromDate || toDate) {
-    const dateFilter: any = {};
-    if (fromDate) dateFilter._gte = fromDate;
-    if (toDate) dateFilter._lte = toDate;
-    filters.createdAt = dateFilter;
-  }
-
-  const invoices = await inboundRepo.findMany(
-    filters,
-    INVOICE_LIST_PROJECTION,
-    limit,
-    offset,
-  );
-  const total = await inboundRepo.count(filters);
-
-  return {
-    items: (invoices || []).map(formatInboundInvoiceItem).filter(Boolean),
-    total: total || 0,
-  };
 }
 
 /**
@@ -268,96 +49,36 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
    * GET /workflow/invoices
    * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
    */
-
   .get(
-    "/unified",
-    async ({ query, auth, outboundRepo, set, inboundRepo }) => {
+    "/",
+    async ({ query, auth, outboundRepo, set }) => {
       try {
         const page = Math.max(1, parseInt(query.page || "1") || 1);
         const limit = Math.min(
           Math.max(1, parseInt(query.limit || "20") || 20),
           100,
         );
-        const offset = (page - 1) * limit;
 
-        const requestedType = (query.type || query.direction || "all")
-          .toLowerCase()
-          .trim();
-
-        if (requestedType === "outbound") {
-          const { items, total } = await fetchOutboundInvoices(
-            outboundRepo,
-            auth,
-            query,
-            limit,
-            offset,
-          );
-          return ResponseBuilder.paginate(items, total, page, limit, {
-            countsByType: { outbound: total, inbound: 0 },
-          });
-        }
-
-        if (requestedType === "inbound") {
-          const { items, total } = await fetchInboundInvoices(
-            inboundRepo,
-            auth,
-            query,
-            limit,
-            offset,
-          );
-          return ResponseBuilder.paginate(items, total, page, limit, {
-            countsByType: { outbound: 0, inbound: total },
-          });
-        }
-
-        // Unified stream: Query outbound and inbound in controlled order with fault isolation
-        const fetchLimit = Math.min(offset + limit, 100);
-
-        const outboundData = await fetchOutboundInvoices(
-          outboundRepo,
-          auth,
-          query,
-          fetchLimit,
-          0,
-        ).catch((err) => {
-          logger.warn("Outbound invoice fetch error in unified stream:", err);
-          return { items: [], total: 0 };
-        });
-
-        const inboundData = await fetchInboundInvoices(
-          inboundRepo,
-          auth,
-          query,
-          fetchLimit,
-          0,
-        ).catch((err) => {
-          logger.warn("Inbound invoice fetch error in unified stream:", err);
-          return { items: [], total: 0 };
-        });
-
-        const combinedItems = [...outboundData.items, ...inboundData.items];
-
-        combinedItems.sort((a, b) => {
-          const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-
-        const totalCount = outboundData.total + inboundData.total;
-        const paginatedData = combinedItems.slice(offset, offset + limit);
-
-        return ResponseBuilder.paginate(
-          paginatedData,
-          totalCount,
+        // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
+        const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
+          tenantId: auth?.tenantId,
+          businessId: auth?.businessId,
+          isAdmin: auth?.isAdmin,
+          type: query.type,
+          direction: query.direction,
+          status: query.status,
+          source: query.source,
+          erpInvoiceId: query.erpInvoiceId,
+          paymentStatus: query.paymentStatus,
+          irn: query.irn,
+          search: query.search,
+          from: parseDate(query.from),
+          to: parseDate(query.to),
           page,
           limit,
-          {
-            countsByType: {
-              outbound: outboundData.total,
-              inbound: inboundData.total,
-            },
-          },
-        );
+        });
+
+        return ResponseBuilder.paginate(items, total, page, limit);
       } catch (error: any) {
         console.error("FATAL /invoices ERROR:", error);
         logger.error("Failed to list unified invoices stream", {
@@ -390,26 +111,38 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           Math.max(1, parseInt(query.limit || "20") || 20),
           100,
         );
-        const offset = (page - 1) * limit;
 
-        const { items, total } = await fetchOutboundInvoices(
-          outboundRepo,
-          auth,
-          query,
+        // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
+        const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
+          tenantId: auth?.tenantId,
+          businessId: auth?.businessId,
+          isAdmin: auth?.isAdmin,
+          type: "outbound",
+          direction: "OUTBOUND",
+          status: query.status,
+          source: query.source,
+          erpInvoiceId: query.erpInvoiceId,
+          irn: query.irn,
+          search: query.search,
+          from: parseDate(query.from),
+          to: parseDate(query.to),
+          page,
           limit,
-          offset,
-        );
+        });
 
         return ResponseBuilder.paginate(items, total, page, limit);
       } catch (error: any) {
-        set.status = error.statusCode || 500;
-        logger.error("Failed to list outbound invoices", {
-          error: error.message,
+        console.error("FATAL /invoices ERROR:", error);
+        logger.error("Failed to list unified invoices stream", {
+          error: error?.message || error,
+          stack: error?.stack,
         });
-        return ResponseBuilder.error(
-          error.message || "Failed to list outbound invoices",
-          error.statusCode || 500,
-        );
+        set.status = error?.statusCode || 500;
+        const errorMsg =
+          error?.message ||
+          (typeof error === "string" ? error : JSON.stringify(error)) ||
+          "Failed to retrieve unified invoice stream";
+        return ResponseBuilder.error(errorMsg, error?.statusCode || 500);
       }
     },
     listOutboundInvoicesValidation,
@@ -878,33 +611,44 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
    */
   .get(
     "/inbound",
-    async ({ query, auth, inboundRepo, set }) => {
+    async ({ query, auth, outboundRepo, set }) => {
       try {
         const page = Math.max(1, parseInt(query.page || "1") || 1);
         const limit = Math.min(
           Math.max(1, parseInt(query.limit || "20") || 20),
           100,
         );
-        const offset = (page - 1) * limit;
 
-        const { items, total } = await fetchInboundInvoices(
-          inboundRepo,
-          auth,
-          query,
+        // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
+        const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
+          tenantId: auth?.tenantId,
+          businessId: auth?.businessId,
+          isAdmin: auth?.isAdmin,
+          type: "inbound",
+          direction: "INBOUND",
+          status: query.status,
+          paymentStatus: query.paymentStatus,
+          irn: query.irn,
+          search: query.search,
+          from: parseDate(query.from),
+          to: parseDate(query.to),
+          page,
           limit,
-          offset,
-        );
+        });
 
         return ResponseBuilder.paginate(items, total, page, limit);
       } catch (error: any) {
-        set.status = error.statusCode || 500;
-        logger.error("Failed to list inbound invoices", {
-          error: error.message,
+        console.error("FATAL /invoices ERROR:", error);
+        logger.error("Failed to list unified invoices stream", {
+          error: error?.message || error,
+          stack: error?.stack,
         });
-        return ResponseBuilder.error(
-          error.message || "Failed to list inbound invoices",
-          error.statusCode || 500,
-        );
+        set.status = error?.statusCode || 500;
+        const errorMsg =
+          error?.message ||
+          (typeof error === "string" ? error : JSON.stringify(error)) ||
+          "Failed to retrieve unified invoice stream";
+        return ResponseBuilder.error(errorMsg, error?.statusCode || 500);
       }
     },
     listInboundInvoicesValidation,
