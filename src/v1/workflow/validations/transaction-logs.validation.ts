@@ -128,12 +128,7 @@ export const listAllInvoicesValidation = {
     type: t.Optional(
       t.String({
         description:
-          'Filter by invoice type/direction: "all", "inbound", "outbound", "transfer", etc.',
-      }),
-    ),
-    direction: t.Optional(
-      t.String({
-        description: 'Alias for type ("all", "inbound", "outbound")',
+          'Filter by invoice type: "all", "inbound", "outbound", "transfer", etc.',
       }),
     ),
     status: t.Optional(t.String()),
