@@ -19,7 +19,7 @@ import { appConfig } from "./@config";
 import { v1Routes } from "./v1";
 import { errorHandlerMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
-import { connectMongo } from "./@lib/adapters/mongo";
+import { mongoPlugin, connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
 import mongoose from "mongoose";
@@ -28,17 +28,10 @@ if (!appConfig) {
   throw new Error("App configuration is not defined");
 }
 
-// Ensure MongoDB connection (reuses cached connection across serverless invocations)
-const ensureMongoConnection = async () => {
-  if (mongoose.connection.readyState !== 1) {
-    try {
-      await connectMongo();
-    } catch (err) {
-      logger.error("Failed to connect to MongoDB:", err);
-      throw err;
-    }
-  }
-};
+// Eagerly connect to MongoDB on app boot
+connectMongo().catch((err) => {
+  logger.error("Initial MongoDB connection error:", err);
+});
 
 // elysia-remote-dts pulls in the full TypeScript compiler via a CJS require()
 // inside an ESM async hook, which crashes on Bun in production (Vercel) with
@@ -50,11 +43,8 @@ const dtsPlugin =
 
 const app = new Elysia()
   .use(cors())
+  .use(mongoPlugin)
   .use(dtsPlugin)
-  // Ensure MongoDB connection on every request
-  .onBeforeHandle(async () => {
-    await ensureMongoConnection();
-  })
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get(
@@ -178,6 +168,10 @@ const app = new Elysia()
 
 // For local development with Bun
 if (import.meta.env?.DEV || process.env.NODE_ENV === "development") {
+  await connectMongo().catch((err) => {
+    logger.error("Failed to connect to MongoDB on startup:", err);
+  });
+
   app.listen(appConfig.port, () => {
     logger.info(`Server is running on port ${appConfig?.port}`);
   });

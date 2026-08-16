@@ -1,7 +1,13 @@
 import mongoose from "mongoose";
+import { Elysia } from "elysia";
 import { databaseConfig } from "../../../@config";
 
 let cachedConnectionPromise: Promise<typeof mongoose> | null = null;
+
+export const mongoPlugin = new Elysia({ name: "mongo-plugin" })
+  .onBeforeHandle({ as: "global" }, async () => {
+    await connectMongo();
+  });
 
 export const connectMongo = async () => {
   if (mongoose.connection.readyState === 1) {

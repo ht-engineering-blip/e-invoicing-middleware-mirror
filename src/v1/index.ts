@@ -12,12 +12,7 @@ import openapi from "@elysiajs/openapi";
 import qrMgmtRoutes from "./invoicing/routes/qr.routes";
 import resourcesRoutes from "./invoicing/routes/resources.routes";
 
-import { connectMongo } from "../@lib/adapters/mongo";
-
 export const v1Routes = new Elysia({ prefix: "/v1" })
-  .onBeforeHandle(async () => {
-    await connectMongo();
-  })
   .use(
     openapi({
       documentation: {
