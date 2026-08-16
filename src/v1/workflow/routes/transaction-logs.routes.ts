@@ -50,6 +50,52 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
    * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
    */
   .get(
+    "",
+    async ({ query, auth, outboundRepo, set }) => {
+      try {
+        const page = Math.max(1, parseInt(query.page || "1") || 1);
+        const limit = Math.min(
+          Math.max(1, parseInt(query.limit || "20") || 20),
+          100,
+        );
+
+        // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
+        const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
+          tenantId: auth?.tenantId,
+          businessId: auth?.businessId,
+          isAdmin: auth?.isAdmin,
+          type: query.type,
+          direction: query.direction,
+          status: query.status,
+          source: query.source,
+          erpInvoiceId: query.erpInvoiceId,
+          paymentStatus: query.paymentStatus,
+          irn: query.irn,
+          search: query.search,
+          from: parseDate(query.from),
+          to: parseDate(query.to),
+          page,
+          limit,
+        });
+
+        return ResponseBuilder.paginate(items, total, page, limit);
+      } catch (error: any) {
+        console.error("FATAL /invoices ERROR:", error);
+        logger.error("Failed to list unified invoices stream", {
+          error: error?.message || error,
+          stack: error?.stack,
+        });
+        set.status = error?.statusCode || 500;
+        const errorMsg =
+          error?.message ||
+          (typeof error === "string" ? error : JSON.stringify(error)) ||
+          "Failed to retrieve unified invoice stream";
+        return ResponseBuilder.error(errorMsg, error?.statusCode || 500);
+      }
+    },
+    listAllInvoicesValidation,
+  )
+  .get(
     "/",
     async ({ query, auth, outboundRepo, set }) => {
       try {
