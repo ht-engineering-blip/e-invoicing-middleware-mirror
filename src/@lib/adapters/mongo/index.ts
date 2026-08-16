@@ -4,10 +4,12 @@ import { databaseConfig } from "../../../@config";
 
 let cachedConnectionPromise: Promise<typeof mongoose> | null = null;
 
-export const mongoPlugin = new Elysia({ name: "mongo-plugin" })
-  .onBeforeHandle({ as: "global" }, async () => {
+export const mongoPlugin = new Elysia({ name: "mongo-plugin" }).onBeforeHandle(
+  { as: "global" },
+  async () => {
     await connectMongo();
-  });
+  },
+);
 
 export const connectMongo = async () => {
   if (mongoose.connection.readyState === 1) {
@@ -26,7 +28,7 @@ export const connectMongo = async () => {
   cachedConnectionPromise = mongoose
     .connect(mongoUri, {
       dbName: databaseConfig?.data?.dbName,
-      maxPoolSize: 10,
+      maxPoolSize: 30,
       minPoolSize: 1,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 15000,
