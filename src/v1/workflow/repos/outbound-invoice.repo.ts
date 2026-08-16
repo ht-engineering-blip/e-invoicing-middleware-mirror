@@ -100,11 +100,12 @@ export class OutboundInvoiceRepository {
    * Unified Aggregation Pipeline across outbound, inbound, or both invoice streams
    */
   async getUnifiedInvoiceStream(params: {
-    tenantId?: string;
-    businessId?: string;
-    isAdmin?: boolean;
+    auth?: {
+      tenantId?: string;
+      businessId?: string;
+      isAdmin?: boolean;
+    };
     type?: string;
-    direction?: string;
     status?: string;
     source?: string;
     erpInvoiceId?: string;
@@ -120,15 +121,16 @@ export class OutboundInvoiceRepository {
       const page = Math.max(1, params.page || 1);
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const offset = (page - 1) * limit;
-      const requestedType = (params.type || params.direction || "all")
-        .toLowerCase()
-        .trim();
+      const requestedType = (params.type || "all").toLowerCase().trim();
+
+      const auth = params.auth;
+      const tenantId = auth?.tenantId;
+      const businessId = auth?.businessId;
+      const isAdmin = auth?.isAdmin;
 
       // 1. Build outbound match query
       const outboundMatch: any = {};
-      if (!params.isAdmin && params.tenantId) {
-        outboundMatch.tenantId = params.tenantId;
-      }
+      if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
       if (params.status?.trim()) outboundMatch.status = params.status.trim();
       if (params.source?.trim()) outboundMatch.source = params.source.trim();
       if (params.erpInvoiceId?.trim())
@@ -152,10 +154,10 @@ export class OutboundInvoiceRepository {
 
       // 2. Build inbound match query
       const inboundMatch: any = {};
-      if (params.businessId?.trim()) {
-        inboundMatch.businessId = params.businessId.trim();
-      } else if (!params.isAdmin && params.tenantId) {
-        inboundMatch.tenantId = params.tenantId;
+      if (businessId?.trim()) {
+        inboundMatch.businessId = businessId.trim();
+      } else if (!isAdmin && tenantId) {
+        inboundMatch.tenantId = tenantId;
       }
       if (params.status?.trim()) inboundMatch.status = params.status.trim();
       if (params.paymentStatus?.trim()) {
@@ -265,11 +267,7 @@ export class OutboundInvoiceRepository {
           },
           status: { $ifNull: ["$status", "TRANSMITTED"] },
           paymentStatus: {
-            $ifNull: [
-              "$paymentStatus",
-              "$payment.paymentStatus",
-              "PENDING",
-            ],
+            $ifNull: ["$paymentStatus", "$payment.paymentStatus", "PENDING"],
           },
           qrCode: { $ifNull: ["$qrCode", null] },
           erp: { $literal: null },

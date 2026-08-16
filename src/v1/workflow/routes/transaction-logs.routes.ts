@@ -61,11 +61,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
         const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
-          tenantId: auth?.tenantId,
-          businessId: auth?.businessId,
-          isAdmin: auth?.isAdmin,
+          auth,
           type: query.type,
-          direction: query.direction,
           status: query.status,
           source: query.source,
           erpInvoiceId: query.erpInvoiceId,
@@ -114,11 +111,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
         const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
-          tenantId: auth?.tenantId,
-          businessId: auth?.businessId,
-          isAdmin: auth?.isAdmin,
+          auth,
           type: "outbound",
-          direction: "OUTBOUND",
           status: query.status,
           source: query.source,
           erpInvoiceId: query.erpInvoiceId,
@@ -621,11 +615,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
         const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
-          tenantId: auth?.tenantId,
-          businessId: auth?.businessId,
-          isAdmin: auth?.isAdmin,
+          auth,
           type: "inbound",
-          direction: "INBOUND",
           status: query.status,
           paymentStatus: query.paymentStatus,
           irn: query.irn,
