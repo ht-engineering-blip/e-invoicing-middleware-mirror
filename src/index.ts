@@ -1,8 +1,18 @@
 import "./bun-v8-polyfill";
 import dns from "node:dns";
 
-// Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
-dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
+// Only set custom DNS in local development if explicitly requested
+if (
+  process.env.FORCE_PUBLIC_DNS === "true" &&
+  !process.env.VERCEL &&
+  process.env.NODE_ENV !== "production"
+) {
+  try {
+    dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
+  } catch (e) {
+    // ignore
+  }
+}
 
 import { Elysia } from "elysia";
 import { appConfig } from "./@config";

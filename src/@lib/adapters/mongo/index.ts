@@ -22,9 +22,9 @@ export const connectMongo = async () => {
       dbName: databaseConfig?.data?.dbName,
       maxPoolSize: 10,
       minPoolSize: 1,
-      socketTimeoutMS: 25000,
-      connectTimeoutMS: 15000,
-      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 15000,
+      connectTimeoutMS: 8000,
+      serverSelectionTimeoutMS: 8000,
     })
     .then((m) => {
       console.info(
