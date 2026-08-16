@@ -142,8 +142,6 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
   .decorate("outboundService", new OutboundWorkflowService())
   .decorate("tenantRepo", new TenantRepository())
 
-  // ==================== UNIFIED INVOICES (INBOUND + OUTBOUND + FUTURE TYPES) ====================
-
   /**
    * GET /workflow/invoices
    * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
@@ -152,23 +150,34 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
     "/",
     async ({ query, auth, outboundRepo, inboundRepo, set }) => {
       try {
-        const page = parseInt(query.page || "1");
-        const limit = Math.min(parseInt(query.limit || "20"), 100);
+        const page = Math.max(1, parseInt(query.page || "1") || 1);
+        const limit = Math.min(
+          Math.max(1, parseInt(query.limit || "20") || 20),
+          100,
+        );
         const offset = (page - 1) * limit;
 
         const requestedType = (
           query.type ||
           query.direction ||
           "all"
-        ).toLowerCase();
-        const statusFilter = query.status;
-        const paymentStatusFilter = query.paymentStatus;
-        const searchTerm = query.search;
-        const fromDate = query.from;
-        const toDate = query.to;
+        )
+          .toLowerCase()
+          .trim();
+        const statusFilter = query.status?.trim();
+        const paymentStatusFilter = query.paymentStatus?.trim();
+        const searchTerm = query.search?.trim();
+
+        const parseDate = (d?: string) => {
+          if (!d || typeof d !== "string" || d.trim() === "") return undefined;
+          const parsed = new Date(d);
+          return isNaN(parsed.getTime()) ? undefined : parsed;
+        };
+
+        const fromDate = parseDate(query.from);
+        const toDate = parseDate(query.to);
 
         const isAll = requestedType === "all";
-
         const fetchOutbound = isAll || requestedType === "outbound";
         const fetchInbound = isAll || requestedType === "inbound";
 
@@ -186,18 +195,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           }
         }
 
-        if (query.source) {
-          outboundFilters.source = { _eq: query.source };
+        if (query.source?.trim()) {
+          outboundFilters.source = { _eq: query.source.trim() };
         }
-        if (query.erpInvoiceId) {
-          outboundFilters.erpInvoiceId = { _eq: query.erpInvoiceId };
+        if (query.erpInvoiceId?.trim()) {
+          outboundFilters.erpInvoiceId = { _eq: query.erpInvoiceId.trim() };
         }
-        if (query.businessId) {
-          inboundFilters.businessId = { _eq: query.businessId };
+        if (query.businessId?.trim()) {
+          inboundFilters.businessId = { _eq: query.businessId.trim() };
         }
-        if (query.irn) {
-          outboundFilters.irn = { _ilike: query.irn };
-          inboundFilters.irn = { _ilike: query.irn };
+        if (query.irn?.trim()) {
+          outboundFilters.irn = { _ilike: query.irn.trim() };
+          inboundFilters.irn = { _ilike: query.irn.trim() };
         }
         if (searchTerm) {
           outboundFilters.search = searchTerm;
@@ -212,16 +221,11 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           inboundFilters.paymentStatus = { _eq: paymentStatusFilter };
         }
         if (fromDate || toDate) {
-          outboundFilters.createdAt = {};
-          inboundFilters.createdAt = {};
-          if (fromDate) {
-            outboundFilters.createdAt._gte = new Date(fromDate);
-            inboundFilters.createdAt._gte = new Date(fromDate);
-          }
-          if (toDate) {
-            outboundFilters.createdAt._lte = new Date(toDate);
-            inboundFilters.createdAt._lte = new Date(toDate);
-          }
+          const dateFilter: any = {};
+          if (fromDate) dateFilter._gte = fromDate;
+          if (toDate) dateFilter._lte = toDate;
+          outboundFilters.createdAt = dateFilter;
+          inboundFilters.createdAt = dateFilter;
         }
 
         if (fetchOutbound && !fetchInbound) {
@@ -229,9 +233,11 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             outboundRepo.findMany(outboundFilters, undefined, limit, offset),
             outboundRepo.count(outboundFilters),
           ]);
-          const formatted = docs.map(formatOutboundInvoiceItem).filter(Boolean);
-          return ResponseBuilder.paginate(formatted, count, page, limit, {
-            countsByType: { outbound: count, inbound: 0 },
+          const formatted = (docs || [])
+            .map(formatOutboundInvoiceItem)
+            .filter(Boolean);
+          return ResponseBuilder.paginate(formatted, count || 0, page, limit, {
+            countsByType: { outbound: count || 0, inbound: 0 },
           });
         }
 
@@ -240,47 +246,56 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             inboundRepo.findMany(inboundFilters, undefined, limit, offset),
             inboundRepo.count(inboundFilters),
           ]);
-          const formatted = docs.map(formatInboundInvoiceItem).filter(Boolean);
-          return ResponseBuilder.paginate(formatted, count, page, limit, {
-            countsByType: { outbound: 0, inbound: count },
+          const formatted = (docs || [])
+            .map(formatInboundInvoiceItem)
+            .filter(Boolean);
+          return ResponseBuilder.paginate(formatted, count || 0, page, limit, {
+            countsByType: { outbound: 0, inbound: count || 0 },
           });
         }
 
         const fetchLimit = Math.min(offset + limit, 100);
 
-        const [outboundResult, inboundResult] = await Promise.allSettled([
-          Promise.all([
-            outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
-            outboundRepo.count(outboundFilters),
-          ]),
-          Promise.all([
-            inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
-            inboundRepo.count(inboundFilters),
-          ]),
+        const [
+          outboundDocsRes,
+          outboundCountRes,
+          inboundDocsRes,
+          inboundCountRes,
+        ] = await Promise.allSettled([
+          outboundRepo.findMany(outboundFilters, undefined, fetchLimit, 0),
+          outboundRepo.count(outboundFilters),
+          inboundRepo.findMany(inboundFilters, undefined, fetchLimit, 0),
+          inboundRepo.count(inboundFilters),
         ]);
 
-        let outboundDocs: any[] = [];
-        let outboundTotal = 0;
-        let inboundDocs: any[] = [];
-        let inboundTotal = 0;
+        const outboundDocs =
+          outboundDocsRes.status === "fulfilled"
+            ? outboundDocsRes.value || []
+            : [];
+        const outboundTotal =
+          outboundCountRes.status === "fulfilled"
+            ? outboundCountRes.value || 0
+            : 0;
 
-        if (outboundResult.status === "fulfilled") {
-          outboundDocs = outboundResult.value[0] || [];
-          outboundTotal = outboundResult.value[1] || 0;
-        } else {
+        const inboundDocs =
+          inboundDocsRes.status === "fulfilled"
+            ? inboundDocsRes.value || []
+            : [];
+        const inboundTotal =
+          inboundCountRes.status === "fulfilled"
+            ? inboundCountRes.value || 0
+            : 0;
+
+        if (outboundDocsRes.status === "rejected") {
           logger.warn(
-            "Failed to query outbound invoices in unified stream:",
-            outboundResult.reason,
+            "Outbound findMany failed in unified stream:",
+            outboundDocsRes.reason,
           );
         }
-
-        if (inboundResult.status === "fulfilled") {
-          inboundDocs = inboundResult.value[0] || [];
-          inboundTotal = inboundResult.value[1] || 0;
-        } else {
+        if (inboundDocsRes.status === "rejected") {
           logger.warn(
-            "Failed to query inbound invoices in unified stream:",
-            inboundResult.reason,
+            "Inbound findMany failed in unified stream:",
+            inboundDocsRes.reason,
           );
         }
 
@@ -315,14 +330,15 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           },
         );
       } catch (error: any) {
+        console.error("FATAL /invoices ERROR:", error);
         logger.error("Failed to list unified invoices stream", {
-          error: error.message,
-          stack: error.stack,
+          error: error?.message || error,
+          stack: error?.stack,
         });
-        set.status = error.statusCode || 500;
+        set.status = error?.statusCode || 500;
         return ResponseBuilder.error(
-          error.message || "Failed to retrieve unified invoice stream",
-          error.statusCode || 500,
+          error?.message || "Failed to retrieve unified invoice stream",
+          error?.statusCode || 500,
         );
       }
     },
