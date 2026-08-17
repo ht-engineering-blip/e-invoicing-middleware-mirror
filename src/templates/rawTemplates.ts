@@ -7,11 +7,11 @@ export const EMBEDDED_TEMPLATES: Record<string, string> = {
 <p>If you did not request this, please ignore this email.</p>`,
 
     newTenants: `<p>Welcome to HT Invoicing. Your account has been created successfully.</p>
-<p>Click the button below to get started</p>
+<p>Click the button below to get started:</p>
 <a href="{{activationLink}}" class="cta-button">Get Started</a>
 <br/>
-or copy the link: 
-<a href="{{activationLink}}" style="text-decoration: none;">{{activationLink}}</a>`,
+<p style="margin-top: 15px; font-size: 13px;">Or copy this link: <a href="{{activationLink}}" style="text-decoration: none;">{{activationLink}}</a></p>
+<p style="margin-top: 15px; font-size: 13px; color: #666;">Please note: This activation link is valid for 12 hours. If it expires, you will need to request a new link.</p>`,
 
     passwordChanged: `<h2>Password Changed Successfully</h2>
 <p>Hello {{businessName}},</p>
@@ -60,5 +60,14 @@ or copy the link:
 <p>You've been invited to join <strong>{{businessName}}</strong> on the E-Invoicing Platform as a {{role}}.</p>
 <p>Click the link below to accept the invitation and set up your account:</p>
 <a href="{{invitationUrl}}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">Accept Invitation</a>
-<p>This invitation will expire in 7 days.</p>`
+<p>This invitation will expire in 7 days.</p>`,
+
+    verifyEmailChange: `<h2>Verify Your New Email Address</h2>
+<p>Hello {{businessName}},</p>
+<p>You requested to change your contact email address for your E-Invoicing account to <strong>{{newEmail}}</strong>.</p>
+<p>Click the button below to verify and complete the update:</p>
+<a href="{{verificationLink}}" class="cta-button">Verify Email</a>
+<br/>
+<p style="margin-top: 15px; font-size: 13px;">Or copy this link: <a href="{{verificationLink}}" style="text-decoration: none;">{{verificationLink}}</a></p>
+<p style="margin-top: 15px; font-size: 13px; color: #666;">This verification link is valid for 12 hours. If you did not request this change, please ignore this email.</p>`
 };

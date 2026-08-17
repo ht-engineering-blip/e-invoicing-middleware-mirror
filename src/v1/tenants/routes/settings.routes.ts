@@ -1,11 +1,13 @@
 import { Elysia } from "elysia";
-import { requireAuth } from "../../../middlewares/auth";
+import { getActor, requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder } from "../../../@lib";
 import { TenantService } from "../services/tenant.service";
 import { onlySelf } from "../../auth/utils/access-checks";
 import {
   getBusinessInfoValidation,
   updateBusinessInfoValidation,
+  requestEmailChangeValidation,
+  verifyEmailChangeValidation,
 } from "../validations/settings.validation";
 
 /**
@@ -85,6 +87,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         const updatedTenant = await tenantService.updateTenant(
           params.tenantId,
           updateData,
+          getActor(auth),
         );
 
         return ResponseBuilder.success(
@@ -114,4 +117,114 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
       }
     },
     updateBusinessInfoValidation,
+  )
+
+  /**
+   * POST /tenants/:tenantId/settings/email/request-change
+   * Request email change verification code and link
+   */
+  .post(
+    "/email/request-change",
+    async ({ params, body, auth, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+
+        const result = await tenantService.requestEmailChange(
+          params.tenantId,
+          body.newEmail,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          result.message,
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to request email change", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to request email change",
+          error.statusCode || 500,
+        );
+      }
+    },
+    requestEmailChangeValidation,
+  )
+
+  /**
+   * POST /tenants/:tenantId/settings/email/verify
+   * Verify token and complete contact email update
+   */
+  .post(
+    "/email/verify",
+    async ({ params, body, query, auth, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+
+        const token =
+          body?.token || body?._u || query?.token || query?._u || "";
+
+        const result = await tenantService.verifyEmailChange(
+          params.tenantId,
+          token,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          result.message,
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to verify email change", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to verify email change",
+          error.statusCode || 500,
+        );
+      }
+    },
+    verifyEmailChangeValidation,
+  )
+
+  /**
+   * GET /tenants/:tenantId/settings/email/verify
+   * Verify email via link query parameters (?_u=... or ?token=...)
+   */
+  .get(
+    "/email/verify",
+    async ({ params, query, auth, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+
+        const token = query?.token || query?._u || "";
+
+        const result = await tenantService.verifyEmailChange(
+          params.tenantId,
+          token,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          result.message,
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to verify email change via link", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to verify email change",
+          error.statusCode || 500,
+        );
+      }
+    },
+    verifyEmailChangeValidation,
   );

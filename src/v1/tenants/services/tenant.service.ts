@@ -4,7 +4,8 @@
  */
 
 import crypto from "crypto";
-import { appConfig } from "../../../@config";
+import * as jwt from "jsonwebtoken";
+import { appConfig, jwtConfig } from "../../../@config";
 import { BaseService, logger } from "../../../@lib";
 import {
   decryptSensitiveData,
@@ -275,9 +276,29 @@ export class TenantService extends BaseService {
 
     const updateData: any = {};
 
+    // Validate contactEmail: direct email updates are not allowed for tenants without verification
+    if (input.contactEmail !== undefined) {
+      const newEmail = input.contactEmail.trim().toLowerCase();
+      const currentEmail = (tenant.contactEmail || "").trim().toLowerCase();
+
+      if (newEmail && newEmail !== currentEmail) {
+        const isAdmin =
+          actor?.isAdmin === true ||
+          actor?.type === "system" ||
+          actor?.role === "admin";
+
+        if (!isAdmin) {
+          throw new ValidationError(
+            "Direct email update is not allowed. A tenant must verify their new email address before updating.",
+          );
+        }
+
+        updateData.contactEmail = newEmail;
+      }
+    }
+
     if (input.password) updateData.password = input.password;
     if (input.businessName) updateData.businessName = input.businessName;
-    if (input.contactEmail) updateData.contactEmail = input.contactEmail;
     if (input.contactPhone) updateData.contactPhone = input.contactPhone;
     if (input.erpWebhookUrl) updateData.erpWebhookUrl = input.erpWebhookUrl;
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
@@ -765,7 +786,9 @@ export class TenantService extends BaseService {
       // 1. Registration: completed if tenant account exists
       if (
         !onboarding.steps?.registration?.completed &&
-        (tenant.tenantId || tenant.password || tenant.metadata?.activationCompleted)
+        (tenant.tenantId ||
+          tenant.password ||
+          tenant.metadata?.activationCompleted)
       ) {
         await this.onboardingRepo.completeStep(tenant.tenantId, "registration");
         onboarding.steps.registration = {
@@ -1325,6 +1348,166 @@ export class TenantService extends BaseService {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Request email change verification
+   * Generates a 12-hour signed JWT verification token and sends verification link to the new email address
+   */
+  async requestEmailChange(
+    tenantId: string,
+    newEmail: string,
+    actor?: any,
+  ): Promise<{ success: boolean; message: string }> {
+    const tenant = await this.getTenantById(tenantId);
+    const normalizedNewEmail = (newEmail || "").trim().toLowerCase();
+
+    if (!this.isValidEmail(normalizedNewEmail)) {
+      throw new ValidationError("Invalid email address format");
+    }
+
+    if (
+      normalizedNewEmail === (tenant.contactEmail || "").trim().toLowerCase()
+    ) {
+      throw new ValidationError(
+        "New email must be different from current contact email",
+      );
+    }
+
+    // Check if another tenant is already using this email
+    const existing = await this.tenantRepo.findOne({
+      contactEmail: { _eq: normalizedNewEmail },
+      tenantId: { _ne: tenantId },
+    });
+
+    if (existing) {
+      throw new ConflictError("Email is already in use by another tenant");
+    }
+
+    const verificationToken = await this.createAuthToken(
+      {
+        ...tenant.toObject(),
+        contactEmail: normalizedNewEmail,
+        newEmail: normalizedNewEmail,
+      },
+      "12HRS",
+    );
+
+    const verificationLink = `${appConfig?.webAppURL}/auth/verify-email?_u=${verificationToken}`;
+    const verificationEmail: MailContent = {
+      subject: "Verify your new email address",
+      html: withTemplate(
+        templateEngine.render("verifyEmailChange", {
+          businessName: tenant.businessName,
+          newEmail: normalizedNewEmail,
+          verificationLink,
+        }),
+      ),
+    };
+
+    await this.sendEmail({
+      to: normalizedNewEmail,
+      subject: verificationEmail.subject,
+      html: verificationEmail.html,
+    });
+
+    logger.info("Email change verification sent", {
+      tenantId,
+      newEmail: normalizedNewEmail,
+    });
+
+    return {
+      success: true,
+      message: `Verification link sent to ${normalizedNewEmail}`,
+    };
+  }
+
+  /**
+   * Verify and confirm email change using JWT token
+   */
+  async verifyEmailChange(
+    tenantId: string,
+    token: string,
+    actor?: any,
+  ): Promise<{ success: boolean; contactEmail: string; message: string }> {
+    if (!token) {
+      throw new ValidationError("Verification token is required");
+    }
+
+    let decoded: any;
+    try {
+      const jwtSecret = jwtConfig?.secret as string;
+      const jwtAlgorithm = jwtConfig?.algorithm as jwt.Algorithm;
+      decoded = jwt.verify(token, jwtSecret, {
+        algorithms: [jwtAlgorithm],
+      });
+    } catch (err: any) {
+      throw new ValidationError("Invalid or expired verification token");
+    }
+
+    const tokenTenantId = decoded.tenantId;
+    if (tenantId && tokenTenantId && tenantId !== tokenTenantId) {
+      throw new ValidationError("Token does not belong to this tenant");
+    }
+
+    const newEmail = (
+      decoded.newEmail ||
+      decoded.contactEmail ||
+      decoded.email ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!newEmail || !this.isValidEmail(newEmail)) {
+      throw new ValidationError("Invalid email in token payload");
+    }
+
+    const targetTenantId = tenantId || tokenTenantId;
+    const tenant = await this.getTenantById(targetTenantId);
+
+    // Check again if email was taken by another tenant in the meantime
+    const existing = await this.tenantRepo.findOne({
+      contactEmail: { _eq: newEmail },
+      tenantId: { _ne: targetTenantId },
+    });
+
+    if (existing) {
+      throw new ConflictError("Email is already in use by another tenant");
+    }
+
+    await this.tenantRepo.update(targetTenantId, {
+      contactEmail: newEmail,
+    });
+
+    // Audit log
+    await this.createAuditLog({
+      tenantId: tenant.tenantId,
+      eventType: AuditEventType.TENANT_UPDATED,
+      severity: AuditEventSeverity.INFO,
+      actorType: actor?.type || "user",
+      actorId: actor?.id || tenant.tenantId,
+      actorName: actor?.name || tenant.businessName,
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
+      description: `Tenant contact email updated to ${newEmail} after verification`,
+      metadata: { previousEmail: tenant.contactEmail, newEmail },
+    });
+
+    logger.info(
+      "Tenant contact email successfully updated after verification",
+      {
+        tenantId: targetTenantId,
+        oldEmail: tenant.contactEmail,
+        newEmail,
+      },
+    );
+
+    return {
+      success: true,
+      contactEmail: newEmail,
+      message: "Contact email updated successfully",
+    };
   }
 
   /**
