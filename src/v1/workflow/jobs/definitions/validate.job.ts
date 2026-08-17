@@ -23,7 +23,10 @@ export function registerValidateJob(): void {
       );
 
       if (!result.valid) {
-        throw new Error(`Error: ${(result.errors ?? []).join("; ")}`);
+        const errorDetail = Array.isArray(result.errors)
+          ? result.errors.join("; ")
+          : (result.errors || result.message || "Validation failed");
+        throw new Error(`Invoice validation failed: ${errorDetail}`);
       }
 
       logger.info("[Job:validate] Passed", { jobChainId });

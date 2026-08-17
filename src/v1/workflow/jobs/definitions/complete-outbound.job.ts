@@ -119,9 +119,11 @@ export function registerCompleteOutboundJob(): void {
         });
       } catch (err: any) {
         const { context } = job.attrs.data;
-        await outboundRepo.update(context.irn!, {
-          status: OutboundInvoiceStatus.FAILED,
-        });
+        if (context?.irn) {
+          await outboundRepo.update(context.irn, {
+            status: OutboundInvoiceStatus.FAILED,
+          });
+        }
         await chainFail(job, err);
         throw err;
       }

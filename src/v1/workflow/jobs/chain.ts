@@ -95,18 +95,99 @@ export async function chainNext(
  * - Records the last failure on the OutboundInvoice (best-effort)
  * - Marks the webhook event as FAILED and stops the chain
  */
+/**
+ * Extract a comprehensive, descriptive error message from any error shape
+ */
+export function formatJobError(error: any): string {
+  if (!error) return "Unknown error occurred";
+  if (typeof error === "string") return error;
+
+  const parts: string[] = [];
+
+  const mainMessage = error?.message;
+  if (
+    mainMessage &&
+    mainMessage !== "AppError" &&
+    mainMessage !== "Error" &&
+    !mainMessage.startsWith("Request failed with status code")
+  ) {
+    parts.push(mainMessage);
+  }
+
+  const data =
+    error?.response?.data ||
+    error?.data ||
+    error?.errors?.response ||
+    error?.errors;
+
+  if (data) {
+    if (typeof data === "string" && !parts.includes(data)) {
+      parts.push(data);
+    } else if (typeof data === "object") {
+      const errorObj = data.error || data;
+      const publicMsg = errorObj.public_message || data.public_message;
+      const details = errorObj.details || data.details;
+      const msg = errorObj.message || data.message;
+      const errList = data.errors || errorObj.errors;
+
+      if (publicMsg && !parts.includes(publicMsg)) {
+        parts.push(publicMsg);
+      }
+      if (details) {
+        const detailStr =
+          typeof details === "string" ? details : JSON.stringify(details);
+        if (!parts.includes(detailStr)) parts.push(detailStr);
+      }
+      if (msg && !parts.includes(msg)) {
+        parts.push(msg);
+      }
+      if (Array.isArray(errList) && errList.length > 0) {
+        const listStr = errList
+          .map((e: any) =>
+            typeof e === "string"
+              ? e
+              : e?.message || (e?.field ? `${e.field}: ${e.message}` : JSON.stringify(e)),
+          )
+          .join("; ");
+        if (!parts.includes(listStr)) parts.push(listStr);
+      }
+    }
+  }
+
+  if (
+    error?.details &&
+    typeof error.details === "string" &&
+    !parts.includes(error.details)
+  ) {
+    parts.push(error.details);
+  }
+
+  if (parts.length > 0) {
+    return parts.join(" — ");
+  }
+
+  return error?.message || String(error) || "Unknown job failure";
+}
+
+/**
+ * Called when a job step fails.
+ * - Appends a structured error entry to WebhookEvent.jobErrors
+ * - Records the last failure on the OutboundInvoice (best-effort)
+ * - Marks the webhook event as FAILED and stops the chain
+ */
 export async function chainFail(
   job: Job<JobChainData>,
-  error: Error,
+  error: Error | any,
 ): Promise<void> {
   const data = job.attrs.data;
   const action = data.actions[data.stepIndex];
+  const errorMessage = formatJobError(error);
 
   logger.error("[Job] Step failed — chain halted", {
     jobChainId: data.jobChainId,
     step: data.stepIndex,
     action,
-    error: error.message,
+    error: errorMessage,
   });
 
   // Append structured job error to the webhook event
@@ -115,7 +196,7 @@ export async function chainFail(
     action,
     jobChainId: data.jobChainId,
     agendaJobId: job.attrs._id?.toString(),
-    error: error.message,
+    error: errorMessage,
     failedAt: new Date(),
   });
 
@@ -123,13 +204,13 @@ export async function chainFail(
   const irn = data.context?.irn;
   if (irn) {
     const outboundRepo = await getOutboundRepo();
-    await outboundRepo.setLastJobError(irn, action, error.message);
+    await outboundRepo.setLastJobError(irn, action, errorMessage);
     await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.FAILED);
   }
 
   await webhookEventRepo.markAsFailed(
     data.webhookEventId,
-    `Step [${action}] failed: ${error.message.indexOf("undefined -") > -1 ? "" : error.message}`,
+    `Step [${action}] failed: ${errorMessage}`,
     500,
   );
 }
