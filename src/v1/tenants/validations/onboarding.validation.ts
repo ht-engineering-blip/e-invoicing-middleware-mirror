@@ -1,10 +1,6 @@
-import { TenantSchema } from "../../shared/validations/models.schema";
 import { t } from "elysia";
 import {
   updateCredentialsExample,
-  generateWebhookExample,
-  updateInvoiceIdKeyExample,
-  testWebhookExample,
   updateKeyMapExample,
 } from "../examples/onboarding.examples";
 
@@ -18,7 +14,6 @@ export const activateValidation = {
     description:
       "Process tenant activation link and return password setting token",
   },
-  
 };
 
 export const updateCredentialsValidation = {
@@ -104,7 +99,6 @@ export const generateWebhookValidation = {
     description:
       "Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.",
   },
-  
 };
 
 export const updateInvoiceIdKeyValidation = {
@@ -126,7 +120,6 @@ export const updateInvoiceIdKeyValidation = {
     description:
       "Update invoiceIdKey to configure which payload field identifies the ERP invoice.",
   },
-  
 };
 
 export const updateKeyMapValidation = {
@@ -144,7 +137,7 @@ export const updateKeyMapValidation = {
     },
     { examples: [updateKeyMapExample] },
   ),
-  
+
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
@@ -170,7 +163,7 @@ export const updateReferenceKeyMapValidation = {
     },
     { examples: [updateKeyMapExample] },
   ),
-  
+
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
@@ -195,7 +188,6 @@ export const testWebhookValidation = {
     summary: "Test Webhook",
     description: "Send a test webhook to verify connectivity",
   },
-  
 };
 
 export const resendTenantTokenValidation = {
@@ -209,5 +201,4 @@ export const resendTenantTokenValidation = {
     description:
       "Check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.",
   },
-  
 };

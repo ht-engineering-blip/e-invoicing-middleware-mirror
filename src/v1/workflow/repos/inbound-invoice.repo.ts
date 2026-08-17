@@ -18,45 +18,66 @@ export class InboundInvoiceRepository {
    * Build MongoDB query from where conditions
    */
   private buildInboundInvoiceQuery(where?: any): any {
-    if (!where) return {};
+    if (!where || typeof where !== "object") return {};
 
     const query: any = {};
 
-    // Simple equality checks
-    if (where.id?._eq) query._id = where.id._eq;
-    if (where.tenantId?._eq) query.tenantId = where.tenantId._eq;
-    if (where.businessId?._eq) query.businessId = where.businessId._eq;
-    if (where.irn?._eq) query.irn = where.irn._eq;
-    if (where.invoiceNumber?._eq) query.invoiceNumber = where.invoiceNumber._eq;
-    if (where.status?._eq) query.status = where.status._eq;
-    if (where.supplierTIN?._eq) query.supplierTIN = where.supplierTIN._eq;
-    if (where.paymentStatus?._eq) query['payment.paymentStatus'] = where.paymentStatus._eq;
+    for (const [key, value] of Object.entries(where)) {
+      if (key === "_and" && Array.isArray(value)) {
+        query.$and = value.map((cond) => this.buildInboundInvoiceQuery(cond));
+      } else if (key === "_or" && Array.isArray(value)) {
+        query.$or = value.map((cond) => this.buildInboundInvoiceQuery(cond));
+      } else if (key === "search" && typeof value === "string") {
+        query.$or = [
+          { invoiceNumber: safeSearchRegExp(value) },
+          { supplierName: safeSearchRegExp(value) },
+          { supplierTIN: safeSearchRegExp(value) },
+          { irn: safeSearchRegExp(value) },
+        ];
+      } else if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date) &&
+        !(value instanceof RegExp)
+      ) {
+        const valObj = value as Record<string, any>;
+        const hasCustomOps = Object.keys(valObj).some((k) => k.startsWith("_"));
 
-    // IN conditions
-    if (where.status?._in) query.status = { $in: where.status._in };
-    if (where.paymentStatus?._in) query['payment.paymentStatus'] = { $in: where.paymentStatus._in };
+        if (hasCustomOps) {
+          const targetKey =
+            key === "id"
+              ? "_id"
+              : key === "paymentStatus"
+                ? "payment.paymentStatus"
+                : key;
 
-    // Date range
-    if (where.issueDate?._gte) query.issueDate = { ...query.issueDate, $gte: where.issueDate._gte };
-    if (where.issueDate?._lte) query.issueDate = { ...query.issueDate, $lte: where.issueDate._lte };
-    if (where.dueDate?._gte) query.dueDate = { ...query.dueDate, $gte: where.dueDate._gte };
-    if (where.dueDate?._lte) query.dueDate = { ...query.dueDate, $lte: where.dueDate._lte };
+          if (valObj._eq !== undefined) {
+            query[targetKey] = valObj._eq;
+            continue;
+          }
 
-    // Search
-    if (where.search) {
-      query.$or = [
-        { invoiceNumber: safeSearchRegExp(where.search) },
-        { supplierName: safeSearchRegExp(where.search) },
-        { supplierTIN: safeSearchRegExp(where.search) },
-        { irn: safeSearchRegExp(where.search) },
-      ];
-    }
+          const fieldQuery: any = {};
+          if (valObj._in !== undefined) fieldQuery.$in = valObj._in;
+          if (valObj._nin !== undefined) fieldQuery.$nin = valObj._nin;
+          if (valObj._gte !== undefined) fieldQuery.$gte = valObj._gte;
+          if (valObj._lte !== undefined) fieldQuery.$lte = valObj._lte;
+          if (valObj._gt !== undefined) fieldQuery.$gt = valObj._gt;
+          if (valObj._lt !== undefined) fieldQuery.$lt = valObj._lt;
+          if (valObj._ne !== undefined) fieldQuery.$ne = valObj._ne;
+          if (valObj._like !== undefined) fieldQuery.$regex = valObj._like;
+          if (valObj._ilike !== undefined) {
+            fieldQuery.$regex = valObj._ilike;
+            fieldQuery.$options = "i";
+          }
 
-    // AND conditions
-    if (where._and && where._and.length > 0) {
-      query.$and = where._and.map((andCondition: any) => {
-        return this.buildInboundInvoiceQuery(andCondition);
-      });
+          query[targetKey] = fieldQuery;
+        } else {
+          query[key === "id" ? "_id" : key] = value;
+        }
+      } else {
+        query[key === "id" ? "_id" : key] = value;
+      }
     }
 
     return query;
@@ -66,7 +87,10 @@ export class InboundInvoiceRepository {
    * Build select projection
    */
   private buildInboundInvoiceProjection(select?: any): any {
-    return select && Object.keys(select).length > 0 ? select : null;
+    if (select && Object.keys(select).length > 0) {
+      return select;
+    }
+    return { decryptedData: 0 };
   }
 
   /**
@@ -87,9 +111,11 @@ export class InboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
+        .maxTimeMS(20000)
+        .lean()
         .exec();
 
-      return docs;
+      return docs as unknown as InboundInvoiceDocument[];
     } catch (error) {
       console.error('Error finding inbound invoices:', error);
       throw new AppError(500, 'Failed to fetch inbound invoices');
@@ -203,11 +229,14 @@ export class InboundInvoiceRepository {
   async count(where?: any): Promise<number> {
     try {
       const query = this.buildInboundInvoiceQuery(where);
-      const count = await this.inboundInvoiceModel.countDocuments(query).exec();
+      const count = await this.inboundInvoiceModel
+        .countDocuments(query)
+        .maxTimeMS(20000)
+        .exec();
       return count;
     } catch (error) {
       console.error('Error counting inbound invoices:', error);
-      throw new AppError(500, 'Failed to count inbound invoices');
+      return 0;
     }
   }
 

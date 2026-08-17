@@ -1,5 +1,5 @@
 import Elysia from "elysia";
-import { logger } from "../../../@lib";
+import { logger, ResponseBuilder } from "../../../@lib";
 import { FIRSService } from "../../../@lib/adapters/firs/firs.service";
 import {
   listCountriesValidation,
@@ -31,16 +31,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("payment-means");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch payment means resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve payment means codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve payment means codes", 500);
       }
     },
     listPaymentMeansValidation,
@@ -55,16 +52,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("tax-categories");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch tax categories resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve tax categories",
-        };
+        return ResponseBuilder.error("Failed to retrieve tax categories", 500);
       }
     },
     listTaxCategoriesValidation,
@@ -79,16 +73,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("currencies");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch currencies resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve currency codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve currency codes", 500);
       }
     },
     listCurrenciesValidation,
@@ -103,16 +94,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("invoice-quantity-codes");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch invoice quantity codes resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve quantity unit codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve quantity unit codes", 500);
       }
     },
     listQuantityCodesValidation,
@@ -127,16 +115,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("hs-codes");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch HS codes resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve HS classification codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve HS classification codes", 500);
       }
     },
     listHsCodesValidation,
@@ -151,16 +136,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("services-codes");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch services codes resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve ISIC service codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve ISIC service codes", 500);
       }
     },
     listServicesCodesValidation,
@@ -175,16 +157,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("lgas");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch LGAs resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve Nigeria Local Government Areas",
-        };
+        return ResponseBuilder.error("Failed to retrieve Nigeria Local Government Areas", 500);
       }
     },
     listLgasValidation,
@@ -199,16 +178,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("states");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch states resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve Nigeria states",
-        };
+        return ResponseBuilder.error("Failed to retrieve Nigeria states", 500);
       }
     },
     listStatesValidation,
@@ -223,16 +199,13 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
     async ({ set }) => {
       try {
         const data = await firsService.getResource("countries");
-        return { success: true, data };
+        return ResponseBuilder.success(data);
       } catch (error: any) {
         logger.error("Failed to fetch countries resource", {
           error: error.message,
         });
         set.status = 500;
-        return {
-          success: false,
-          error: "Failed to retrieve ISO country codes",
-        };
+        return ResponseBuilder.error("Failed to retrieve ISO country codes", 500);
       }
     },
     listCountriesValidation,

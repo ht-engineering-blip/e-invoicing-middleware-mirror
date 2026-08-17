@@ -9,6 +9,7 @@ export const listWebhookEventsValidation = {
     eventType: t.Optional(t.String()),
     status: t.Optional(t.String()),
     irn: t.Optional(t.String()),
+    search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
@@ -18,7 +19,7 @@ export const listWebhookEventsValidation = {
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "List Webhook Events",
     description:
-      "List webhook events for the authenticated tenant. Supports filtering by eventType, status, IRN, and date range.",
+      "List webhook events for the authenticated tenant. Supports filtering by eventType, status, IRN (partial match), search query (across IRN, eventId, eventType), and date range.",
   },
 };
 

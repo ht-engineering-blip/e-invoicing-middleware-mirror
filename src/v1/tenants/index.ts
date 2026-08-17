@@ -9,7 +9,7 @@ import {
 } from "./utils/tenant.validators";
 
 import { onlySelf } from "../auth/utils/access-checks";
-import adminTenantRoutes from "./routes/admin";
+import adminTenantRoutes from "./routes/admin.routes";
 import {
   protectedOnboardingRoutes,
   publicOnboardingRoutes,

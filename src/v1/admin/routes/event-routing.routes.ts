@@ -1,16 +1,17 @@
-import { Elysia } from 'elysia';
-import { requireAdmin } from '../../../middlewares/auth';
-import { EventRoutingRepository } from '../repos/event-routing.repo';
-import { INVOICE_EVENT_TYPES, WORKFLOW_ACTIONS } from './reference.routes';
-import { onlyAdmin } from '../../auth/utils/access-checks';
+import { Elysia } from "elysia";
+import { requireAdmin } from "../../../middlewares/auth";
+import { EventRoutingRepository } from "../repos/event-routing.repo";
+import { INVOICE_EVENT_TYPES, WORKFLOW_ACTIONS } from "./reference.routes";
+import { onlyAdmin } from "../../auth/utils/access-checks";
+import { ResponseBuilder } from "../../../@lib";
 import {
   getEventRoutingValidation,
   addEventRouteValidation,
   updateEventRouteValidation,
   removeEventRouteValidation,
   replaceEventRoutingValidation,
-  clearEventRoutingValidation
-} from '../validations/event-routing.validation';
+  clearEventRoutingValidation,
+} from "../validations/event-routing.validation";
 
 const eventRoutingRepo = new EventRoutingRepository();
 
@@ -18,13 +19,13 @@ const eventRoutingRepo = new EventRoutingRepository();
 const VALID_EVENT_IDS = INVOICE_EVENT_TYPES.map((e) => e.id) as string[];
 const VALID_ACTION_IDS = WORKFLOW_ACTIONS.map((a) => a.id) as string[];
 
-
-
 /**
  * Event Routing Routes
  * Mounted at /admin/tenants/:tenantId/event-routing
  */
-export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event-routing' })
+export const eventRoutingRoutes = new Elysia({
+  prefix: "/tenants/:tenantId/event-routing",
+})
   .use(requireAdmin)
 
   /**
@@ -33,17 +34,21 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Returns routes enriched with event and action metadata.
    */
   .get(
-    '/',
+    "/",
     async ({ auth, params }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
 
       const config = await eventRoutingRepo.findByTenantId(params.tenantId);
 
       // Enrich each route with metadata from reference lists
       const routes = (config?.routes ?? []).map((route) => {
         const eventMeta = INVOICE_EVENT_TYPES.find((e) => e.id === route.event);
-        const actionsMeta = route.actions.map((actionId) =>
-          WORKFLOW_ACTIONS.find((a) => a.id === actionId) ?? { id: actionId, name: actionId }
+        const actionsMeta = route.actions.map(
+          (actionId) =>
+            WORKFLOW_ACTIONS.find((a) => a.id === actionId) ?? {
+              id: actionId,
+              name: actionId,
+            },
         );
         return {
           routeId: route.routeId,
@@ -59,16 +64,13 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
         };
       });
 
-      return {
-        success: true,
-        data: {
-          tenantId: params.tenantId,
-          routes,
-          total: routes.length,
-        },
-      };
+      return ResponseBuilder.success({
+        tenantId: params.tenantId,
+        routes,
+        total: routes.length,
+      });
     },
-    getEventRoutingValidation
+    getEventRoutingValidation,
   )
 
   /**
@@ -76,27 +78,29 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Add a new route to the tenant's event routing config.
    */
   .post(
-    '/routes',
+    "/routes",
     async ({ auth, params, body, set }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
 
       // Validate event id
       if (!VALID_EVENT_IDS.includes(body.event)) {
         set.status = 400;
-        return {
-          success: false,
-          error: `Unknown event '${body.event}'. Check GET /admin/config/reference/events for valid ids.`,
-        };
+        return ResponseBuilder.error(
+          `Unknown event '${body.event}'. Check GET /admin/config/reference/events for valid ids.`,
+          400,
+        );
       }
 
       // Validate all action ids
-      const unknownActions = body.actions.filter((a: string) => !VALID_ACTION_IDS.includes(a));
+      const unknownActions = body.actions.filter(
+        (a: string) => !VALID_ACTION_IDS.includes(a),
+      );
       if (unknownActions.length > 0) {
         set.status = 400;
-        return {
-          success: false,
-          error: `Unknown action(s): ${unknownActions.join(', ')}. Check GET /admin/config/reference/workflow-actions for valid ids.`,
-        };
+        return ResponseBuilder.error(
+          `Unknown action(s): ${unknownActions.join(", ")}. Check GET /admin/config/reference/workflow-actions for valid ids.`,
+          400,
+        );
       }
 
       const config = await eventRoutingRepo.addRoute(params.tenantId, {
@@ -108,13 +112,13 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
 
       const added = config.routes[config.routes.length - 1];
 
-      return {
-        success: true,
-        message: 'Route added successfully',
-        data: added,
-      };
+      return ResponseBuilder.success(
+        added,
+        undefined,
+        "Route added successfully",
+      );
     },
-    addEventRouteValidation
+    addEventRouteValidation,
   )
 
   /**
@@ -122,44 +126,51 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Update an existing route (event, actions, enabled, description).
    */
   .patch(
-    '/routes/:routeId',
+    "/routes/:routeId",
     async ({ auth, params, body, set }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
 
       if (body.event && !VALID_EVENT_IDS.includes(body.event)) {
         set.status = 400;
-        return { success: false, error: `Unknown event '${body.event}'.` };
+        return ResponseBuilder.error(`Unknown event '${body.event}'.`, 400);
       }
 
       if (body.actions) {
-        const unknownActions = body.actions.filter((a: string) => !VALID_ACTION_IDS.includes(a));
+        const unknownActions = body.actions.filter(
+          (a: string) => !VALID_ACTION_IDS.includes(a),
+        );
         if (unknownActions.length > 0) {
           set.status = 400;
-          return { success: false, error: `Unknown action(s): ${unknownActions.join(', ')}.` };
+          return ResponseBuilder.error(
+            `Unknown action(s): ${unknownActions.join(", ")}.`,
+            400,
+          );
         }
       }
 
-      const config = await eventRoutingRepo.updateRoute(params.tenantId, params.routeId, {
-        ...(body.event !== undefined && { event: body.event }),
-        ...(body.actions !== undefined && { actions: body.actions }),
-        ...(body.enabled !== undefined && { enabled: body.enabled }),
-        ...(body.description !== undefined && { description: body.description }),
-      });
+      const config = await eventRoutingRepo.updateRoute(
+        params.tenantId,
+        params.routeId,
+        {
+          ...(body.event !== undefined && { event: body.event }),
+          ...(body.actions !== undefined && { actions: body.actions }),
+          ...(body.enabled !== undefined && { enabled: body.enabled }),
+          ...(body.description !== undefined && {
+            description: body.description,
+          }),
+        },
+      );
 
       if (!config) {
         set.status = 404;
-        return { success: false, error: 'Route not found' };
+        return ResponseBuilder.error("Route not found", 404);
       }
 
       const updated = config.routes.find((r) => r.routeId === params.routeId);
 
-      return {
-        success: true,
-        message: 'Route updated',
-        data: updated,
-      };
+      return ResponseBuilder.success(updated, undefined, "Route updated");
     },
-    updateEventRouteValidation
+    updateEventRouteValidation,
   )
 
   /**
@@ -167,20 +178,23 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Remove a route from the config.
    */
   .delete(
-    '/routes/:routeId',
+    "/routes/:routeId",
     async ({ auth, params, set }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
 
-      const config = await eventRoutingRepo.removeRoute(params.tenantId, params.routeId);
+      const config = await eventRoutingRepo.removeRoute(
+        params.tenantId,
+        params.routeId,
+      );
 
       if (!config) {
         set.status = 404;
-        return { success: false, error: 'Route not found' };
+        return ResponseBuilder.error("Route not found", 404);
       }
 
-      return { success: true, message: 'Route removed' };
+      return ResponseBuilder.success(undefined, undefined, "Route removed");
     },
-    removeEventRouteValidation
+    removeEventRouteValidation,
   )
 
   /**
@@ -189,45 +203,51 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Useful for bulk import from frontend config builder.
    */
   .put(
-    '/',
+    "/",
     async ({ auth, params, body, set }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
 
       // Validate all routes
       for (const route of body.routes) {
         if (!VALID_EVENT_IDS.includes(route.event)) {
           set.status = 400;
-          return { success: false, error: `Unknown event '${route.event}'.` };
+          return ResponseBuilder.error(`Unknown event '${route.event}'.`, 400);
         }
-        const unknown = route.actions.filter((a: string) => !VALID_ACTION_IDS.includes(a));
+        const unknown = route.actions.filter(
+          (a: string) => !VALID_ACTION_IDS.includes(a),
+        );
         if (unknown.length > 0) {
           set.status = 400;
-          return { success: false, error: `Unknown action(s) in route for '${route.event}': ${unknown.join(', ')}.` };
+          return ResponseBuilder.error(
+            `Unknown action(s) in route for '${route.event}': ${unknown.join(", ")}.`,
+            400,
+          );
         }
       }
 
       const config = await eventRoutingRepo.upsert(
         params.tenantId,
         body.routes.map((r: any, i: number) => ({
-          routeId: r.routeId ?? require('crypto').randomBytes(8).toString('hex'),
+          routeId:
+            r.routeId ?? require("crypto").randomBytes(8).toString("hex"),
           event: r.event,
           actions: r.actions,
           enabled: r.enabled ?? true,
           description: r.description,
-        }))
+        })),
       );
 
-      return {
-        success: true,
-        message: 'Event routing config saved',
-        data: {
+      return ResponseBuilder.success(
+        {
           tenantId: params.tenantId,
           routes: config.routes,
           total: config.routes.length,
         },
-      };
+        undefined,
+        "Event routing config saved",
+      );
     },
-    replaceEventRoutingValidation
+    replaceEventRoutingValidation,
   )
 
   /**
@@ -235,11 +255,15 @@ export const eventRoutingRoutes = new Elysia({ prefix: '/tenants/:tenantId/event
    * Clear the entire routing config for a tenant.
    */
   .delete(
-    '/',
+    "/",
     async ({ auth, params }) => {
-      onlyAdmin(auth!, 'Admin access required');
+      onlyAdmin(auth!, "Admin access required");
       await eventRoutingRepo.delete(params.tenantId);
-      return { success: true, message: 'Event routing config cleared' };
+      return ResponseBuilder.success(
+        undefined,
+        undefined,
+        "Event routing config cleared",
+      );
     },
-    clearEventRoutingValidation
+    clearEventRoutingValidation,
   );

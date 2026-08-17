@@ -1,5 +1,6 @@
 import Elysia from 'elysia';
 import { OutboundInvoiceRepository } from '../../workflow/repos/outbound-invoice.repo';
+import { ResponseBuilder } from '../../../@lib';
 import { getInvoiceQRValidation } from '../validations/qr.validation';
 
 const outboundRepo = new OutboundInvoiceRepository();
@@ -26,13 +27,13 @@ const qrMgmtRoutes = new Elysia({
 
       if (!invoice) {
         set.status = 404;
-        return { success: false, error: 'Invoice not found' };
+        return ResponseBuilder.error('Invoice not found', 404);
       }
  
 
       if (!invoice.qrCode) {
         set.status = 404;
-        return { success: false, error: 'QR code not yet generated for this invoice' };
+        return ResponseBuilder.error('QR code not yet generated for this invoice', 404);
       }
 
       // qrCode is stored as a data URI: "data:image/png;base64,<payload>"

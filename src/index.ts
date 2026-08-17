@@ -1,15 +1,25 @@
 import "./bun-v8-polyfill";
 import dns from "node:dns";
 
-// Force DNS resolution to use public DNS servers to resolve MongoDB SRV issues
-dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
+// Only set custom DNS in local development if explicitly requested
+if (
+  process.env.FORCE_PUBLIC_DNS === "true" &&
+  !process.env.VERCEL &&
+  process.env.NODE_ENV !== "production"
+) {
+  try {
+    dns.setServers(["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]);
+  } catch (e) {
+    // ignore
+  }
+}
 
 import { Elysia } from "elysia";
 import { appConfig } from "./@config";
 import { v1Routes } from "./v1";
 import { errorHandlerMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
-import { connectMongo } from "./@lib/adapters/mongo";
+import { mongoPlugin, connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
 import mongoose from "mongoose";
@@ -18,20 +28,10 @@ if (!appConfig) {
   throw new Error("App configuration is not defined");
 }
 
-// Initialize MongoDB connection (will be lazy-loaded on first request)
-let mongoConnected = false;
-const ensureMongoConnection = async () => {
-  if (!mongoConnected) {
-    try {
-      await connectMongo();
-      mongoConnected = true;
-      logger.info("MongoDB connected successfully");
-    } catch (err) {
-      logger.error("Failed to connect to MongoDB:", err);
-      throw err;
-    }
-  }
-};
+// Eagerly connect to MongoDB on app boot
+connectMongo().catch((err) => {
+  logger.error("Initial MongoDB connection error:", err);
+});
 
 // elysia-remote-dts pulls in the full TypeScript compiler via a CJS require()
 // inside an ESM async hook, which crashes on Bun in production (Vercel) with
@@ -43,11 +43,8 @@ const dtsPlugin =
 
 const app = new Elysia()
   .use(cors())
+  .use(mongoPlugin)
   .use(dtsPlugin)
-  // Ensure MongoDB connection on every request
-  .onBeforeHandle(async () => {
-    await ensureMongoConnection();
-  })
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get(
@@ -66,7 +63,12 @@ const app = new Elysia()
   )
   .get(
     "/health",
-    ({ set }) => {
+    async ({ set }) => {
+      try {
+        await connectMongo();
+      } catch (e) {
+        // ignore
+      }
       const isMongoConnected = mongoose.connection.readyState === 1;
       if (!isMongoConnected) {
         set.status = 503;
@@ -166,6 +168,10 @@ const app = new Elysia()
 
 // For local development with Bun
 if (import.meta.env?.DEV || process.env.NODE_ENV === "development") {
+  await connectMongo().catch((err) => {
+    logger.error("Failed to connect to MongoDB on startup:", err);
+  });
+
   app.listen(appConfig.port, () => {
     logger.info(`Server is running on port ${appConfig?.port}`);
   });

@@ -18,43 +18,61 @@ export class WebhookEventRepository {
   }
 
   /**
-   * Build MongoDB query from where conditions
+   * Build MongoDB query from where conditions or raw query object
    */
   private buildWebhookEventQuery(where?: any): any {
-    if (!where) return {};
+    if (!where || typeof where !== "object") return {};
 
     const query: any = {};
 
-    // Simple equality checks
-    if (where.id?._eq) query._id = where.id._eq;
-    if (where.tenantId?._eq) query.tenantId = where.tenantId._eq;
-    if (where.businessId?._eq) query.businessId = where.businessId._eq;
-    if (where.eventId?._eq) query.eventId = where.eventId._eq;
-    if (where.eventType?._eq) query.eventType = where.eventType._eq;
-    if (where.resourceId?._eq) query.resourceId = where.resourceId._eq;
-    if (where.status?._eq) query.status = where.status._eq;
+    for (const [key, value] of Object.entries(where)) {
+      if (key === "_and" && Array.isArray(value)) {
+        query.$and = value.map((cond) => this.buildWebhookEventQuery(cond));
+      } else if (key === "_or" && Array.isArray(value)) {
+        query.$or = value.map((cond) => this.buildWebhookEventQuery(cond));
+      } else if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date) &&
+        !(value instanceof RegExp)
+      ) {
+        const valObj = value as Record<string, any>;
+        const hasCustomOps = Object.keys(valObj).some((k) => k.startsWith("_"));
 
-    // IN conditions
-    if (where.status?._in) query.status = { $in: where.status._in };
-    if (where.eventType?._in) query.eventType = { $in: where.eventType._in };
+        if (hasCustomOps) {
+          if (valObj._eq !== undefined) {
+            query[key === "id" ? "_id" : key] = valObj._eq;
+            continue;
+          }
 
-    // Date range
-    if (where.createdAt?._gte)
-      query.createdAt = { ...query.createdAt, $gte: where.createdAt._gte };
-    if (where.createdAt?._lte)
-      query.createdAt = { ...query.createdAt, $lte: where.createdAt._lte };
+          const fieldQuery: any = {};
+          if (valObj._in !== undefined) fieldQuery.$in = valObj._in;
+          if (valObj._nin !== undefined) fieldQuery.$nin = valObj._nin;
+          if (valObj._gte !== undefined) fieldQuery.$gte = valObj._gte;
+          if (valObj._lte !== undefined) fieldQuery.$lte = valObj._lte;
+          if (valObj._gt !== undefined) fieldQuery.$gt = valObj._gt;
+          if (valObj._lt !== undefined) fieldQuery.$lt = valObj._lt;
+          if (valObj._ne !== undefined) fieldQuery.$ne = valObj._ne;
+          if (valObj._like !== undefined) fieldQuery.$regex = valObj._like;
+          if (valObj._ilike !== undefined) {
+            fieldQuery.$regex = valObj._ilike;
+            fieldQuery.$options = "i";
+          }
 
-    // Next retry check
-    if (where.nextRetryAt?._lte) {
-      query.nextRetryAt = { $lte: where.nextRetryAt._lte };
-      query.status = WebhookDeliveryStatus.RETRY;
-    }
+          if (key === "nextRetryAt" && valObj._lte !== undefined) {
+            query.status = WebhookDeliveryStatus.RETRY;
+          }
 
-    // AND conditions
-    if (where._and && where._and.length > 0) {
-      query.$and = where._and.map((andCondition: any) => {
-        return this.buildWebhookEventQuery(andCondition);
-      });
+          query[key === "id" ? "_id" : key] = fieldQuery;
+        } else {
+          // Standard Mongo operators/subdocuments ($regex, $gte, etc.)
+          query[key === "id" ? "_id" : key] = value;
+        }
+      } else {
+        // Direct value (primitive, string, array, Date, RegExp, etc.)
+        query[key === "id" ? "_id" : key] = value;
+      }
     }
 
     return query;
@@ -167,7 +185,7 @@ export class WebhookEventRepository {
         .findOneAndUpdate(
           { eventId },
           { $set: updateData },
-          { returnDocument: 'after', runValidators: true },
+          { returnDocument: "after", runValidators: true },
         )
         .exec();
 
@@ -278,7 +296,10 @@ export class WebhookEventRepository {
   /**
    * Find webhook event by event ID
    */
-  async findByEventId(eventId: string, tenantId?: string): Promise<WebhookEventDocument | null> {
+  async findByEventId(
+    eventId: string,
+    tenantId?: string,
+  ): Promise<WebhookEventDocument | null> {
     try {
       const query: any = { eventId };
       if (tenantId) query.tenantId = tenantId;
@@ -293,7 +314,10 @@ export class WebhookEventRepository {
   /**
    * Find webhook event by ID (alias for findByEventId or MongoDB _id)
    */
-  async findById(id: string, tenantId?: string): Promise<WebhookEventDocument | null> {
+  async findById(
+    id: string,
+    tenantId?: string,
+  ): Promise<WebhookEventDocument | null> {
     try {
       // Try finding by eventId first, then by _id
       const query1: any = { eventId: id };
@@ -342,7 +366,11 @@ export class WebhookEventRepository {
   ): Promise<WebhookEventDocument | null> {
     try {
       const doc = await this.webhookEventModel
-        .findOneAndUpdate({ eventId }, { $set: { status } }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { eventId },
+          { $set: { status } },
+          { returnDocument: "after" },
+        )
         .exec();
       return doc;
     } catch (error) {
@@ -413,7 +441,7 @@ export class WebhookEventRepository {
               deliveryAttempts: attempt,
             },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -452,7 +480,7 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -493,7 +521,7 @@ export class WebhookEventRepository {
               nextRetryAt: null,
             },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -554,7 +582,7 @@ export class WebhookEventRepository {
               nextRetryAt,
             },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 

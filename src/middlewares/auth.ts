@@ -9,6 +9,7 @@ import { TenantRepository } from "../v1/tenants/repos/tenant.repo";
 import { TeamMemberRepository } from "../v1/tenants/repos/team-member.repo";
 import { TenantStatus, TeamMemberStatus } from "../v1/tenants/models";
 import { decryptSensitiveData } from "../@lib/crypto";
+import { connectMongo } from "../@lib/adapters/mongo";
 
 // Ensure configs are defined
 if (!appConfig) {
@@ -107,6 +108,7 @@ export const requireAdmin = (instance: Elysia) =>
  */
 export const requireApiKey = (instance: Elysia) =>
   instance.resolve(async ({ headers }): Promise<{ auth: AuthContext }> => {
+    await connectMongo();
     const apiKey = headers["x-api-key"];
 
     if (!apiKey) {
@@ -174,6 +176,7 @@ export const requireApiKey = (instance: Elysia) =>
  */
 export const requireJwt = (instance: Elysia) =>
   instance.resolve(async ({ headers }): Promise<{ auth: AuthContext }> => {
+    await connectMongo();
     const authHeader = headers["authorization"];
 
     if (!authHeader) {
@@ -257,6 +260,7 @@ export const requireJwt = (instance: Elysia) =>
 export const requireAuth = (instance: Elysia) =>
   instance.resolve(
     async ({ headers, request }): Promise<{ auth: AuthContext }> => {
+      await connectMongo();
       const apiKey = headers["x-api-key"];
       const authHeader = headers["authorization"];
       const adminKey = headers["x-admin-key"];

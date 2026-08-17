@@ -7,14 +7,22 @@ import {
   OutboundPaymentStatus,
   IOutboundPaymentDetails,
 } from "../models/outbound-invoice.model";
+import {
+  InboundInvoiceDocument,
+  InboundInvoiceModel,
+} from "../models/inbound-invoice.model";
 import { WebhookEventModel } from "../../webhook/models/webhook-event.model";
 
 export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
+  private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
       OutboundInvoiceModel,
+    );
+    this.inboundInvoiceModel = new ModelWrapper<InboundInvoiceDocument>(
+      InboundInvoiceModel,
     );
   }
 
@@ -22,43 +30,59 @@ export class OutboundInvoiceRepository {
    * Build MongoDB query from where conditions
    */
   private buildOutboundInvoiceQuery(where?: any): any {
-    if (!where) return {};
+    if (!where || typeof where !== "object") return {};
 
     const query: any = {};
 
-    // Simple equality checks
-    if (where.id?._eq) query._id = where.id._eq;
-    if (where.tenantId?._eq) query.tenantId = where.tenantId._eq;
-    if (where.businessId?._eq) query.businessId = where.businessId._eq;
-    if (where.irn?._eq) query.irn = where.irn._eq;
-    if (where.invoiceNumber?._eq) query.invoiceNumber = where.invoiceNumber._eq;
-    if (where.status?._eq) query.status = where.status._eq;
-    if (where.customerTIN?._eq) query.customerTIN = where.customerTIN._eq;
+    for (const [key, value] of Object.entries(where)) {
+      if (key === "_and" && Array.isArray(value)) {
+        query.$and = value.map((cond) => this.buildOutboundInvoiceQuery(cond));
+      } else if (key === "_or" && Array.isArray(value)) {
+        query.$or = value.map((cond) => this.buildOutboundInvoiceQuery(cond));
+      } else if (key === "search" && typeof value === "string") {
+        query.$or = [
+          { invoiceNumber: safeSearchRegExp(value) },
+          { customerName: safeSearchRegExp(value) },
+          { customerTIN: safeSearchRegExp(value) },
+          { irn: safeSearchRegExp(value) },
+        ];
+      } else if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date) &&
+        !(value instanceof RegExp)
+      ) {
+        const valObj = value as Record<string, any>;
+        const hasCustomOps = Object.keys(valObj).some((k) => k.startsWith("_"));
 
-    // IN conditions
-    if (where.status?._in) query.status = { $in: where.status._in };
+        if (hasCustomOps) {
+          if (valObj._eq !== undefined) {
+            query[key === "id" ? "_id" : key] = valObj._eq;
+            continue;
+          }
 
-    // Date range
-    if (where.issueDate?._gte)
-      query.issueDate = { ...query.issueDate, $gte: where.issueDate._gte };
-    if (where.issueDate?._lte)
-      query.issueDate = { ...query.issueDate, $lte: where.issueDate._lte };
+          const fieldQuery: any = {};
+          if (valObj._in !== undefined) fieldQuery.$in = valObj._in;
+          if (valObj._nin !== undefined) fieldQuery.$nin = valObj._nin;
+          if (valObj._gte !== undefined) fieldQuery.$gte = valObj._gte;
+          if (valObj._lte !== undefined) fieldQuery.$lte = valObj._lte;
+          if (valObj._gt !== undefined) fieldQuery.$gt = valObj._gt;
+          if (valObj._lt !== undefined) fieldQuery.$lt = valObj._lt;
+          if (valObj._ne !== undefined) fieldQuery.$ne = valObj._ne;
+          if (valObj._like !== undefined) fieldQuery.$regex = valObj._like;
+          if (valObj._ilike !== undefined) {
+            fieldQuery.$regex = valObj._ilike;
+            fieldQuery.$options = "i";
+          }
 
-    // Search
-    if (where.search) {
-      query.$or = [
-        { invoiceNumber: safeSearchRegExp(where.search) },
-        { customerName: safeSearchRegExp(where.search) },
-        { customerTIN: safeSearchRegExp(where.search) },
-        { irn: safeSearchRegExp(where.search) },
-      ];
-    }
-
-    // AND conditions
-    if (where._and && where._and.length > 0) {
-      query.$and = where._and.map((andCondition: any) => {
-        return this.buildOutboundInvoiceQuery(andCondition);
-      });
+          query[key === "id" ? "_id" : key] = fieldQuery;
+        } else {
+          query[key === "id" ? "_id" : key] = value;
+        }
+      } else {
+        query[key === "id" ? "_id" : key] = value;
+      }
     }
 
     return query;
@@ -68,7 +92,373 @@ export class OutboundInvoiceRepository {
    * Build select projection
    */
   private buildOutboundInvoiceProjection(select?: any): any {
-    return select && Object.keys(select).length > 0 ? select : null;
+    if (select && Object.keys(select).length > 0) {
+      return select;
+    }
+    return {
+      rawPayload: 0,
+      encryptedData: 0,
+      decryptedData: 0,
+      signedXml: 0,
+    };
+  }
+
+  /**
+   * Unified Aggregation Pipeline across outbound, inbound, or both invoice streams
+   */
+  async getUnifiedInvoiceStream(params: {
+    auth?: {
+      tenantId?: string;
+      businessId?: string;
+      isAdmin?: boolean;
+    };
+    type?: string;
+    status?: string;
+    source?: string;
+    erpInvoiceId?: string;
+    paymentStatus?: string;
+    irn?: string;
+    search?: string;
+    from?: Date;
+    to?: Date;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: any[]; total: number }> {
+    try {
+      const page = Math.max(1, params.page || 1);
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const offset = (page - 1) * limit;
+      const requestedType = (params.type || "all").toLowerCase().trim();
+
+      const auth = params.auth;
+      const tenantId = auth?.tenantId;
+      const businessId = auth?.businessId;
+      const isAdmin = auth?.isAdmin;
+
+      // 1. Build outbound match query
+      const outboundMatch: any = {};
+      if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
+      if (params.status?.trim()) outboundMatch.status = params.status.trim();
+      if (params.source?.trim()) outboundMatch.source = params.source.trim();
+      if (params.erpInvoiceId?.trim())
+        outboundMatch.erpInvoiceId = params.erpInvoiceId.trim();
+      if (params.irn?.trim())
+        outboundMatch.irn = safeSearchRegExp(params.irn.trim());
+      if (params.search?.trim()) {
+        const searchRegex = safeSearchRegExp(params.search.trim());
+        outboundMatch.$or = [
+          { invoiceNumber: searchRegex },
+          { customerName: searchRegex },
+          { customerTIN: searchRegex },
+          { irn: searchRegex },
+        ];
+      }
+      if (params.from || params.to) {
+        outboundMatch.createdAt = {};
+        if (params.from) outboundMatch.createdAt.$gte = params.from;
+        if (params.to) outboundMatch.createdAt.$lte = params.to;
+      }
+
+      // 2. Build inbound match query
+      const inboundMatch: any = {};
+      if (businessId?.trim()) {
+        inboundMatch.businessId = businessId.trim();
+      } else if (!isAdmin && tenantId) {
+        inboundMatch.tenantId = tenantId;
+      }
+      if (params.status?.trim()) inboundMatch.status = params.status.trim();
+      if (params.paymentStatus?.trim()) {
+        inboundMatch["payment.paymentStatus"] = params.paymentStatus.trim();
+      }
+      if (params.irn?.trim())
+        inboundMatch.irn = safeSearchRegExp(params.irn.trim());
+      if (params.search?.trim()) {
+        const searchRegex = safeSearchRegExp(params.search.trim());
+        inboundMatch.$or = [
+          { invoiceNumber: searchRegex },
+          { supplierName: searchRegex },
+          { supplierTIN: searchRegex },
+          { irn: searchRegex },
+        ];
+      }
+      if (params.from || params.to) {
+        inboundMatch.createdAt = {};
+        if (params.from) inboundMatch.createdAt.$gte = params.from;
+        if (params.to) inboundMatch.createdAt.$lte = params.to;
+      }
+
+      const outboundProjectStage = {
+        $project: {
+          irn: { $ifNull: ["$irn", null] },
+          erpInvoiceId: { $ifNull: ["$erpInvoiceId", null] },
+          source: { $ifNull: ["$source", "api"] },
+          type: { $literal: "outbound" },
+          direction: { $literal: "OUTBOUND" },
+          invoiceNumber: {
+            $ifNull: [
+              "$invoiceNumber",
+              "$metadata.invoiceNumber",
+              "$metadata.InvoiceNumber",
+              "$metadata.invoice_number",
+              null,
+            ],
+          },
+          status: { $ifNull: ["$status", "CREATED"] },
+          paymentStatus: {
+            $ifNull: [
+              "$paymentStatus",
+              "$paymentDetails.paymentStatus",
+              "PENDING",
+            ],
+          },
+          qrCode: { $ifNull: ["$qrCode", null] },
+          erp: { $ifNull: ["$erpSystem", null] },
+          workflowState: { $ifNull: ["$workflowState", null] },
+          lastJobError: { $ifNull: ["$lastJobError", null] },
+          customerName: {
+            $ifNull: [
+              "$customerName",
+              "$metadata.AccountingCustomerParty.Party.PartyName.0.Name",
+              "$metadata.accounting_customer_party.party_name",
+              "$metadata.customerName",
+              null,
+            ],
+          },
+          supplierName: {
+            $ifNull: [
+              "$supplierName",
+              "$metadata.AccountingSupplierParty.Party.PartyName.0.Name",
+              "$metadata.accounting_supplier_party.party_name",
+              "$metadata.supplierName",
+              null,
+            ],
+          },
+          totalAmount: {
+            $ifNull: [
+              "$totalAmount",
+              "$metadata.LegalMonetaryTotal.PayableAmount.value",
+              "$metadata.legal_monetary_total.payable_amount",
+              "$metadata.totalAmount",
+              0,
+            ],
+          },
+          currency: {
+            $ifNull: [
+              "$currency",
+              "$metadata.DocumentCurrencyCode",
+              "$metadata.document_currency_code",
+              "NGN",
+            ],
+          },
+          webhookEventCount: {
+            $cond: {
+              if: { $isArray: "$webhookEvents" },
+              then: { $size: "$webhookEvents" },
+              else: 0,
+            },
+          },
+          createdAt: { $ifNull: ["$createdAt", "$$NOW"] },
+          updatedAt: { $ifNull: ["$updatedAt", "$$NOW"] },
+        },
+      };
+
+      const inboundProjectStage = {
+        $project: {
+          irn: { $ifNull: ["$irn", null] },
+          erpInvoiceId: { $literal: null },
+          source: { $literal: "inbound" },
+          type: { $literal: "inbound" },
+          direction: { $literal: "INBOUND" },
+          invoiceNumber: {
+            $ifNull: ["$invoiceNumber", "$invoice.invoiceNumber", null],
+          },
+          status: { $ifNull: ["$status", "TRANSMITTED"] },
+          paymentStatus: {
+            $ifNull: ["$paymentStatus", "$payment.paymentStatus", "PENDING"],
+          },
+          qrCode: { $ifNull: ["$qrCode", null] },
+          erp: { $literal: null },
+          workflowState: { $ifNull: ["$workflowState", null] },
+          lastJobError: { $literal: null },
+          customerName: {
+            $ifNull: [
+              "$customerName",
+              "$invoice.accounting_customer_party.party_name",
+              "$invoice.customerName",
+              null,
+            ],
+          },
+          supplierName: {
+            $ifNull: [
+              "$supplierName",
+              "$invoice.accounting_supplier_party.party_name",
+              "$invoice.supplierName",
+              null,
+            ],
+          },
+          totalAmount: {
+            $ifNull: [
+              "$totalAmount",
+              "$invoice.legal_monetary_total.payable_amount",
+              "$invoice.totalAmount",
+              0,
+            ],
+          },
+          currency: {
+            $ifNull: [
+              "$currency",
+              "$invoice.document_currency_code",
+              "$invoice.currency",
+              "NGN",
+            ],
+          },
+          webhookEventCount: {
+            $cond: {
+              if: { $isArray: "$webhookEvents" },
+              then: { $size: "$webhookEvents" },
+              else: 0,
+            },
+          },
+          createdAt: { $ifNull: ["$createdAt", "$$NOW"] },
+          updatedAt: { $ifNull: ["$updatedAt", "$$NOW"] },
+        },
+      };
+
+      let aggregationResult: any;
+
+      if (requestedType === "inbound") {
+        const inboundPipeline: any[] = [
+          { $match: inboundMatch },
+          inboundProjectStage,
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await this.inboundInvoiceModel
+          .aggregate(inboundPipeline)
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      } else if (requestedType === "outbound") {
+        const outboundPipeline: any[] = [
+          { $match: outboundMatch },
+          outboundProjectStage,
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await this.outboundInvoiceModel
+          .aggregate(outboundPipeline)
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      } else {
+        const unifiedPipeline: any[] = [
+          { $match: outboundMatch },
+          outboundProjectStage,
+          {
+            $unionWith: {
+              coll: "inbound_invoices",
+              pipeline: [{ $match: inboundMatch }, inboundProjectStage],
+            },
+          },
+          { $sort: { createdAt: -1 } },
+          {
+            $facet: {
+              totalCount: [{ $count: "count" }],
+              items: [{ $skip: offset }, { $limit: limit }],
+            },
+          },
+        ];
+        [aggregationResult] = await this.outboundInvoiceModel
+          .aggregate(unifiedPipeline)
+          .option({ maxTimeMS: 25000 })
+          .exec();
+      }
+
+      const total = aggregationResult?.totalCount?.[0]?.count || 0;
+      const items = aggregationResult?.items || [];
+
+      return { items, total };
+    } catch (error) {
+      console.error(
+        "Error executing unified invoice aggregation stream:",
+        error,
+      );
+      throw new AppError(
+        500,
+        "Failed to retrieve unified invoice aggregation stream",
+      );
+    }
+  }
+
+  /**
+   * Get invoice dashboard metrics (Total, Outbound, Inbound counts)
+   */
+  async getInvoiceMetrics(params: {
+    auth?: {
+      tenantId?: string;
+      businessId?: string;
+      isAdmin?: boolean;
+    };
+    from?: Date;
+    to?: Date;
+  }): Promise<{
+    total: number;
+    outbound: number;
+    inbound: number;
+  }> {
+    try {
+      const auth = params.auth;
+      const tenantId = auth?.tenantId;
+      const businessId = auth?.businessId;
+      const isAdmin = auth?.isAdmin;
+
+      const outboundMatch: any = {};
+      if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
+
+      if (params.from || params.to) {
+        outboundMatch.createdAt = {};
+        if (params.from) outboundMatch.createdAt.$gte = params.from;
+        if (params.to) outboundMatch.createdAt.$lte = params.to;
+      }
+
+      const inboundMatch: any = {};
+      if (businessId?.trim()) inboundMatch.businessId = businessId.trim();
+      else if (!isAdmin && tenantId) inboundMatch.tenantId = tenantId;
+
+      if (params.from || params.to) {
+        inboundMatch.createdAt = {};
+        if (params.from) inboundMatch.createdAt.$gte = params.from;
+        if (params.to) inboundMatch.createdAt.$lte = params.to;
+      }
+
+      const [outboundCount, inboundCount] = await Promise.all([
+        this.outboundInvoiceModel
+          .countDocuments(outboundMatch)
+          .maxTimeMS(20000)
+          .exec(),
+        this.inboundInvoiceModel
+          .countDocuments(inboundMatch)
+          .maxTimeMS(20000)
+          .exec(),
+      ]);
+
+      return {
+        total: (outboundCount || 0) + (inboundCount || 0),
+        outbound: outboundCount || 0,
+        inbound: inboundCount || 0,
+      };
+    } catch (error) {
+      console.error("Error computing invoice metrics:", error);
+      throw new AppError(500, "Failed to compute invoice metrics");
+    }
   }
 
   /**
@@ -89,9 +479,11 @@ export class OutboundInvoiceRepository {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(offset)
+        .maxTimeMS(20000)
+        .lean()
         .exec();
 
-      return docs;
+      return docs as unknown as OutboundInvoiceDocument[];
     } catch (error) {
       console.error("Error finding outbound invoices:", error);
       throw new AppError(500, "Failed to fetch outbound invoices");
@@ -192,7 +584,7 @@ export class OutboundInvoiceRepository {
             webhookEvents: [],
           },
         },
-        { upsert: true, returnDocument: 'after', runValidators: true },
+        { upsert: true, returnDocument: "after", runValidators: true },
       );
 
       return doc!;
@@ -229,7 +621,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           query,
           { $set: updateData },
-          { returnDocument: 'after', runValidators: true },
+          { returnDocument: "after", runValidators: true },
         )
         .exec();
 
@@ -276,11 +668,12 @@ export class OutboundInvoiceRepository {
       const query = this.buildOutboundInvoiceQuery(where);
       const count = await this.outboundInvoiceModel
         .countDocuments(query)
+        .maxTimeMS(20000)
         .exec();
       return count;
     } catch (error) {
       console.error("Error counting outbound invoices:", error);
-      throw new AppError(500, "Failed to count outbound invoices");
+      return 0;
     }
   }
 
@@ -390,7 +783,11 @@ export class OutboundInvoiceRepository {
   ): Promise<OutboundInvoiceDocument> {
     try {
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: { status } }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: { status } },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
@@ -428,7 +825,11 @@ export class OutboundInvoiceRepository {
       });
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateFields }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: updateFields },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
@@ -468,7 +869,7 @@ export class OutboundInvoiceRepository {
             },
             $inc: { validationAttempts: 1 },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -498,7 +899,7 @@ export class OutboundInvoiceRepository {
         .findOneAndUpdate(
           { irn },
           { $addToSet: { webhookEvents: eventId } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -578,7 +979,11 @@ export class OutboundInvoiceRepository {
       if (paymentDetails) update.paymentDetails = paymentDetails;
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: update }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: update },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) throw new AppError(404, "Outbound invoice not found");

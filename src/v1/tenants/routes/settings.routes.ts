@@ -1,58 +1,55 @@
-import { Elysia } from 'elysia';
-import { requireAuth } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
-import { TenantService } from '../services/tenant.service';
-import { onlySelf } from '../../auth/utils/access-checks';
+import { Elysia } from "elysia";
+import { requireAuth } from "../../../middlewares/auth";
+import { logger, ResponseBuilder } from "../../../@lib";
+import { TenantService } from "../services/tenant.service";
+import { onlySelf } from "../../auth/utils/access-checks";
 import {
   getBusinessInfoValidation,
-  updateBusinessInfoValidation
-} from '../validations/settings.validation';
+  updateBusinessInfoValidation,
+} from "../validations/settings.validation";
 
 /**
  * Tenant Settings Routes
  */
-export const settingsRoutes = new Elysia({ prefix: '/:tenantId/settings' })
+export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
   .use(requireAuth)
-  .decorate('tenantService', new TenantService())
+  .decorate("tenantService", new TenantService())
 
   /**
    * GET /tenants/:tenantId/settings/business
    * Get business information
    */
   .get(
-    '/business',
-    async ({ params, auth, tenantService }) => {
+    "/business",
+    async ({ params, auth, tenantService, set }) => {
       try {
         // Check authorization
-        onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
-        return {
-          success: true,
-          data: {
-            businessName: tenant.businessName,
-            tin: tenant.tin,
-            businessRegistrationNumber: tenant.businessRegistrationNumber,
-            contactEmail: tenant.contactEmail,
-            contactPhone: tenant.contactPhone,
-            erpSystem: tenant.config?.erpSystem,
-            expectedVolume: tenant.expectedVolume,
-            address: tenant.metadata?.address || null,
-            website: tenant.metadata?.website || null,
-            industry: tenant.metadata?.industry || null,
-          },
-        };
+        return ResponseBuilder.success({
+          businessName: tenant.businessName,
+          tin: tenant.tin,
+          businessRegistrationNumber: tenant.businessRegistrationNumber,
+          contactEmail: tenant.contactEmail,
+          contactPhone: tenant.contactPhone,
+          erpSystem: tenant.config?.erpSystem,
+          expectedVolume: tenant.expectedVolume,
+          address: tenant.metadata?.address || null,
+          website: tenant.metadata?.website || null,
+          industry: tenant.metadata?.industry || null,
+        });
       } catch (error: any) {
-        logger.error('Failed to get business info', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to get business information',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to get business info", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to get business information",
+          error.statusCode || 500,
+        );
       }
     },
-    getBusinessInfoValidation
+    getBusinessInfoValidation,
   )
 
   /**
@@ -60,11 +57,11 @@ export const settingsRoutes = new Elysia({ prefix: '/:tenantId/settings' })
    * Update business information
    */
   .put(
-    '/business',
-    async ({ params, body, auth, tenantService }) => {
+    "/business",
+    async ({ params, body, auth, tenantService, set }) => {
       try {
         // Check authorization
-onlySelf(auth!, params.tenantId)
+        onlySelf(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
@@ -85,30 +82,36 @@ onlySelf(auth!, params.tenantId)
           };
         }
 
-        const updatedTenant = await tenantService.updateTenant(params.tenantId, updateData);
+        const updatedTenant = await tenantService.updateTenant(
+          params.tenantId,
+          updateData,
+        );
 
-        return {
-          success: true,
-          message: 'Business information updated successfully',
-          data: {
+        return ResponseBuilder.success(
+          {
             businessName: updatedTenant.businessName,
             tin: updatedTenant.tin,
-            businessRegistrationNumber: updatedTenant.businessRegistrationNumber,
+            businessRegistrationNumber:
+              updatedTenant.businessRegistrationNumber,
             contactEmail: updatedTenant.contactEmail,
             contactPhone: updatedTenant.contactPhone,
             address: updatedTenant.metadata?.address,
             website: updatedTenant.metadata?.website,
             industry: updatedTenant.metadata?.industry,
           },
-        };
+          undefined,
+          "Business information updated successfully",
+        );
       } catch (error: any) {
-        logger.error('Failed to update business info', { error: error.message });
-        return {
-          success: false,
-          error: error.message || 'Failed to update business information',
-          statusCode: error.statusCode || 500,
-        };
+        set.status = error.statusCode || 500;
+        logger.error("Failed to update business info", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to update business information",
+          error.statusCode || 500,
+        );
       }
     },
-    updateBusinessInfoValidation
+    updateBusinessInfoValidation,
   );

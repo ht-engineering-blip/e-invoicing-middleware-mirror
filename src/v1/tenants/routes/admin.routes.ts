@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import crypto from "crypto";
 import { appConfig } from "../../../@config";
-import { logger } from "../../../@lib";
+import { logger, ResponseBuilder } from "../../../@lib";
 import { MailContent, withTemplate } from "../../../@lib/messaging";
 import { requireAuth, getActor } from "../../../middlewares/auth";
 import { AuthService } from "../../auth/services";
@@ -31,11 +31,21 @@ import {
   getERPSyncConfigValidation,
   resendTenantTokenValidation,
   getKeyConfigValidation,
+  updateKeyConfigValidation,
 } from "../validations/admin.validation";
 import {
   updateKeyMapValidation,
   updateReferenceKeyMapValidation,
 } from "../validations/onboarding.validation";
+import {
+  KEY_CONFIG_REGISTRY,
+  VALID_ERP_EVENT_TYPES,
+  findKeyTypeDefinition,
+  isValidErpEventType,
+  resolveKeyConfig,
+  parseMapToRecord,
+  KeyTypeDefinition,
+} from "../utils/key-config.helper";
 import { INVOICE_EVENT_TYPES } from "../../admin/routes/reference.routes";
 
 const VALID_EVENT_IDS = INVOICE_EVENT_TYPES.map((e) => e.id) as string[];
@@ -83,18 +93,13 @@ const adminTenantRoutes = new Elysia({
         };
         await tenantService.notifyTenant(activationEmail, tenant);
 
-        return {
-          success: true,
-          message: "Tenant created successfully",
-          data: tenant,
-        };
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant created successfully",
+        );
       } catch (error: any) {
-        set.status = 500;
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     createTenantValidation,
@@ -110,8 +115,8 @@ const adminTenantRoutes = new Elysia({
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         console.log({ query });
-        const page = query.page || 1;
-        const limit = query.limit || 20;
+        const page = Number(query.page || 1);
+        const limit = Number(query.limit || 20);
         const includeOnboarding = query.onboarding || true;
         const skip = (page - 1) * limit;
 
@@ -122,22 +127,14 @@ const adminTenantRoutes = new Elysia({
           includeOnboarding,
         });
 
-        return {
-          success: true,
-          data: result.tenants,
-          pagination: {
-            page,
-            limit,
-            total: result.total,
-            totalPages: Math.ceil(result.total / limit),
-          },
-        };
+        return ResponseBuilder.paginate(
+          result.tenants,
+          result.total,
+          page,
+          limit,
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     listTenantsValidation,
@@ -154,16 +151,9 @@ const adminTenantRoutes = new Elysia({
         // Verify the user has access to this tenant
         onlySelf(auth!, params.tenantId);
         const tenant = await tenantService.getTenantById(params.tenantId, true);
-        return {
-          success: true,
-          data: tenant,
-        };
+        return ResponseBuilder.success(tenant);
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     getTenantByIdValidation,
@@ -184,17 +174,13 @@ const adminTenantRoutes = new Elysia({
           body,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "Tenant updated successfully",
-          data: tenant,
-        };
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant updated successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     updateTenantValidation,
@@ -218,17 +204,13 @@ const adminTenantRoutes = new Elysia({
           params.tenantId,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "Tenant activated successfully",
-          data: tenant,
-        };
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant activated successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     activateTenantValidation,
@@ -253,17 +235,13 @@ const adminTenantRoutes = new Elysia({
           undefined,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "Tenant suspended successfully",
-          data: tenant,
-        };
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant suspended successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     suspendTenantValidation,
@@ -284,16 +262,13 @@ const adminTenantRoutes = new Elysia({
         );
 
         await tenantService.deleteTenant(params.tenantId, getActor(auth));
-        return {
-          success: true,
-          message: "Tenant deleted successfully",
-        };
+        return ResponseBuilder.success(
+          undefined,
+          undefined,
+          "Tenant deleted successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     deleteTenantValidation,
@@ -312,17 +287,13 @@ const adminTenantRoutes = new Elysia({
           body,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "Onboarding status updated successfully",
-          data: onboarding,
-        };
+        return ResponseBuilder.success(
+          onboarding,
+          undefined,
+          "Onboarding status updated successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     updateOnboardingStatusValidation,
@@ -345,20 +316,16 @@ const adminTenantRoutes = new Elysia({
           body,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "API key created successfully",
-          data: {
+        return ResponseBuilder.success(
+          {
             ...result.apiKey,
             key: result.plainKey, // Only returned once
           },
-        };
+          undefined,
+          "API key created successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     createApiKeyValidation,
@@ -374,16 +341,9 @@ const adminTenantRoutes = new Elysia({
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const apiKeys = await tenantService.listApiKeys(params.tenantId);
-        return {
-          success: true,
-          data: apiKeys,
-        };
+        return ResponseBuilder.success(apiKeys);
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     listApiKeysValidation,
@@ -405,16 +365,13 @@ const adminTenantRoutes = new Elysia({
           body?.reason,
           getActor(auth),
         );
-        return {
-          success: true,
-          message: "API key revoked successfully",
-        };
+        return ResponseBuilder.success(
+          undefined,
+          undefined,
+          "API key revoked successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     revokeApiKeyValidation,
@@ -439,21 +396,17 @@ const adminTenantRoutes = new Elysia({
           getActor(auth),
         );
 
-        return {
-          success: true,
-          message: "API key rotated successfully. New key sent via email.",
-          data: {
+        return ResponseBuilder.success(
+          {
             ...result.apiKey,
             key: result.plainKey, // Only returned once
             emailSent: body?.sendEmail !== false,
           },
-        };
+          undefined,
+          "API key rotated successfully. New key sent via email.",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     rotateApiKeyValidation,
@@ -470,8 +423,8 @@ const adminTenantRoutes = new Elysia({
         // Verify admin access
         onlyAdmin(auth!, "Forbidden: Admin access required");
 
-        const page = query.page || 1;
-        const limit = query.limit || 50;
+        const page = Number(query.page || 1);
+        const limit = Number(query.limit || 50);
         const skip = (page - 1) * limit;
 
         const result = await tenantService.listAllApiKeys({
@@ -481,22 +434,14 @@ const adminTenantRoutes = new Elysia({
           limit,
         });
 
-        return {
-          success: true,
-          data: result.apiKeys,
-          pagination: {
-            page,
-            limit,
-            total: result.total,
-            totalPages: Math.ceil(result.total / limit),
-          },
-        };
+        return ResponseBuilder.paginate(
+          result.apiKeys,
+          result.total,
+          page,
+          limit,
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     listAllApiKeysValidation,
@@ -515,8 +460,8 @@ const adminTenantRoutes = new Elysia({
         // Verify admin access
         onlyAdmin(auth!, "Forbidden: Admin access required");
 
-        const page = query.page || 1;
-        const limit = query.limit || 50;
+        const page = Number(query.page || 1);
+        const limit = Number(query.limit || 50);
         const skip = (page - 1) * limit;
 
         const result = await tenantService.listAllERPConfigs({
@@ -527,22 +472,14 @@ const adminTenantRoutes = new Elysia({
           limit,
         });
 
-        return {
-          success: true,
-          data: result.configs,
-          pagination: {
-            page,
-            limit,
-            total: result.total,
-            totalPages: Math.ceil(result.total / limit),
-          },
-        };
+        return ResponseBuilder.paginate(
+          result.configs,
+          result.total,
+          page,
+          limit,
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     listAllERPConfigsValidation,
@@ -591,21 +528,17 @@ const adminTenantRoutes = new Elysia({
           logger.warn("Failed to update onboarding status:", onboardingError);
         }
 
-        return {
-          success: true,
-          message: "ERP sync configuration updated successfully",
-          data: {
+        return ResponseBuilder.success(
+          {
             tenantId: params.tenantId,
             configName: body.name,
             enabled: body.enabled,
           },
-        };
+          undefined,
+          "ERP sync configuration updated successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     configureERPSyncValidation,
@@ -617,22 +550,20 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/id-key-map",
-    async ({ auth, params, body, tenantService, set }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        if (!VALID_EVENT_IDS.includes(body.eventType)) {
-          set.status = 400;
-          return {
-            success: false,
-            error: `Unknown event '${body.eventType}'.`,
-          };
+        if (!isValidErpEventType(body.eventType)) {
+          return ResponseBuilder.error(
+            `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
+            400,
+          );
         }
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
-          set.status = 404;
-          return { success: false, error: "Tenant not found" };
+          return ResponseBuilder.error("Tenant not found", 404);
         }
 
         const rawIdKeyMap =
@@ -656,21 +587,16 @@ const adminTenantRoutes = new Elysia({
           getActor(auth),
         );
 
-        return {
-          success: true,
-          message: "idKeyMap updated successfully",
-          data: {
+        return ResponseBuilder.success(
+          {
             eventType: body.eventType,
             idKey: body.idKey,
           },
-        };
+          undefined,
+          "idKeyMap updated successfully",
+        );
       } catch (error: any) {
-        set.status = error.statusCode || 500;
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     updateKeyMapValidation,
@@ -682,22 +608,20 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/reference-id-key-map",
-    async ({ auth, params, body, tenantService, set }) => {
+    async ({ auth, params, body, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        if (!VALID_EVENT_IDS.includes(body.eventType)) {
-          set.status = 400;
-          return {
-            success: false,
-            error: `Unknown event '${body.eventType}'.`,
-          };
+        if (!isValidErpEventType(body.eventType)) {
+          return ResponseBuilder.error(
+            `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
+            400,
+          );
         }
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
+        const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
-          set.status = 404;
-          return { success: false, error: "Tenant not found" };
+          return ResponseBuilder.error("Tenant not found", 404);
         }
 
         const referenceIdKeyMap =
@@ -718,20 +642,16 @@ const adminTenantRoutes = new Elysia({
           getActor(auth),
         );
 
-        return {
-          success: true,
-          message: "referenceIdKeyMap updated successfully",
-          data: {
+        return ResponseBuilder.success(
+          {
             eventType: body.eventType,
             idKey: body.idKey,
           },
-        };
+          undefined,
+          "referenceIdKeyMap updated successfully",
+        );
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     updateReferenceKeyMapValidation,
@@ -739,65 +659,155 @@ const adminTenantRoutes = new Elysia({
 
   /**
    * GET /api/v1/tenants/:tenantId/key-config
-   * Get invoiceIdKey, idKeyMap, and referenceIdKeyMap configuration
+   * Get invoiceIdKey, idKeyMap, and referenceIdKeyMap configuration with dynamic keyType filtering
    */
   .get(
     "/:tenantId/key-config",
-    async ({ auth, params, tenantService, set }) => {
+    async ({ auth, params, query, tenantService }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        const tenant = await tenantService.getTenantById(params.tenantId, true);
-        console.log({ tenant });
+        const tenant = await tenantService.getTenantById(params.tenantId);
 
         if (!tenant) {
-          set.status = 404;
-          return { success: false, error: "Tenant not found" };
+          return ResponseBuilder.error("Tenant not found", 404);
         }
 
-        const parseMap = (m: any) => {
-          if (!m) return {};
-          if (typeof m.entries === "function") {
-            return Object.fromEntries(m.entries());
+        const requestedKeyType = query?.keyType?.toLowerCase()?.trim();
+
+        if (requestedKeyType && requestedKeyType !== "all") {
+          const matchedDef = findKeyTypeDefinition(requestedKeyType);
+
+          if (!matchedDef) {
+            return ResponseBuilder.error(
+              `Invalid keyType '${requestedKeyType}'. Must be one of: ${KEY_CONFIG_REGISTRY.map((d) => d.keyType).join(", ")}`,
+              400,
+            );
           }
-          return m;
-        };
 
-        const rawIdKeyMap = parseMap(tenant.config?.idKeyMap);
+          return ResponseBuilder.success(
+            resolveKeyConfig(matchedDef, tenant.config),
+          );
+        }
 
-        const idKeyMap = Object.fromEntries(
-          Object.entries(rawIdKeyMap).map(([k, v]) => [
-            k.replace(/_/g, "."),
-            v,
-          ]),
+        // Return all registered key groups dynamically
+        const keyGroups: Record<string, any> = {};
+        for (const def of KEY_CONFIG_REGISTRY) {
+          keyGroups[def.keyType] = resolveKeyConfig(def, tenant.config);
+        }
+
+        const rawIdKeyMap = parseMapToRecord(tenant.config?.idKeyMap);
+        const rawRefIdKeyMap = parseMapToRecord(
+          tenant.config?.referenceIdKeyMap,
         );
 
-        const rawRefIdKeyMap = parseMap(tenant.config?.referenceIdKeyMap);
+        const standardKey = (tenant.config?.invoiceIdKey ||
+          keyGroups["standard_invoice"]?.idKey ||
+          "invoiceId") as string;
 
-        const referenceIdKeyMap = Object.fromEntries(
-          Object.entries(rawRefIdKeyMap).map(([k, v]) => [
-            k.replace(/_/g, "."),
-            v,
-          ]),
-        );
-
-        return {
-          success: true,
-          data: {
-            invoiceIdKey: (tenant.config?.invoiceIdKey || "invoiceId") as string,
-            idKeyMap: idKeyMap as Record<string, string>,
-            referenceIdKeyMap: referenceIdKeyMap as Record<string, string>,
-          },
-        };
+        return ResponseBuilder.success({
+          ...keyGroups,
+          invoiceIdKey: standardKey,
+          idKeyMap: Object.fromEntries(
+            Object.entries(rawIdKeyMap).map(([k, v]) => [
+              k.replace(/_/g, "."),
+              v,
+            ]),
+          ),
+          referenceIdKeyMap: Object.fromEntries(
+            Object.entries(rawRefIdKeyMap).map(([k, v]) => [
+              k.replace(/_/g, "."),
+              v,
+            ]),
+          ),
+        });
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     getKeyConfigValidation,
+  )
+
+  /**
+   * PUT /api/v1/tenants/:tenantId/key-config
+   * Update ID key mapping by keyType (standard_invoice, credit_note, debit_note, payment) or explicit eventType
+   */
+  .put(
+    "/:tenantId/key-config",
+    async ({ auth, params, body, tenantService }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        if (!tenant) {
+          return ResponseBuilder.error("Tenant not found", 404);
+        }
+
+        const idKeyMap = { ...parseMapToRecord(tenant.config?.idKeyMap) };
+        const referenceIdKeyMap = {
+          ...parseMapToRecord(tenant.config?.referenceIdKeyMap),
+        };
+        let invoiceIdKey = (tenant.config?.invoiceIdKey ||
+          "invoiceId") as string;
+
+        const matchedDef = findKeyTypeDefinition(body.keyType);
+
+        if (matchedDef) {
+          for (const key of matchedDef.eventKeys) {
+            idKeyMap[key.replace(/\./g, "_")] = body.idKey;
+          }
+
+          if (matchedDef.keyType === "standard_invoice") {
+            invoiceIdKey = body.idKey;
+          }
+
+          if (body.referenceIdKey && matchedDef.hasReferenceKey) {
+            for (const key of matchedDef.eventKeys) {
+              referenceIdKeyMap[key.replace(/\./g, "_")] = body.referenceIdKey;
+            }
+          }
+        } else if (body.eventType && isValidErpEventType(body.eventType)) {
+          const safeKey = body.eventType.replace(/\./g, "_");
+          idKeyMap[safeKey] = body.idKey;
+          if (body.referenceIdKey) {
+            referenceIdKeyMap[safeKey] = body.referenceIdKey;
+          }
+        } else {
+          return ResponseBuilder.error(
+            `Invalid keyType or eventType. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
+            400,
+          );
+        }
+
+        const updatedConfig = {
+          ...tenant.config,
+          invoiceIdKey,
+          idKeyMap,
+          referenceIdKeyMap,
+        };
+
+        await tenantService.updateTenant(
+          params.tenantId,
+          { config: updatedConfig } as any,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          {
+            keyType: matchedDef?.keyType || body.keyType,
+            eventType: matchedDef?.eventType || body.eventType,
+            idKey: body.idKey,
+            referenceIdKey: body.referenceIdKey,
+            invoiceIdKey,
+          },
+          undefined,
+          "Key configuration updated successfully",
+        );
+      } catch (error: any) {
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
+      }
+    },
+    updateKeyConfigValidation,
   )
 
   /**
@@ -811,11 +821,7 @@ const adminTenantRoutes = new Elysia({
         onlyTenantAdmin(auth!, params.tenantId);
         const config = await tenantService.getERPSyncConfig(params.tenantId);
         if (!config) {
-          return {
-            success: false,
-            error: "ERP sync not configured",
-            statusCode: 404,
-          };
+          return ResponseBuilder.error("ERP sync not configured", 404);
         }
         const sanitizedConfig = { ...config };
         if (sanitizedConfig.authentication) {
@@ -839,16 +845,9 @@ const adminTenantRoutes = new Elysia({
           }
         }
 
-        return {
-          success: true,
-          data: sanitizedConfig,
-        };
+        return ResponseBuilder.success(sanitizedConfig);
       } catch (error: any) {
-        return {
-          success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
     getERPSyncConfigValidation,
@@ -860,7 +859,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/resend-token",
-    async ({ params, auth, tenantService, authService, set }) => {
+    async ({ params, auth, tenantService, authService }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
 
@@ -870,22 +869,15 @@ const adminTenantRoutes = new Elysia({
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
-          set.status = 404;
-          return {
-            success: false,
-            error: "Tenant not found",
-            statusCode: 404,
-          };
+          return ResponseBuilder.error("Tenant not found", 404);
         }
 
         // Check if already activated
         if (tenant.password || tenant.metadata?.activationCompleted) {
-          set.status = 400;
-          return {
-            success: false,
-            error: "Account has already been activated",
-            statusCode: 400,
-          };
+          return ResponseBuilder.error(
+            "Account has already been activated",
+            400,
+          );
         }
 
         // Check if previous token is still in timeframe and disable/invalidate it using service helper
@@ -933,20 +925,19 @@ const adminTenantRoutes = new Elysia({
         };
         await tenantService.notifyTenant(activationEmail, tenant);
 
-        return {
-          success: true,
-          message: "Activation email resent successfully by admin",
-        };
+        return ResponseBuilder.success(
+          undefined,
+          undefined,
+          "Activation email resent successfully by admin",
+        );
       } catch (error: any) {
-        set.status = error.statusCode || 500;
         logger.error("Admin failed to resend activation email", {
           error: error.message,
         });
-        return {
-          success: false,
-          error: error.message || "Failed to resend activation email",
-          statusCode: error.statusCode || 500,
-        };
+        return ResponseBuilder.error(
+          error.message || "Failed to resend activation email",
+          error.statusCode || 500,
+        );
       }
     },
     resendTenantTokenValidation,

@@ -7,6 +7,8 @@ export const listOutboundInvoicesValidation = {
     status: t.Optional(t.String()),
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
+    search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
@@ -91,6 +93,8 @@ export const listInboundInvoicesValidation = {
     limit: t.Optional(t.String()),
     status: t.Optional(t.String()),
     paymentStatus: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
+    search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
   }),
@@ -118,18 +122,13 @@ export const listAllInvoicesValidation = {
   query: t.Object({
     page: t.Optional(t.String()),
     limit: t.Optional(t.String()),
-    businessId: t.Optional(t.String()),
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
+    irn: t.Optional(t.String()),
     type: t.Optional(
       t.String({
         description:
-          'Filter by invoice type/direction: "all", "inbound", "outbound", "transfer", etc.',
-      }),
-    ),
-    direction: t.Optional(
-      t.String({
-        description: 'Alias for type ("all", "inbound", "outbound")',
+          'Filter by invoice type: "all", "inbound", "outbound", "transfer", etc.',
       }),
     ),
     status: t.Optional(t.String()),
@@ -151,5 +150,21 @@ export const listAllInvoicesValidation = {
     summary: "List All Invoices (Paginated Unified Stream)",
     description:
       "Retrieve a unified, paginated list of inbound, outbound, transfer, and all future invoice types with filtering and search.",
+  },
+};
+
+export const getInvoiceMetricsValidation = {
+  query: t.Object({
+    from: t.Optional(
+      t.String({ description: "Start date filter (YYYY-MM-DD)" }),
+    ),
+    to: t.Optional(t.String({ description: "End date filter (YYYY-MM-DD)" })),
+  }),
+  detail: {
+    tags: ["Transaction Logs"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Get Invoices Dashboard Metrics",
+    description:
+      "Get counts for Total, Outbound, and Inbound invoices with optional date range filtering for dashboard summary cards.",
   },
 };

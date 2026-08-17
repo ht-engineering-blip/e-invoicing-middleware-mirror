@@ -1,4 +1,3 @@
-import { TenantSchema } from "../../shared/validations/models.schema";
 import { t } from "elysia";
 import {
   apiKeyIdParamValidator,
@@ -14,7 +13,7 @@ import {
 
 export const createTenantValidation = {
   body: createTenantValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -26,7 +25,7 @@ export const createTenantValidation = {
 
 export const listTenantsValidation = {
   query: listTenantsQueryValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -37,7 +36,7 @@ export const listTenantsValidation = {
 
 export const getTenantByIdValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants", "Tenant"],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
@@ -48,20 +47,71 @@ export const getTenantByIdValidation = {
 
 export const getKeyConfigValidation = {
   params: tenantIdParamValidator,
-  
+  query: t.Optional(
+    t.Object({
+      keyType: t.Optional(
+        t.String({
+          description:
+            "Filter key configuration by document/key type (standard, credit_note, debit_note, payment, all)",
+          examples: ["standard", "credit_note", "debit_note", "payment", "all"],
+        }),
+      ),
+    }),
+  ),
+
   detail: {
-    tags: ["Onboarding"],
+    tags: ["Onboarding", "Tenant"],
     security: [{ adminKey: [] }, { bearerToken: [] }] as any,
     summary: "Get tenant key configuration",
     description:
-      "Retrieve invoice ID key and ID mapping configurations for a specific tenant",
+      "Retrieve invoice ID key and ID mapping configurations for a specific tenant. Filter by keyType (standard, credit_note, debit_note, payment) or fetch all.",
+  },
+};
+
+export const updateKeyConfigValidation = {
+  params: tenantIdParamValidator,
+  body: t.Object({
+    keyType: t.Optional(
+      t.String({
+        description:
+          "The document key group to update (standard, credit_note, debit_note, payment)",
+      }),
+    ),
+    eventType: t.Optional(
+      t.String({
+        description:
+          "Explicit event type (e.g. erp.creditnote.issued, erp.invoice.submitted)",
+      }),
+    ),
+    idKey: t.String({
+      description: "Dot-notation path to the ID field in the webhook payload",
+      examples: ["invoice.id", "creditNote.id", "debitNote.id"],
+    }),
+    referenceIdKey: t.Optional(
+      t.String({
+        description:
+          "Dot-notation path to the reference ID field in the webhook payload (for credit notes, debit notes)",
+        examples: [
+          "creditNote.originalInvoiceId",
+          "debitNote.originalInvoiceId",
+        ],
+      }),
+    ),
+  }),
+
+  detail: {
+    tags: ["Onboarding", "Tenant"],
+    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    summary: "Update tenant key configuration",
+    description:
+      "Update ID and reference ID key mappings by keyType (standard, credit_note, debit_note, payment) or explicit eventType.",
   },
 };
 
 export const updateTenantValidation = {
   params: tenantIdParamValidator,
   body: updateTenantValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -73,7 +123,7 @@ export const updateTenantValidation = {
 
 export const activateTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -84,7 +134,7 @@ export const activateTenantValidation = {
 
 export const suspendTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -95,7 +145,7 @@ export const suspendTenantValidation = {
 
 export const deleteTenantValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -107,7 +157,7 @@ export const deleteTenantValidation = {
 export const updateOnboardingStatusValidation = {
   params: tenantIdParamValidator,
   body: updateOnboardingStatusValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
@@ -119,7 +169,7 @@ export const updateOnboardingStatusValidation = {
 export const createApiKeyValidation = {
   params: tenantIdParamValidator,
   body: createApiKeyValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -130,7 +180,7 @@ export const createApiKeyValidation = {
 
 export const listApiKeysValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -142,7 +192,7 @@ export const listApiKeysValidation = {
 export const revokeApiKeyValidation = {
   params: t.Composite([tenantIdParamValidator, apiKeyIdParamValidator]),
   body: revokeApiKeyValidator,
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -157,7 +207,7 @@ export const rotateApiKeyValidation = {
     reason: t.Optional(t.String()),
     sendEmail: t.Optional(t.Boolean({ default: true })),
   }),
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -174,7 +224,7 @@ export const listAllApiKeysValidation = {
     status: t.Optional(t.String()),
     tenantId: t.Optional(t.String()),
   }),
-  
+
   detail: {
     tags: ["Admin - API Keys"],
     security: [{ adminKey: [] }],
@@ -191,7 +241,7 @@ export const listAllERPConfigsValidation = {
     erpSystem: t.Optional(t.String()),
     enabled: t.Optional(t.String()),
   }),
-  
+
   detail: {
     tags: ["Admin - ERP Integration"],
     security: [{ adminKey: [] }],
@@ -204,7 +254,7 @@ export const listAllERPConfigsValidation = {
 export const configureERPSyncValidation = {
   params: tenantIdParamValidator,
   body: erpSyncConfigValidator,
-  
+
   detail: {
     tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
@@ -219,7 +269,7 @@ export const getERPSyncConfigValidation = {
   query: t.Object({
     decrypt: t.Optional(t.String({ default: "true" })),
   }),
-  
+
   detail: {
     tags: ["Admin - ERP Integration", "Tenant"],
     security: [{ adminKey: [] }],
@@ -231,7 +281,7 @@ export const getERPSyncConfigValidation = {
 
 export const resendTenantTokenValidation = {
   params: tenantIdParamValidator,
-  
+
   detail: {
     tags: ["Admin - Tenants"],
     security: [{ adminKey: [] }],
