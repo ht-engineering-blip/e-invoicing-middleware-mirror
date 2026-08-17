@@ -7,15 +7,22 @@ import {
   OutboundPaymentStatus,
   IOutboundPaymentDetails,
 } from "../models/outbound-invoice.model";
-import { InboundInvoiceModel } from "../models/inbound-invoice.model";
+import {
+  InboundInvoiceDocument,
+  InboundInvoiceModel,
+} from "../models/inbound-invoice.model";
 import { WebhookEventModel } from "../../webhook/models/webhook-event.model";
 
 export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
+  private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
       OutboundInvoiceModel,
+    );
+    this.inboundInvoiceModel = new ModelWrapper<InboundInvoiceDocument>(
+      InboundInvoiceModel,
     );
   }
 
@@ -331,9 +338,8 @@ export class OutboundInvoiceRepository {
             },
           },
         ];
-        [aggregationResult] = await InboundInvoiceModel.aggregate(
-          inboundPipeline,
-        )
+        [aggregationResult] = await this.inboundInvoiceModel
+          .aggregate(inboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
       } else if (requestedType === "outbound") {
@@ -348,9 +354,8 @@ export class OutboundInvoiceRepository {
             },
           },
         ];
-        [aggregationResult] = await OutboundInvoiceModel.aggregate(
-          outboundPipeline,
-        )
+        [aggregationResult] = await this.outboundInvoiceModel
+          .aggregate(outboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
       } else {
@@ -371,9 +376,8 @@ export class OutboundInvoiceRepository {
             },
           },
         ];
-        [aggregationResult] = await OutboundInvoiceModel.aggregate(
-          unifiedPipeline,
-        )
+        [aggregationResult] = await this.outboundInvoiceModel
+          .aggregate(unifiedPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
       }
@@ -391,6 +395,69 @@ export class OutboundInvoiceRepository {
         500,
         "Failed to retrieve unified invoice aggregation stream",
       );
+    }
+  }
+
+  /**
+   * Get invoice dashboard metrics (Total, Outbound, Inbound counts)
+   */
+  async getInvoiceMetrics(params: {
+    auth?: {
+      tenantId?: string;
+      businessId?: string;
+      isAdmin?: boolean;
+    };
+    from?: Date;
+    to?: Date;
+  }): Promise<{
+    total: number;
+    outbound: number;
+    inbound: number;
+  }> {
+    try {
+      const auth = params.auth;
+      const tenantId = auth?.tenantId;
+      const businessId = auth?.businessId;
+      const isAdmin = auth?.isAdmin;
+
+      const outboundMatch: any = {};
+      if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
+
+      if (params.from || params.to) {
+        outboundMatch.createdAt = {};
+        if (params.from) outboundMatch.createdAt.$gte = params.from;
+        if (params.to) outboundMatch.createdAt.$lte = params.to;
+      }
+
+      const inboundMatch: any = {};
+      if (businessId?.trim()) inboundMatch.businessId = businessId.trim();
+      else if (!isAdmin && tenantId) inboundMatch.tenantId = tenantId;
+
+      if (params.from || params.to) {
+        inboundMatch.createdAt = {};
+        if (params.from) inboundMatch.createdAt.$gte = params.from;
+        if (params.to) inboundMatch.createdAt.$lte = params.to;
+      }
+
+      const [outboundCount, inboundCount] = await Promise.all([
+        this.outboundInvoiceModel
+          .countDocuments(outboundMatch)
+          .maxTimeMS(20000)
+          .exec(),
+        this.inboundInvoiceModel
+          .countDocuments(inboundMatch)
+          .maxTimeMS(20000)
+          .exec(),
+      ]);
+
+      return {
+        total: (outboundCount || 0) + (inboundCount || 0),
+        outbound: outboundCount || 0,
+        inbound: inboundCount || 0,
+      };
+    } catch (error) {
+      console.error("Error computing invoice metrics:", error);
+      throw new AppError(500, "Failed to compute invoice metrics");
     }
   }
 

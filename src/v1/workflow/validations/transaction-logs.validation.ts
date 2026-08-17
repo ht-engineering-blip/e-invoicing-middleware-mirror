@@ -152,3 +152,19 @@ export const listAllInvoicesValidation = {
       "Retrieve a unified, paginated list of inbound, outbound, transfer, and all future invoice types with filtering and search.",
   },
 };
+
+export const getInvoiceMetricsValidation = {
+  query: t.Object({
+    from: t.Optional(
+      t.String({ description: "Start date filter (YYYY-MM-DD)" }),
+    ),
+    to: t.Optional(t.String({ description: "End date filter (YYYY-MM-DD)" })),
+  }),
+  detail: {
+    tags: ["Transaction Logs"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Get Invoices Dashboard Metrics",
+    description:
+      "Get counts for Total, Outbound, and Inbound invoices with optional date range filtering for dashboard summary cards.",
+  },
+};
