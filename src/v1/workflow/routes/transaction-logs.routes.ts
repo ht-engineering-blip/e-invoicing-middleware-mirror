@@ -50,7 +50,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
    * List a unified, paginated stream of inbound, outbound, transfer, and future invoice types.
    */
   .get(
-    "/all",
+    "/",
     async ({ query, auth, outboundRepo, set }) => {
       try {
         const page = Math.max(1, parseInt(query.page || "1") || 1);
