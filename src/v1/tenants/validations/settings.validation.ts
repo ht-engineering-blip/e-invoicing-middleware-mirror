@@ -72,9 +72,11 @@ export const updateBusinessInfoValidation = {
 };
 
 export const requestEmailChangeValidation = {
-  params: t.Object({
-    tenantId: t.String(),
-  }),
+  params: t.Optional(
+    t.Object({
+      tenantId: t.Optional(t.String()),
+    }),
+  ),
   body: t.Object({
     newEmail: t.String({
       format: "email",
@@ -86,14 +88,16 @@ export const requestEmailChangeValidation = {
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "Request Email Change Verification",
     description:
-      "Send a verification code and confirmation link to the new email address.",
+      "Send a verification link to the new email address.",
   },
 };
 
 export const verifyEmailChangeValidation = {
-  params: t.Object({
-    tenantId: t.String(),
-  }),
+  params: t.Optional(
+    t.Object({
+      tenantId: t.Optional(t.String()),
+    }),
+  ),
   body: t.Optional(
     t.Object({
       token: t.Optional(t.String({ description: "Verification JWT token" })),
