@@ -42,11 +42,33 @@ export class InvoiceWorkflowService {
    * Format FIRS error for consistent error handling
    */
   private getFIRSError(error: any) {
+    const data =
+      error?.response?.data ||
+      error?.data ||
+      error?.errors?.response ||
+      error?.errors;
     const message =
-      error?.errors?.response?.public_message ||
+      data?.error?.public_message ||
+      data?.error?.message ||
+      data?.public_message ||
+      data?.message ||
+      (Array.isArray(data?.errors)
+        ? data.errors
+            .map((e: any) =>
+              typeof e === "string" ? e : e?.message || JSON.stringify(e),
+            )
+            .join("; ")
+        : data?.errors
+          ? JSON.stringify(data.errors)
+          : "") ||
       error?.message ||
       "An error occurred, please try again.";
-    const code = error?.errors?.code || error?.statusCode || 500;
+    const code =
+      error?.response?.status ||
+      data?.code ||
+      error?.statusCode ||
+      error?.errors?.code ||
+      500;
     return { message, code };
   }
 
@@ -100,7 +122,7 @@ export class InvoiceWorkflowService {
       console.log(JSON.stringify({ invoice: targetInvoice }, undefined, 2));
 
       // Call FIRS validation API
-      const validationResult = await this.firsService.validateInvoice(
+      const validationResult: any = await this.firsService.validateInvoice(
         businessId,
         targetInvoice,
       );
@@ -108,10 +130,38 @@ export class InvoiceWorkflowService {
       console.log({ validationResult });
 
       if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
+        const errorList: string[] = [];
+        if (Array.isArray(validationResult?.errors)) {
+          errorList.push(
+            ...validationResult.errors.map((e: any) =>
+              typeof e === "string" ? e : e?.message || JSON.stringify(e),
+            ),
+          );
+        } else if (validationResult?.errors) {
+          errorList.push(
+            typeof validationResult.errors === "string"
+              ? validationResult.errors
+              : JSON.stringify(validationResult.errors),
+          );
+        }
+        if (validationResult?.message) {
+          errorList.push(validationResult.message);
+        }
+        if (validationResult?.data?.message) {
+          errorList.push(validationResult.data.message);
+        }
+        if (errorList.length === 0) {
+          errorList.push(
+            validationResult?.code
+              ? `FIRS validation returned status ${validationResult.code}`
+              : "Validation failed",
+          );
+        }
+
         return {
           success: false,
           valid: false,
-          errors: validationResult.code || ["Validation failed"],
+          errors: errorList,
           workflowState: { validated: false },
         };
       }
@@ -154,16 +204,44 @@ export class InvoiceWorkflowService {
         business_id: authContext.businessId,
       };
       // Call FIRS sign API
-      const signResult = await this.firsService.signInvoice(
+      const signResult: any = await this.firsService.signInvoice(
         authContext.tenantId,
         invoiceWithCert,
       );
 
-      if (!signResult?.data?.ok) {
+      if (!signResult?.data?.ok && signResult?.code !== 200) {
+        const errorList: string[] = [];
+        if (Array.isArray(signResult?.data?.errors)) {
+          errorList.push(
+            ...signResult.data.errors.map((e: any) =>
+              typeof e === "string" ? e : e?.message || JSON.stringify(e),
+            ),
+          );
+        } else if (signResult?.data?.errors) {
+          errorList.push(
+            typeof signResult.data.errors === "string"
+              ? signResult.data.errors
+              : JSON.stringify(signResult.data.errors),
+          );
+        }
+        if (signResult?.message) {
+          errorList.push(signResult.message);
+        }
+        if (signResult?.data?.message) {
+          errorList.push(signResult.data.message);
+        }
+        if (errorList.length === 0) {
+          errorList.push(
+            signResult?.code
+              ? `FIRS signing returned status ${signResult.code}`
+              : "Signing failed",
+          );
+        }
+
         return {
           success: false,
           signed: false,
-          errors: signResult?.data?.errors || ["Signing failed"],
+          errors: errorList,
           workflowState: { signed: false },
         };
       }

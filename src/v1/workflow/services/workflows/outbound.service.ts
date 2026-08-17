@@ -3,6 +3,7 @@ import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { generateUniqueHsnCode } from "../../utils/transformer/utils";
+import { logger } from "../../../../@lib/logger";
 import { WorkflowEventType } from "../../../../@lib/constants";
 
 export class OutboundWorkflowService {
@@ -36,14 +37,33 @@ export class OutboundWorkflowService {
   }
 
   getFIRSError(error: any) {
-    console.log(error);
-    let message =
-      error?.errors &&
-      error?.errors?.response &&
-      error?.errors?.response?.public_message
-        ? error?.errors?.response?.public_message
-        : "An error occured, please try again.";
-    let code = error?.errors && error?.errors?.code ? error.errors.code : 500;
+    const data =
+      error?.response?.data ||
+      error?.data ||
+      error?.errors?.response ||
+      error?.errors;
+    const message =
+      data?.error?.public_message ||
+      data?.error?.message ||
+      data?.public_message ||
+      data?.message ||
+      (Array.isArray(data?.errors)
+        ? data.errors
+            .map((e: any) =>
+              typeof e === "string" ? e : e?.message || JSON.stringify(e),
+            )
+            .join("; ")
+        : data?.errors
+          ? JSON.stringify(data.errors)
+          : "") ||
+      error?.message ||
+      "An error occurred, please try again.";
+    const code =
+      error?.response?.status ||
+      data?.code ||
+      error?.statusCode ||
+      error?.errors?.code ||
+      500;
     return { message, code };
   }
 
@@ -89,7 +109,7 @@ export class OutboundWorkflowService {
 
       // Step 1: Validate
       if (!wf.validated) {
-        let validatedInvoice;
+        let validatedInvoice: any;
         let attempts = 0;
         const maxAttempts = 3;
 
@@ -132,7 +152,22 @@ export class OutboundWorkflowService {
           !validatedInvoice ||
           (validatedInvoice.code !== 200 && !validatedInvoice?.data?.ok)
         ) {
-          throw new Error("Invoice validation failed");
+          const detail =
+            validatedInvoice?.message ||
+            (validatedInvoice?.errors
+              ? Array.isArray(validatedInvoice.errors)
+                ? validatedInvoice.errors
+                    .map((e: any) =>
+                      typeof e === "string" ? e : e?.message || JSON.stringify(e),
+                    )
+                    .join("; ")
+                : JSON.stringify(validatedInvoice.errors)
+              : "") ||
+            validatedInvoice?.data?.message ||
+            (validatedInvoice?.data ? JSON.stringify(validatedInvoice.data) : "");
+          throw new Error(
+            `Invoice validation failed${detail ? `: ${detail}` : ""}`,
+          );
         }
 
         await this.outboundRepo.update(invoice.irn, {
@@ -147,10 +182,25 @@ export class OutboundWorkflowService {
 
       // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
       if (!skipSigning && !wf.signed) {
-        const signedInvoice = await firsService.signInvoice(invoice.tenant_id, invoice);
+        const signedInvoice: any = await firsService.signInvoice(invoice.tenant_id, invoice);
 
         if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
-          throw new Error("Invoice signing failed");
+          const detail =
+            signedInvoice?.message ||
+            (signedInvoice?.errors
+              ? Array.isArray(signedInvoice.errors)
+                ? signedInvoice.errors
+                    .map((e: any) =>
+                      typeof e === "string" ? e : e?.message || JSON.stringify(e),
+                    )
+                    .join("; ")
+                : JSON.stringify(signedInvoice.errors)
+              : "") ||
+            signedInvoice?.data?.message ||
+            (signedInvoice?.data ? JSON.stringify(signedInvoice.data) : "");
+          throw new Error(
+            `Invoice signing failed${detail ? `: ${detail}` : ""}`,
+          );
         }
 
         await this.outboundRepo.update(invoice.irn, {
@@ -166,16 +216,34 @@ export class OutboundWorkflowService {
       // Step 3: Confirm
       let toTransmit = false;
       if (!wf.transmitted) {
-        const confirmedInvoice = await firsService.confirmSignedInvoice(
+        const confirmedInvoice: any = await firsService.confirmSignedInvoice(
           invoice.tenant_id,
           invoice.irn,
         );
 
-        if (confirmedInvoice.data.code !== 200) {
-          throw new Error("Invoice confirmation failed");
+        const confirmCode =
+          confirmedInvoice?.data?.code ?? confirmedInvoice?.code;
+        if (confirmCode && confirmCode !== 200) {
+          const detail =
+            confirmedInvoice?.data?.message ||
+            (confirmedInvoice?.data?.errors
+              ? Array.isArray(confirmedInvoice.data.errors)
+                ? confirmedInvoice.data.errors.join("; ")
+                : JSON.stringify(confirmedInvoice.data.errors)
+              : "") ||
+            confirmedInvoice?.message ||
+            (confirmedInvoice?.errors
+              ? JSON.stringify(confirmedInvoice.errors)
+              : "") ||
+            (confirmedInvoice?.data
+              ? JSON.stringify(confirmedInvoice.data)
+              : "");
+          throw new Error(
+            `Invoice confirmation failed${detail ? `: ${detail}` : ""}`,
+          );
         }
 
-        toTransmit = !confirmedInvoice?.data?.data.transmitted;
+        toTransmit = !confirmedInvoice?.data?.data?.transmitted;
 
         await this.outboundRepo.update(invoice.irn, {
           status: OutboundInvoiceStatus.TRANSMITTED,
@@ -199,7 +267,9 @@ export class OutboundWorkflowService {
       );
 
       if (!encryptedData?.qrCode && !encryptedData?.data) {
-        throw new Error("QR code generation failed");
+        throw new Error(
+          "QR code generation failed: FIRS encryption returned empty QR code and data",
+        );
       }
 
       // Update stored invoice if exists
@@ -214,7 +284,25 @@ export class OutboundWorkflowService {
       try {
         // Step 5: Transmit
         if (transmit && (toTransmit || !wf.transmitted)) {
-          await firsService.transmitInvoice(invoice.tenant_id, invoice.irn);
+          const transmitRes: any = await firsService.transmitInvoice(
+            invoice.tenant_id,
+            invoice.irn,
+          );
+
+          if (
+            transmitRes &&
+            transmitRes.code &&
+            transmitRes.code !== 200 &&
+            !transmitRes?.data?.ok
+          ) {
+            const detail =
+              transmitRes?.message ||
+              (transmitRes?.errors ? JSON.stringify(transmitRes.errors) : "") ||
+              "";
+            throw new Error(
+              `Transmission failed${detail ? `: ${detail}` : ""}`,
+            );
+          }
 
           await this.outboundRepo.update(invoice.irn, {
             status: OutboundInvoiceStatus.DELIVERED,
@@ -224,8 +312,11 @@ export class OutboundWorkflowService {
             delivered: true,
           });
         }
-      } catch (error) {
-        // Fail gracefully
+      } catch (error: any) {
+        logger.warn("[OutboundService] Transmission warning:", {
+          error: error.message,
+          irn: invoice.irn,
+        });
       }
 
       return encryptedData;

@@ -20,7 +20,10 @@ export function registerSignJob(): void {
       );
 
       if (!result.signed) {
-        throw new Error(`Signing failed: ${(result.errors ?? []).join("; ")}`);
+        const errorDetail = Array.isArray(result.errors)
+          ? result.errors.join("; ")
+          : (result.errors || result.message || "Signing failed");
+        throw new Error(`Invoice signing failed: ${errorDetail}`);
       }
 
       logger.info("[Job:sign] Signed", { jobChainId });
