@@ -23,6 +23,7 @@ import {
   listInboundInvoicesValidation,
   getInboundInvoiceValidation,
   listAllInvoicesValidation,
+  getInvoiceMetricsValidation,
 } from "../validations/transaction-logs.validation";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { decryptSensitiveData } from "../../../@lib/crypto";
@@ -91,6 +92,39 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
       }
     },
     listAllInvoicesValidation,
+  )
+
+  /**
+   * GET /workflow/invoices/metrics
+   * Return dashboard metrics summary (Total, Outbound, Inbound counts)
+   */
+  .get(
+    "/metrics",
+    async ({ query, auth, outboundRepo, set }) => {
+      try {
+        const metrics = await outboundRepo.getInvoiceMetrics({
+          auth,
+          from: parseDate(query.from),
+          to: parseDate(query.to),
+        });
+
+        return ResponseBuilder.success(
+          metrics,
+          undefined,
+          "Invoice metrics retrieved successfully",
+        );
+      } catch (error: any) {
+        logger.error("Failed to get invoice metrics", {
+          error: error?.message || error,
+        });
+        set.status = error?.statusCode || 500;
+        return ResponseBuilder.error(
+          error?.message || "Failed to retrieve invoice metrics",
+          error?.statusCode || 500,
+        );
+      }
+    },
+    getInvoiceMetricsValidation,
   )
 
   // ==================== OUTBOUND INVOICES ====================
