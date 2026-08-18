@@ -114,24 +114,25 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, query, tenantService }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
-        console.log({ query });
-        const page = Number(query.page || 1);
-        const limit = Number(query.limit || 20);
-        const includeOnboarding = query.onboarding || true;
-        const skip = (page - 1) * limit;
+        const { page, limit, onboarding, status } = query;
+        const pageNum = Number(page || 1);
+        const limitNum = Number(limit || 20);
+        const includeOnboarding =
+          onboarding !== undefined ? Boolean(onboarding) : true;
+        const skip = (pageNum - 1) * limitNum;
 
         const result = await tenantService.listTenants({
-          status: query.status,
+          status,
           skip,
-          limit,
+          limit: limitNum,
           includeOnboarding,
         });
 
         return ResponseBuilder.paginate(
           result.tenants,
           result.total,
-          page,
-          limit,
+          page!,
+          limit!,
         );
       } catch (error: any) {
         return ResponseBuilder.error(error.message, error.statusCode || 500);
