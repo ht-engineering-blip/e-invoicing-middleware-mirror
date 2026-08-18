@@ -28,14 +28,33 @@ export class InboundWorkflowService {
   }
 
   getFIRSError(error: any) {
-    console.log(error);
-    let message =
-      error?.errors &&
-      error?.errors?.response &&
-      error?.errors?.response?.public_message
-        ? error?.errors?.response?.public_message
-        : "An error occured, please try again.";
-    let code = error?.errors && error?.errors?.code ? error.errors.code : 500;
+    const data =
+      error?.response?.data ||
+      error?.data ||
+      error?.errors?.response ||
+      error?.errors;
+    const message =
+      data?.error?.public_message ||
+      data?.error?.message ||
+      data?.public_message ||
+      data?.message ||
+      (Array.isArray(data?.errors)
+        ? data.errors
+            .map((e: any) =>
+              typeof e === "string" ? e : e?.message || JSON.stringify(e),
+            )
+            .join("; ")
+        : data?.errors
+          ? JSON.stringify(data.errors)
+          : "") ||
+      error?.message ||
+      "An error occurred, please try again.";
+    const code =
+      error?.response?.status ||
+      data?.code ||
+      error?.statusCode ||
+      error?.errors?.code ||
+      500;
     return { message, code };
   }
 

@@ -70,3 +70,51 @@ export const updateBusinessInfoValidation = {
       "Update tenant business information (TIN and BRN cannot be changed)",
   },
 };
+
+export const requestEmailChangeValidation = {
+  params: t.Optional(
+    t.Object({
+      tenantId: t.Optional(t.String()),
+    }),
+  ),
+  body: t.Object({
+    newEmail: t.String({
+      format: "email",
+      description: "New contact email address to verify and switch to",
+    }),
+  }),
+  detail: {
+    tags: ["Tenant"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Request Email Change Verification",
+    description:
+      "Send a verification link to the new email address.",
+  },
+};
+
+export const verifyEmailChangeValidation = {
+  params: t.Optional(
+    t.Object({
+      tenantId: t.Optional(t.String()),
+    }),
+  ),
+  body: t.Optional(
+    t.Object({
+      token: t.Optional(t.String({ description: "Verification JWT token" })),
+      _u: t.Optional(t.String({ description: "Verification JWT token alias" })),
+    }),
+  ),
+  query: t.Optional(
+    t.Object({
+      token: t.Optional(t.String({ description: "Verification JWT token" })),
+      _u: t.Optional(t.String({ description: "Verification JWT token alias" })),
+    }),
+  ),
+  detail: {
+    tags: ["Tenant"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Verify and Confirm Email Change",
+    description:
+      "Verify the JWT token sent to the new email address and update the tenant contact email.",
+  },
+};

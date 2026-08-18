@@ -1,11 +1,13 @@
 import { Elysia } from "elysia";
-import { requireAuth } from "../../../middlewares/auth";
-import { logger, ResponseBuilder } from "../../../@lib";
+import { getActor, requireAuth } from "../../../middlewares/auth";
+import { logger, ResponseBuilder, UnauthorizedError } from "../../../@lib";
 import { TenantService } from "../services/tenant.service";
 import { onlySelf } from "../../auth/utils/access-checks";
 import {
   getBusinessInfoValidation,
   updateBusinessInfoValidation,
+  requestEmailChangeValidation,
+  verifyEmailChangeValidation,
 } from "../validations/settings.validation";
 
 /**
@@ -85,6 +87,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         const updatedTenant = await tenantService.updateTenant(
           params.tenantId,
           updateData,
+          getActor(auth),
         );
 
         return ResponseBuilder.success(
@@ -114,4 +117,83 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
       }
     },
     updateBusinessInfoValidation,
+  )
+
+  /**
+   * POST /tenants/:tenantId/settings/email/request-change
+   * Request email change verification link
+   */
+  .post(
+    "/email/request-change",
+    async ({ params, body, auth, tenantService, set }) => {
+      try {
+        const tenantId = auth?.tenantId || params?.tenantId;
+        if (!tenantId) {
+          throw new UnauthorizedError("Tenant authentication required");
+        }
+
+        const result = await tenantService.requestEmailChange(
+          tenantId,
+          body.newEmail,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          result.message,
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to request email change", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to request email change",
+          error.statusCode || 500,
+        );
+      }
+    },
+    requestEmailChangeValidation,
+  )
+
+  /**
+   * POST /tenants/:tenantId/settings/email/verify
+   * Verify token and complete contact email update
+   */
+  .post(
+    "/email/verify",
+    async ({ params, body, query, auth, tenantService, set }) => {
+      try {
+        const tenantId = auth?.tenantId || params?.tenantId;
+        if (!tenantId) {
+          throw new UnauthorizedError("Tenant authentication required");
+        }
+
+        const token =
+          body?.token || body?._u || query?.token || query?._u || "";
+
+        const result = await tenantService.verifyEmailChange(
+          tenantId,
+          token,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          result.message,
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to verify email change", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to verify email change",
+          error.statusCode || 500,
+        );
+      }
+    },
+    verifyEmailChangeValidation,
   );

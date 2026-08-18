@@ -15,6 +15,7 @@ import { registerConfirmStatusJob } from "./definitions/confirm-status.job";
 import { registerUpdatePaymentStatusJob } from "./definitions/update-payment-status.job";
 import { registerSyncErpJob } from "./definitions/sync-erp.job";
 import { registerProcessCreditNoteJob } from "./definitions/process-credit-note.job";
+import { registerCompleteCreditNoteJob } from "./definitions/complete-credit-note.job";
 
 export function registerAllJobs(): void {
   registerGenerateIrnJob();
@@ -29,4 +30,5 @@ export function registerAllJobs(): void {
   registerUpdatePaymentStatusJob();
   registerSyncErpJob();
   registerProcessCreditNoteJob();
+  registerCompleteCreditNoteJob();
 }

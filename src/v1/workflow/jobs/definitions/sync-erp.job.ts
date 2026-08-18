@@ -5,9 +5,12 @@ import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import type { IERPSyncConfig } from "../../../tenants/models/tenant.model";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import type { InvoiceType } from "../../../../@lib/adapters/firs/types";
 import { buildQrUrl, isSafeUrl } from "../../../../@lib";
 
 const tenantService = new TenantService();
+const firsService = new FIRSService();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -115,25 +118,67 @@ function renderBody(
 }
 
 /**
- * Map ERP response fields back into an object using responseMapping.
- * responseMapping: { "localKey": "response.path.to.value" }
+ * Resolves the FIRS invoice type code from the invoice-types resource list
+ * based on the event type or explicit invoice type code.
  */
-function applyResponseMapping(
-  response: any,
-  responseMapping?: Record<string, string>,
-): Record<string, any> {
-  if (!responseMapping) return {};
-  const result: Record<string, any> = {};
-  for (const [localKey, responsePath] of Object.entries(responseMapping)) {
-    const value = responsePath
-      .split(".")
-      .reduce(
-        (acc: any, seg) => (acc != null ? acc[seg] : undefined),
-        response,
-      );
-    if (value !== undefined) result[localKey] = value;
+export function resolveInvoiceTypeCode(
+  eventType: string,
+  invoiceTypes: InvoiceType[] = [],
+  explicitCode?: string,
+): string {
+  // 1. Direct code lookup if already present on the invoice
+  if (explicitCode) {
+    const directMatch = invoiceTypes.find(
+      (t) => (t.key || t.code) === explicitCode,
+    );
+    if (directMatch) return String(directMatch.key || directMatch.code);
   }
-  return result;
+
+  // 2. Normalize strings for fuzzy matching
+  const sanitize = (text: string) =>
+    text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizedTarget = sanitize(eventType);
+
+  // 3. Match against FIRS invoice-types resource
+  for (const item of invoiceTypes) {
+    const key = String(item.key || item.code || "");
+    const value = item.value || item.description || "";
+    const normalizedValue = sanitize(value);
+
+    if (!key || !normalizedValue) continue;
+
+    // Full or substring match (e.g. "erp.creditnote.issued" contains "creditnote")
+    if (
+      normalizedTarget.includes(normalizedValue) ||
+      normalizedValue.includes(normalizedTarget)
+    ) {
+      return key;
+    }
+
+    // Significant keyword match (words with 4+ chars like "credit", "debit", "factor", "statement")
+    const keywords = value
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
+      .map(sanitize);
+
+    if (
+      keywords.length > 0 &&
+      keywords.every((kw) => normalizedTarget.includes(kw))
+    ) {
+      return key;
+    }
+  }
+
+  // 4. Fallback defaults if resource is empty or no match
+  if (normalizedTarget.includes("credit")) return "380";
+  if (normalizedTarget.includes("debit")) return "384";
+  if (normalizedTarget.includes("self") && normalizedTarget.includes("bill")) {
+    return "385";
+  }
+  if (normalizedTarget.includes("factor")) return "388";
+  if (normalizedTarget.includes("statement")) return "389";
+  return explicitCode ?? "381";
 }
 
 // ── Job definition ────────────────────────────────────────────────────────────
@@ -193,31 +238,26 @@ export function registerSyncErpJob(): void {
         qrCode = buildQrUrl(context.irn, !!qrCode) as string;
       }
 
-      let invoiceType = "";
-
-      const event = eventType.toLowerCase();
-
-      if (
-        event.includes("creditnote") ||
-        event.includes("credit_note") ||
-        event.includes("credit note")
-      ) {
-        invoiceType = "381"; // Credit Note
-      } else if (
-        event.includes("debitnote") ||
-        event.includes("debit_note") ||
-        event.includes("debit note")
-      ) {
-        invoiceType = "384"; // Debit Note
-      } else if (event.includes("self") && event.includes("bill")) {
-        invoiceType = "385"; // Self Billed Invoice
-      } else if (event.includes("factor")) {
-        invoiceType = "386"; // Factored Invoice
-      } else if (event.includes("statement")) {
-        invoiceType = "388"; // Statement of Account
-      } else {
-        invoiceType = "380"; // Commercial Invoice
+      // Dynamically fetch invoice-types from FIRS (GET /api/v1/invoice/resources/invoice-types)
+      let invoiceTypes: InvoiceType[] = [];
+      try {
+        invoiceTypes =
+          await firsService.getResource<InvoiceType>("invoice-types");
+      } catch (err: any) {
+        logger.warn("[Job:sync-erp] Failed to fetch invoice-types from FIRS", {
+          error: err.message,
+        });
       }
+
+      const explicitCode =
+        context.transformedInvoice?.invoice_type_code ??
+        context.transformedInvoice?.invoiceTypeCode;
+
+      const invoiceType = resolveInvoiceTypeCode(
+        eventType,
+        invoiceTypes,
+        explicitCode,
+      );
 
       const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
         ...context,

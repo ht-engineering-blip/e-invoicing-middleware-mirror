@@ -23,6 +23,26 @@ const firsService = new FIRSService();
  */
 const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
   /**
+   * GET /api/v1/invoice/resources/invoice-types
+   * Retrieve valid FIRS invoice type codes (e.g. Credit Note, Commercial Invoice, Debit Note).
+   */
+  .get(
+    "/invoice-types",
+    async ({ set }) => {
+      try {
+        const data = await firsService.getResource("invoice-types");
+        return ResponseBuilder.success(data);
+      } catch (error: any) {
+        logger.error("Failed to fetch invoice types resource", {
+          error: error.message,
+        });
+        set.status = 500;
+        return ResponseBuilder.error("Failed to retrieve invoice types", 500);
+      }
+    },
+  )
+
+  /**
    * GET /api/v1/invoice/resources/payment_means
    * Retrieve valid FIRS payment means codes (e.g. Bank Transfer, Card, Cash).
    */

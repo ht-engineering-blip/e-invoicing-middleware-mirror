@@ -26,7 +26,13 @@ export async function processTransmitJob(
     );
 
     if (!result.transmitted) {
-      throw new Error("Transmission failed");
+      const errorDetail =
+        (Array.isArray(result.errors)
+          ? result.errors.join("; ")
+          : result.errors) ||
+        result.message ||
+        "Transmission failed";
+      throw new Error(`Invoice transmission failed: ${errorDetail}`);
     }
 
     logger.info("[Job:transmit] Transmitted", { jobChainId, irn: context.irn });
