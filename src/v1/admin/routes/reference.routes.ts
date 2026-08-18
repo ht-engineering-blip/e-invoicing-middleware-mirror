@@ -224,9 +224,18 @@ export const WORKFLOW_ACTIONS = [
     endpoint: "POST /api/v1/workflow/outbound",
   },
   {
+    id: "complete_credit_note",
+    name: "Complete Credit Note Flow",
+    order: 7,
+    category: "outbound",
+    description:
+      "Execute the full credit note pipeline: Resolve & Transform → Validate → Sign → Transmit → Deliver in one call.",
+    endpoint: "POST /api/v1/workflow/credit-note/complete",
+  },
+  {
     id: "complete_inbound",
     name: "Complete Inbound Flow",
-    order: 7,
+    order: 8,
     category: "inbound",
     description:
       "Execute the full inbound pipeline: receive, validate, and acknowledge an inbound invoice.",
@@ -235,7 +244,7 @@ export const WORKFLOW_ACTIONS = [
   {
     id: "report_vat",
     name: "Report VAT",
-    order: 8,
+    order: 9,
     category: "reporting",
     description:
       "Submit VAT report for the invoice or reporting period to FIRS.",
@@ -244,7 +253,7 @@ export const WORKFLOW_ACTIONS = [
   {
     id: "confirm_invoice_status",
     name: "Confirm Invoice Status",
-    order: 9,
+    order: 10,
     category: "reporting",
     description:
       "Query FIRS to confirm the current status of a transmitted invoice.",
@@ -253,7 +262,7 @@ export const WORKFLOW_ACTIONS = [
   {
     id: "update_payment_status",
     name: "Update Payment Status",
-    order: 10,
+    order: 11,
     category: "reporting",
     description:
       "Submit VAT post-payment report to FIRS after payment is recorded on a DELIVERED invoice.",
@@ -262,7 +271,7 @@ export const WORKFLOW_ACTIONS = [
   {
     id: "sync_erp",
     name: "Sync to ERP",
-    order: 11,
+    order: 12,
     category: "outbound",
     description:
       "Push processed invoice data back to the tenant ERP using the configured sync endpoint and Handlebars body template.",

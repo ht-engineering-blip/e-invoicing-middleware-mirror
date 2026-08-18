@@ -197,11 +197,15 @@ export class TenantService extends BaseService {
 
     if (includeOnboarding) {
       try {
-        const onboard = await this.onboardingRepo.findByTenantId(contactEmail);
-        return { ...this.sanitize(tenant), onboarding: onboard } as any;
+        const onboard = await this.onboardingRepo.findByTenantId(
+          tenant.tenantId,
+        );
+        const rawTenant =
+          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        return { ...this.sanitize(rawTenant), onboarding: onboard } as any;
       } catch (error) {
         // If onboarding not found, return tenant without it
-        return this.sanitize(tenant) as any;
+        return this.sanitize(tenant);
       }
     }
 
@@ -241,27 +245,30 @@ export class TenantService extends BaseService {
 
     let tenants = await this.tenantRepo.findMany(query, skip, limit);
     const total = await this.tenantRepo.count(query);
-    tenants = this.sanitize(tenants);
 
     // Include onboarding status if requested
     if (filters?.includeOnboarding) {
       const tenantsWithOnboarding = await Promise.all(
         tenants.map(async (tenant) => {
           try {
+            const rawTenant =
+              typeof tenant.toObject === "function"
+                ? tenant.toObject()
+                : tenant;
             const onboarding = await this.onboardingRepo.findByTenantId(
               tenant.tenantId,
             );
-            return { ...tenant.toObject(), onboarding };
+            return { ...this.sanitize(rawTenant), onboarding };
           } catch (error) {
             // If onboarding not found, return tenant without it
-            return tenant;
+            return this.sanitize(tenant);
           }
         }),
       );
       return { tenants: tenantsWithOnboarding, total };
     }
 
-    return { tenants, total };
+    return { tenants: this.sanitize(tenants), total };
   }
 
   /**

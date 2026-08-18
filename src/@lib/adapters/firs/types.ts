@@ -10,8 +10,10 @@ export interface TaxCategory {
 }
 
 export interface InvoiceType {
-  code: string;
+  key?: string;
+  code?: string;
   value: string;
+  description?: string;
 }
 
 export interface HsCode {

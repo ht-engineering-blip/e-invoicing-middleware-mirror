@@ -12,6 +12,7 @@ export const ACTION_TO_JOB: Record<string, string> = {
   update_payment_status: "workflow:update-payment-status",
   sync_erp: "workflow:sync-erp",
   process_credit_note: "workflow:process-credit-note",
+  complete_credit_note: "workflow:complete-credit-note",
 };
 
 /** Default priority per event type */
