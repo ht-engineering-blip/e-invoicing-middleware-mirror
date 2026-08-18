@@ -21,6 +21,7 @@ interface JobChainData {
     serviceId?: string;
     tenantERP?: string;
     referenceIdKeyMap?: Record<string, string>;
+    idKeyMap?: Record<string, string>;
     isAdmin: false;
   };
 

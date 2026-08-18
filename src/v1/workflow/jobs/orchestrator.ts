@@ -58,6 +58,10 @@ export async function scheduleJobChain(
       tenant?.config?.referenceIdKeyMap instanceof Map
         ? Object.fromEntries(tenant.config.referenceIdKeyMap)
         : tenant?.config?.referenceIdKeyMap,
+    idKeyMap:
+      tenant?.config?.idKeyMap instanceof Map
+        ? Object.fromEntries(tenant.config.idKeyMap)
+        : tenant?.config?.idKeyMap,
     isAdmin: false,
   };
 
