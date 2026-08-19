@@ -59,5 +59,15 @@ export interface FIRSDecryptInvoiceInput {
   api_key?: string;
 }
 
-// Extend with other resources as needed (states, countries, currencies, paymentMeans, etc.)
+export interface Currency {
+  symbol: string;
+  name: string;
+  symbol_native: string;
+  decimal_digits: number;
+  rounding: number;
+  code: string;
+  name_plural: string;
+}
+
+// Extend with other resources as needed (states, countries, paymentMeans, etc.)
 

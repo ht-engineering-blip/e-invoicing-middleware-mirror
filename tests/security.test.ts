@@ -1,9 +1,8 @@
-import { mock } from 'bun:test';
-import path from 'node:path';
-import dns from 'node:dns';
+import { mock } from "bun:test";
+import path from "node:path";
 
 // Mock @agendajs/mongo-backend globally to completely suppress any MongoBackend connection attempts
-mock.module('@agendajs/mongo-backend', () => {
+mock.module("@agendajs/mongo-backend", () => {
   return {
     MongoBackend: class {
       constructor() {}
@@ -23,7 +22,7 @@ mock.module('@agendajs/mongo-backend', () => {
           }),
         };
       }
-    }
+    },
   };
 });
 
@@ -37,43 +36,51 @@ const mockAgenda = {
   cancel: async () => {},
 };
 
-const agendaPath = path.resolve(import.meta.dir, '../src/@lib/queue/agenda');
+const agendaPath = path.resolve(import.meta.dir, "../src/@lib/queue/agenda");
 const pathsToMock = [
   agendaPath,
   `${agendaPath}.ts`,
-  agendaPath.replace(/\\/g, '/'),
-  `${agendaPath.replace(/\\/g, '/')}.ts`,
+  agendaPath.replace(/\\/g, "/"),
+  `${agendaPath.replace(/\\/g, "/")}.ts`,
   agendaPath.toLowerCase(),
   `${agendaPath.toLowerCase()}.ts`,
-  '../src/@lib/queue/agenda.ts',
-  '../src/@lib/queue/agenda',
-  '@lib/queue/agenda',
+  "../src/@lib/queue/agenda.ts",
+  "../src/@lib/queue/agenda",
+  "@lib/queue/agenda",
 ];
 
 for (const p of pathsToMock) {
   mock.module(p, () => ({
-    agenda: mockAgenda
+    agenda: mockAgenda,
   }));
 }
 
 // Silence background MongoDB connection rejections during offline unit tests
-process.on('unhandledRejection', (reason) => {
+process.on("unhandledRejection", (reason) => {
   const reasonStr = String(reason);
-  if (reasonStr.includes('mongodb') || reasonStr.includes('ECONNREFUSED') || reasonStr.includes('querySrv')) {
+  if (
+    reasonStr.includes("mongodb") ||
+    reasonStr.includes("ECONNREFUSED") ||
+    reasonStr.includes("querySrv")
+  ) {
     return; // Silently swallow background connection failures
   }
-  console.error('Unhandled Rejection:', reason);
+  console.error("Unhandled Rejection:", reason);
 });
 
-process.on('uncaughtException', (err) => {
+process.on("uncaughtException", (err) => {
   const errStr = String(err);
-  if (errStr.includes('mongodb') || errStr.includes('ECONNREFUSED') || errStr.includes('querySrv')) {
+  if (
+    errStr.includes("mongodb") ||
+    errStr.includes("ECONNREFUSED") ||
+    errStr.includes("querySrv")
+  ) {
     return; // Silently swallow background connection failures
   }
-  console.error('Uncaught Exception:', err);
+  console.error("Uncaught Exception:", err);
 });
 
-import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import crypto from "crypto";
 
 describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () => {
@@ -85,7 +92,10 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
   let WebhookNonceRepository: any;
 
   const mockSecret = "super-secret-webhook-key-min-32-chars-length";
-  const mockSecretHash = crypto.createHash("sha256").update(mockSecret).digest("hex");
+  const mockSecretHash = crypto
+    .createHash("sha256")
+    .update(mockSecret)
+    .digest("hex");
 
   const mockTenant = {
     tenantId: "tenant-123",
@@ -116,70 +126,153 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     WebhookEventRepository = eventMod.WebhookEventRepository;
     const routeMod = await import("../src/v1/admin/repos/event-routing.repo");
     EventRoutingRepository = routeMod.EventRoutingRepository;
-    const outboundMod = await import("../src/v1/workflow/repos/outbound-invoice.repo");
+    const outboundMod =
+      await import("../src/v1/workflow/repos/outbound-invoice.repo");
     OutboundInvoiceRepository = outboundMod.OutboundInvoiceRepository;
     const nonceMod = await import("../src/v1/webhook/repos/webhook-nonce.repo");
     WebhookNonceRepository = nonceMod.WebhookNonceRepository;
 
     // Spy on TenantRepository.findByWebhookPath
-    findByWebhookPathSpy = spyOn(TenantRepository.prototype, "findByWebhookPath").mockImplementation(
-      async (path: string) => {
-        if (path === "valid-path") {
-          return mockTenant as any;
-        }
-        if (path === "no-secret-path") {
-          return {
-            ...mockTenant,
-            tenantId: "tenant-456",
-            metadata: {
-              ...mockTenant.metadata,
-              webhookSecretHash: undefined,
-            },
-          } as any;
+    const origFindByWebhookPath = TenantRepository.prototype.findByWebhookPath;
+    findByWebhookPathSpy = spyOn(
+      TenantRepository.prototype,
+      "findByWebhookPath",
+    ).mockImplementation(async function (this: any, path: string) {
+      if (path === "valid-path") {
+        return mockTenant as any;
+      }
+      if (path === "no-secret-path") {
+        return {
+          ...mockTenant,
+          tenantId: "tenant-456",
+          metadata: {
+            ...mockTenant.metadata,
+            webhookSecretHash: undefined,
+          },
+        } as any;
+      }
+      if (path === "non-existent-path") {
+        return null;
+      }
+      return origFindByWebhookPath.call(this, path);
+    });
+
+    // Spy on WebhookEventRepository methods
+    const origCreateEvent = WebhookEventRepository.prototype.create;
+    createEventSpy = spyOn(
+      WebhookEventRepository.prototype,
+      "create",
+    ).mockImplementation(async function (this: any, data: any) {
+      if (data?.tenantId === "tenant-123" || data?.tenantId === "tenant-456") {
+        return { ...data, eventId: "wh_123" } as any;
+      }
+      return origCreateEvent.call(this, data);
+    });
+
+    const origFindByIdempotencyKey =
+      WebhookEventRepository.prototype.findByIdempotencyKey;
+    findByIdempotencyKeySpy = spyOn(
+      WebhookEventRepository.prototype,
+      "findByIdempotencyKey",
+    ).mockImplementation(async function (
+      this: any,
+      tenantId: string,
+      key: string,
+    ) {
+      if (tenantId === "tenant-123" || tenantId === "tenant-456") {
+        return null;
+      }
+      return origFindByIdempotencyKey.call(this, tenantId, key);
+    });
+
+    // Spy on EventRoutingRepository to prevent DB search
+    const origGetRoutesForEvent =
+      EventRoutingRepository.prototype.getRoutesForEvent;
+    getRoutesForEventSpy = spyOn(
+      EventRoutingRepository.prototype,
+      "getRoutesForEvent",
+    ).mockImplementation(async function (
+      this: any,
+      tenantId: string,
+      event: string,
+    ) {
+      if (tenantId === "tenant-123" || tenantId === "tenant-456") {
+        return [];
+      }
+      return origGetRoutesForEvent.call(this, tenantId, event);
+    });
+
+    // Spy on OutboundInvoiceRepository to prevent DB updates
+    const origFindOrCreate =
+      OutboundInvoiceRepository.prototype.findOrCreateByErpInvoiceId;
+    findOrCreateByErpInvoiceIdSpy = spyOn(
+      OutboundInvoiceRepository.prototype,
+      "findOrCreateByErpInvoiceId",
+    ).mockImplementation(async function (
+      this: any,
+      tenantId: string,
+      erpInvoiceId: string,
+      data: any,
+    ) {
+      if (tenantId === "tenant-123" || tenantId === "tenant-456") {
+        return {
+          doc: {
+            irn: "IRN-VALID-123",
+            erpSystem: "TEST",
+            source: "webhook",
+            createdBy: tenantId,
+            metadata: {},
+          },
+          created: true,
+        } as any;
+      }
+      return origFindOrCreate.call(this, tenantId, erpInvoiceId, data);
+    });
+
+    const origAddWebhookEvent =
+      OutboundInvoiceRepository.prototype.addWebhookEvent;
+    addWebhookEventSpy = spyOn(
+      OutboundInvoiceRepository.prototype,
+      "addWebhookEvent",
+    ).mockImplementation(async function (
+      this: any,
+      irn: string,
+      eventId: string,
+    ) {
+      if (irn === "IRN-VALID-123") {
+        return {} as any;
+      }
+      return origAddWebhookEvent.call(this, irn, eventId);
+    });
+
+    // Spy on WebhookNonceRepository methods
+    const origFindOneNonce = WebhookNonceRepository.prototype.findOne;
+    findOneNonceSpy = spyOn(
+      WebhookNonceRepository.prototype,
+      "findOne",
+    ).mockImplementation(async function (this: any, query: any) {
+      if (
+        query?.tenantId === "tenant-123" ||
+        query?.tenantId === "tenant-456"
+      ) {
+        if (query.v1 === "replay-nonce") {
+          return { tenantId: query.tenantId, t: query.t, v1: query.v1 } as any;
         }
         return null;
       }
-    );
-
-    // Spy on WebhookEventRepository methods
-    createEventSpy = spyOn(WebhookEventRepository.prototype, "create").mockImplementation(
-      async (data: any) => ({ ...data, eventId: "wh_123" } as any)
-    );
-    findByIdempotencyKeySpy = spyOn(WebhookEventRepository.prototype, "findByIdempotencyKey").mockImplementation(
-      async () => null
-    );
-
-    // Spy on EventRoutingRepository to prevent DB search
-    getRoutesForEventSpy = spyOn(EventRoutingRepository.prototype, "getRoutesForEvent").mockImplementation(
-      async () => []
-    );
-
-    // Spy on OutboundInvoiceRepository to prevent DB updates
-    findOrCreateByErpInvoiceIdSpy = spyOn(OutboundInvoiceRepository.prototype, "findOrCreateByErpInvoiceId").mockImplementation(
-      async (tenantId: string, erpInvoiceId: string, data: any) => ({
-        doc: {
-          irn: "IRN-VALID-123",
-          erpSystem: "TEST",
-          source: "webhook",
-          createdBy: tenantId,
-          metadata: {},
-        },
-        created: true,
-      } as any)
-    );
-
-    addWebhookEventSpy = spyOn(OutboundInvoiceRepository.prototype, "addWebhookEvent").mockImplementation(
-      async () => ({}) as any
-    );
-
-    // Spy on WebhookNonceRepository methods
-    findOneNonceSpy = spyOn(WebhookNonceRepository.prototype, "findOne").mockImplementation(async (query: any) => {
-      if (query.v1 === "replay-nonce") {
-        return { tenantId: query.tenantId, t: query.t, v1: query.v1 } as any;
-      }
-      return null;
+      return origFindOneNonce.call(this, query);
     });
-    createNonceSpy = spyOn(WebhookNonceRepository.prototype, "create").mockImplementation(async (data: any) => data as any);
+
+    const origCreateNonce = WebhookNonceRepository.prototype.create;
+    createNonceSpy = spyOn(
+      WebhookNonceRepository.prototype,
+      "create",
+    ).mockImplementation(async function (this: any, data: any) {
+      if (data?.tenantId === "tenant-123" || data?.tenantId === "tenant-456") {
+        return data as any;
+      }
+      return origCreateNonce.call(this, data);
+    });
 
     // Load routes Mod LAST to ensure all class prototypes are already spied/mocked when constructors are run!
     const routesMod = await import("../src/v1/webhook");
@@ -191,7 +284,8 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     if (createEventSpy) createEventSpy.mockRestore();
     if (findByIdempotencyKeySpy) findByIdempotencyKeySpy.mockRestore();
     if (getRoutesForEventSpy) getRoutesForEventSpy.mockRestore();
-    if (findOrCreateByErpInvoiceIdSpy) findOrCreateByErpInvoiceIdSpy.mockRestore();
+    if (findOrCreateByErpInvoiceIdSpy)
+      findOrCreateByErpInvoiceIdSpy.mockRestore();
     if (addWebhookEventSpy) addWebhookEventSpy.mockRestore();
     if (findOneNonceSpy) findOneNonceSpy.mockRestore();
     if (createNonceSpy) createNonceSpy.mockRestore();
@@ -206,8 +300,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
-      })
+        body: JSON.stringify({
+          event: "invoice.received",
+          erpInvoiceId: "INV-123",
+        }),
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -227,7 +324,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": "t=,v1=",
         },
         body: JSON.stringify({ event: "invoice.received" }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -247,13 +344,15 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": `t=${expiredTimestamp},v1=somehexsignature`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
     const body = await response.json();
     expect(body.success).toBe(false);
-    expect(body.error).toContain("Webhook request expired or timestamp invalid");
+    expect(body.error).toContain(
+      "Webhook request expired or timestamp invalid",
+    );
   });
 
   it("should reject request with 401 if nonce has already been used in secure mode (replay protection)", async () => {
@@ -267,7 +366,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": `t=${timestamp},v1=replay-nonce`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -287,7 +386,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": `t=${timestamp},v1=invalidsignature`,
         },
         body: JSON.stringify({ event: "invoice.received" }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -299,8 +398,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
   it("should accept request with 200 if secure signature is valid", async () => {
     const app = webhookRoutes;
     const timestamp = Math.floor(Date.now() / 1000);
-    const rawBody = JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" });
-    
+    const rawBody = JSON.stringify({
+      event: "invoice.received",
+      erpInvoiceId: "INV-123",
+    });
+
     // Compute valid HMAC-SHA256 signature using test secret
     const dataToSign = `${timestamp}.${rawBody}`;
     const expectedSignature = crypto
@@ -316,7 +418,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": `t=${timestamp},v1=${expectedSignature}`,
         },
         body: rawBody,
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -336,7 +438,7 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "X-Webhook-Key": "wrong-secret-key",
         },
         body: JSON.stringify({ event: "invoice.received" }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -354,8 +456,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
           "Content-Type": "application/json",
           "X-Webhook-Key": mockSecret,
         },
-        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
-      })
+        body: JSON.stringify({
+          event: "invoice.received",
+          erpInvoiceId: "INV-123",
+        }),
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -372,8 +477,11 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ event: "invoice.received", erpInvoiceId: "INV-123" }),
-      })
+        body: JSON.stringify({
+          event: "invoice.received",
+          erpInvoiceId: "INV-123",
+        }),
+      }),
     );
 
     expect(response.status).toBe(200);

@@ -499,7 +499,7 @@ export const webhookRoutes = new Elysia({
           payload: body,
           resourceId: irn ?? body?.irn ?? body?.resourceId ?? eventId,
           resourceType: body?.resourceType || "invoice",
-          webhookUrl: tenant.metadata?.webhookUrl || "",
+          webhookUrl: tenant.metadata?.webhookUrl || `inbound://${webhookPath}`,
           status: WebhookDeliveryStatus.DELIVERED,
           deliveryAttempts: [
             {

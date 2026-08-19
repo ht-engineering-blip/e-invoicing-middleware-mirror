@@ -84,6 +84,7 @@ export async function scheduleJobChain(
       sourceType: payload?.sourceType ?? tenant?.config?.erpSystem,
       irn: input.irn,
       erpInvoiceId: input.erpInvoiceId,
+      ...(input.initialContext ?? {}),
     },
     priority,
     routeId,

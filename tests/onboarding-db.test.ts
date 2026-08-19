@@ -1,21 +1,20 @@
-import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
-import mongoose from "mongoose";
 import { faker } from "@faker-js/faker";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { connectMongo } from "../src/@lib/adapters/mongo";
-import { TenantService } from "../src/v1/tenants/services/tenant.service";
-import {
-  TeamMemberService,
-  InviteTeamMemberInput,
-} from "../src/v1/tenants/services/team-member.service";
-import { TenantStatus } from "../src/v1/tenants/models/tenant.model";
+import { hashString } from "../src/@lib/utils/encryption";
 import {
   TeamMemberRole,
   TeamMemberStatus,
 } from "../src/v1/tenants/models/team-member.model";
-import { hashString } from "../src/@lib/utils/encryption";
-import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
+import { TenantStatus } from "../src/v1/tenants/models/tenant.model";
 import { TeamMemberRepository } from "../src/v1/tenants/repos/team-member.repo";
 import { TenantOnboardingRepository } from "../src/v1/tenants/repos/tenant-onboarding.repo";
+import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
+import {
+  InviteTeamMemberInput,
+  TeamMemberService,
+} from "../src/v1/tenants/services/team-member.service";
+import { TenantService } from "../src/v1/tenants/services/tenant.service";
 
 describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
   let tenantService: TenantService;
@@ -67,9 +66,7 @@ describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
         console.error(`Failed to clean up team member ${userId}:`, err);
       }
     }
-    // Close mongoose connection
     if (sendEmailSpy) sendEmailSpy.mockRestore();
-    await mongoose.connection.close();
   });
 
   it("should successfully complete the entire tenant onboarding, activation, and team member invitation flow", async () => {

@@ -24,13 +24,19 @@ export function registerProcessCreditNoteJob(): void {
         const payload = context.originalPayload;
         const eventType = job.attrs.data.eventType;
 
-        // 1. Resolve credit note ID and reference IDs using tenant idKeyMap / referenceIdKeyMap
         const idKey =
           authContext?.idKeyMap?.[eventType] ??
           authContext?.idKeyMap?.[eventType?.replace(/\./g, "_")];
-        const creditNoteId = idKey
-          ? getNestedValue(payload, idKey)
-          : context.erpInvoiceId;
+        const creditNoteId =
+          (idKey ? getNestedValue(payload, idKey) : undefined) ??
+          (idKey && idKey.startsWith("data.")
+            ? getNestedValue(payload, idKey.replace(/^data\./, ""))
+            : undefined) ??
+          payload?.data?.invoice_id ??
+          payload?.invoice_id ??
+          payload?.data?.invoiceId ??
+          payload?.invoiceId ??
+          context.erpInvoiceId;
 
         const refKey =
           authContext?.referenceIdKeyMap?.[eventType] ??
@@ -46,7 +52,11 @@ export function registerProcessCreditNoteJob(): void {
               ids.push(String(item).trim());
             } else if (typeof item === "object") {
               const candidate =
-                item.irn ?? item.invoice_id ?? item.invoice_number ?? item.id;
+                item.irn ??
+                item.invoice_id ??
+                item.invoice_number ??
+                item.id ??
+                item.referenceId;
               if (candidate) {
                 ids.push(String(candidate).trim());
               }
@@ -55,11 +65,15 @@ export function registerProcessCreditNoteJob(): void {
           return ids;
         };
 
-        const configuredRef = refKey
-          ? getNestedValue(payload, refKey)
-          : (payload.data?.billing_reference ??
-            payload.billing_reference ??
-            payload.referenceId);
+        const configuredRef =
+          (refKey ? getNestedValue(payload, refKey) : undefined) ??
+          (refKey && refKey.startsWith("data.")
+            ? getNestedValue(payload, refKey.replace(/^data\./, ""))
+            : undefined) ??
+          payload?.data?.billing_reference ??
+          payload?.billing_reference ??
+          payload?.data?.referenceId ??
+          payload?.referenceId;
 
         const referenceIds = extractReferenceIds(configuredRef);
 
@@ -91,25 +105,22 @@ export function registerProcessCreditNoteJob(): void {
 
           const originalTransformed =
             originalInvoice.metadata?.transformedInvoice;
-          if (!originalTransformed) {
-            throw new Error(
-              `Transformed invoice payload not found on original invoice ${refId}`,
-            );
-          }
 
           originalInvoices.push(originalInvoice);
 
           billingReferences.push({
             irn: originalInvoice.irn,
             issue_date:
-              originalTransformed.issue_date ||
-              originalInvoice.createdAt.toISOString().slice(0, 10),
+              originalTransformed?.issue_date ||
+              (originalInvoice.createdAt
+                ? new Date(originalInvoice.createdAt).toISOString().slice(0, 10)
+                : new Date().toISOString().slice(0, 10)),
           });
         }
 
         const fallbackOriginalInvoice = originalInvoices[0];
         const fallbackOriginalTransformed =
-          fallbackOriginalInvoice.metadata.transformedInvoice;
+          fallbackOriginalInvoice?.metadata?.transformedInvoice;
 
         // 2. Transform or clone into credit note payload
         const lines = payload.data?.invoice_line ?? payload.invoice_line;
@@ -128,6 +139,11 @@ export function registerProcessCreditNoteJob(): void {
             context.sourceType,
           );
         } else {
+          if (!fallbackOriginalTransformed) {
+            throw new Error(
+              `Transformed invoice payload not found on original invoice ${referenceIds[0]}`,
+            );
+          }
           logger.info(
             "[Job:process-credit-note] Minimal credit note payload detected — cloning original...",
             { jobChainId },

@@ -12,6 +12,8 @@ import {
   sanitizePriceUnit,
   setDynamicQuantityCodes,
   setDynamicHsCodes,
+  setDynamicCurrencies,
+  resolveCurrencyCode,
   generateInvoiceRef,
 } from "./utils";
 
@@ -28,6 +30,7 @@ import {
   InvoiceType,
   QuantityCode,
   HsCode,
+  Currency,
 } from "../../../../@lib/adapters/firs/types";
 import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples";
 
@@ -134,17 +137,24 @@ export class FIRSInvoiceTransformerV2 {
       let taxCategories: TaxCategory[] = [];
       let invoiceTypes: InvoiceType[] = [];
       try {
-        const [taxCatRes, invoiceTypeRes, qtyCodesRes, hsCodesRes] =
-          await Promise.all([
-            firsService.getResource<TaxCategory>("tax-categories"),
-            firsService.getResource<InvoiceType>("invoice-types"),
-            firsService.getResource<QuantityCode>("invoice-quantity-codes"),
-            firsService.getResource<HsCode>("hs-codes"),
-          ]);
+        const [
+          taxCatRes,
+          invoiceTypeRes,
+          qtyCodesRes,
+          hsCodesRes,
+          currenciesRes,
+        ] = await Promise.all([
+          firsService.getResource<TaxCategory>("tax-categories"),
+          firsService.getResource<InvoiceType>("invoice-types"),
+          firsService.getResource<QuantityCode>("invoice-quantity-codes"),
+          firsService.getResource<HsCode>("hs-codes"),
+          firsService.getResource<Currency>("currencies"),
+        ]);
         taxCategories = taxCatRes || [];
         invoiceTypes = invoiceTypeRes || [];
         if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
         if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
+        if (currenciesRes) setDynamicCurrencies(currenciesRes);
       } catch (e) {
         console.error("Failed to fetch FIRS resources:", e);
       }
@@ -295,6 +305,25 @@ export class FIRSInvoiceTransformerV2 {
             }
           }
         }
+      }
+
+      // Resolve currency codes using the dynamic currencies list
+      const resolvedCurr = resolveCurrencyCode(
+        completed.document_currency_code || completed.tax_currency_code,
+      );
+      if (!completed.tax_currency_code) {
+        completed.tax_currency_code = resolvedCurr;
+      } else {
+        completed.tax_currency_code = resolveCurrencyCode(
+          completed.tax_currency_code,
+        );
+      }
+      if (!completed.document_currency_code) {
+        completed.document_currency_code = resolvedCurr;
+      } else {
+        completed.document_currency_code = resolveCurrencyCode(
+          completed.document_currency_code,
+        );
       }
 
       logger.info("final", completed);

@@ -46,29 +46,6 @@ export const updateCredentialsValidation = {
     },
     { examples: [updateCredentialsExample] },
   ),
-  beforeHandle({ body, set }: any) {
-    if (!body?.mock) {
-      if (
-        body?.certificate &&
-        !body.certificate.includes("-----BEGIN CERTIFICATE-----")
-      ) {
-        set.status = 400;
-        return {
-          success: false,
-          error: "Invalid certificate format. Must be PEM encoded.",
-          statusCode: 400,
-        };
-      }
-      if (body?.publicKey && !body.publicKey.includes("-----BEGIN")) {
-        set.status = 400;
-        return {
-          success: false,
-          error: "Invalid public key format. Must be PEM encoded.",
-          statusCode: 400,
-        };
-      }
-    }
-  },
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,

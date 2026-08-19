@@ -346,6 +346,7 @@ export class FIRSService {
       };
     } catch (error: any) {
       console.error("Encryption/Decryption failed:", error.message);
+      throw new Error(`QR code generation failed: ${error.message}`);
     }
   }
 
