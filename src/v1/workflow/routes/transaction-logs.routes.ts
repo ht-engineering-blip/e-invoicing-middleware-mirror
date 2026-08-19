@@ -61,9 +61,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         );
 
         // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
-        const { items, total } = await outboundRepo.getUnifiedInvoiceStream({
+        const result: any = await outboundRepo.getUnifiedInvoiceStream({
           auth,
-          type: query.type,
+          type: (query as any).type || (query as any).direction,
           status: query.status,
           source: query.source,
           erpInvoiceId: query.erpInvoiceId,
@@ -76,7 +76,17 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           limit,
         });
 
-        return ResponseBuilder.paginate(items, total, page, limit);
+        const items = result?.items || [];
+        const total = result?.total || 0;
+        const countsByType = result?.countsByType;
+
+        return ResponseBuilder.paginate(
+          items,
+          total,
+          page,
+          limit,
+          countsByType ? { countsByType } : undefined,
+        );
       } catch (error: any) {
         console.error("FATAL /invoices ERROR:", error);
         logger.error("Failed to list unified invoices stream", {
@@ -423,26 +433,37 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return ResponseBuilder.error(`Unknown action: ${startAction}`, 400);
         }
 
-        // ── Recover original action chain from the invoice's existing webhook events ──
+        // ── Recover original action chain & payload from the invoice's existing webhook events ──
         let originalActions: string[] | null = null;
         let originalWebhookUrl = "";
+        let originalEventType = "erp.invoice.submitted";
+        let originalPayload: any = null;
         const existingEventIds: string[] = invoice.webhookEvents ?? [];
 
         if (existingEventIds.length > 0) {
           // Find the earliest non-retry event (the original trigger for this invoice)
-          const eventFilter: any = {
-            eventId: { $in: existingEventIds },
-            "metadata.source": { $ne: "manual_retry" },
-          };
-          if (tenantId) eventFilter.tenantId = tenantId;
-          const priorEvents = await webhookEventRepo.find(eventFilter, 0, 100);
-          const originalEvent = priorEvents.sort(
+          const fetchedEvents = await Promise.all(
+            existingEventIds.map((id) =>
+              webhookEventRepo.findByEventId(id, tenantId).catch(() => null),
+            ),
+          );
+          const validEvents = fetchedEvents
+            .filter((e): e is NonNullable<typeof e> => e !== null)
+            .filter((e) => (e.metadata as any)?.source !== "manual_retry");
+
+          const originalEvent = (
+            validEvents.length > 0
+              ? validEvents
+              : fetchedEvents.filter((e): e is NonNullable<typeof e> => e !== null)
+          ).sort(
             (a, b) =>
               new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
           )[0];
 
           if (originalEvent) {
             originalWebhookUrl = originalEvent.webhookUrl ?? "";
+            originalEventType = originalEvent.eventType ?? originalEventType;
+            originalPayload = originalEvent.payload;
 
             // Tier 1: matchedRoutes stored in metadata (webhook-triggered flows)
             const matchedRoutes: any[] =
@@ -463,6 +484,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             }
           }
         }
+
+        // Determine effective retry payload
+        const retryPayload =
+          originalPayload ??
+          invoice.metadata?.rawPayload ??
+          invoice.metadata?.originalPayload ??
+          invoice.metadata?.transformedInvoice ??
+          invoice.metadata;
 
         // ── Build the retry action list from the recovered chain ──────────────────
         let actions: string[];
@@ -494,14 +523,18 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         await webhookEventRepo.create({
           tenantId: invoice.tenantId,
           eventId,
-          eventType: "invoice.retry",
-          payload: { irn: params.irn, fromStep: startAction },
+          eventType: originalEventType,
+          payload: retryPayload,
           resourceId: params.irn,
           resourceType: "invoice",
           webhookUrl: originalWebhookUrl,
           maxRetries: 0,
           jobErrors: [],
-          metadata: { source: "manual_retry", fromStep: startAction },
+          metadata: {
+            source: "manual_retry",
+            fromStep: startAction,
+            originalEventId: existingEventIds[0],
+          },
         } as any);
 
         await outboundRepo.addWebhookEvent(params.irn, eventId);
@@ -515,11 +548,20 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const jobChainId = await scheduleJobChain({
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
-          eventType: "invoice.retry",
-          payload: invoice.metadata,
+          eventType: originalEventType,
+          payload: retryPayload,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
+          initialContext: {
+            transformedInvoice: invoice.metadata?.transformedInvoice,
+            validationResult: invoice.metadata?.validationResult,
+            signedInvoice: invoice.metadata?.signedInvoice,
+            transmissionResult: invoice.metadata?.transmissionResult,
+            firsSignedData: invoice.metadata?.firsSignedData,
+            qrCode: invoice.qrCode ? String(invoice.qrCode) : undefined,
+            metadata: invoice.metadata,
+          },
         });
 
         return ResponseBuilder.success(

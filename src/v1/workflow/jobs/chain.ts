@@ -46,11 +46,20 @@ export async function chainNext(
       }
     }
 
-    await webhookEventRepo.markAsDelivered(data.webhookEventId, 200, {
-      jobChainId: data.jobChainId,
-      completedAt: new Date().toISOString(),
-      finalContext: updatedContext,
-    });
+    if (data.webhookEventId) {
+      try {
+        await webhookEventRepo.markAsDelivered(data.webhookEventId, 200, {
+          jobChainId: data.jobChainId,
+          completedAt: new Date().toISOString(),
+          finalContext: updatedContext,
+        });
+      } catch (err: any) {
+        logger.warn("[chainNext] Could not mark webhook event as delivered", {
+          webhookEventId: data.webhookEventId,
+          error: err?.message,
+        });
+      }
+    }
 
     return;
   }
@@ -208,9 +217,18 @@ export async function chainFail(
     await outboundRepo.updateStatus(irn, OutboundInvoiceStatus.FAILED);
   }
 
-  await webhookEventRepo.markAsFailed(
-    data.webhookEventId,
-    `Step [${action}] failed: ${errorMessage}`,
-    500,
-  );
+  if (data.webhookEventId) {
+    try {
+      await webhookEventRepo.markAsFailed(
+        data.webhookEventId,
+        `Step [${action}] failed: ${errorMessage}`,
+        500,
+      );
+    } catch (err: any) {
+      logger.warn("[chainFail] Could not mark webhook event as failed", {
+        webhookEventId: data.webhookEventId,
+        error: err?.message,
+      });
+    }
+  }
 }

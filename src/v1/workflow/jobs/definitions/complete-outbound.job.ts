@@ -7,10 +7,14 @@ import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
 import { buildQrUrl } from "../../../../@lib";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import { Currency } from "../../../../@lib/adapters/firs/types";
+import { resolveCurrencyCode } from "../../utils/transformer/utils";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
 const outboundRepo = new OutboundInvoiceRepository();
+const firsService = new FIRSService();
 
 export function registerCompleteOutboundJob(): void {
   agenda.define(
@@ -25,8 +29,9 @@ export function registerCompleteOutboundJob(): void {
         mode: context.transformedInvoice ? "finalize" : "full-pipeline",
       });
 
+      let irn = context.irn;
+
       try {
-        let irn = context.irn;
         let qrCode: string | undefined;
         let firsSignedData: any;
         let source = context.source as OutboundInvoiceSource;
@@ -47,9 +52,32 @@ export function registerCompleteOutboundJob(): void {
             context.sourceType,
           );
 
-          // Step 2: Ensure IRN is on the transformed invoice
+          // Step 2: Ensure IRN and currency codes are on the transformed invoice
           irn = irn ?? transformed.irn;
-          if (irn) transformed.irn = irn;
+          if (irn) {
+            transformed.irn = irn;
+            job.attrs.data.context.irn = irn;
+          }
+
+          let currencies: Currency[] = [];
+          try {
+            currencies = await firsService.getResource<Currency>("currencies");
+          } catch {
+            // fallback gracefully
+          }
+
+          const fallbackCurrency = resolveCurrencyCode(
+            transformed.document_currency_code || transformed.tax_currency_code,
+            currencies,
+          );
+
+          transformed.tax_currency_code = transformed.tax_currency_code
+            ? resolveCurrencyCode(transformed.tax_currency_code, currencies)
+            : fallbackCurrency;
+
+          transformed.document_currency_code = transformed.document_currency_code
+            ? resolveCurrencyCode(transformed.document_currency_code, currencies)
+            : fallbackCurrency;
 
           // Step 3: Persist invoice record
           if (irn) {
@@ -89,7 +117,10 @@ export function registerCompleteOutboundJob(): void {
             );
           }
 
-          const result = await outboundService.generateQRCode(irn, businessId);
+          const result = await outboundService.generateQRCode(
+            irn,
+            authContext?.tenantId ?? tenantId,
+          );
           qrCode = result.qrCode!;
           firsSignedData = result.data;
         }
@@ -101,6 +132,9 @@ export function registerCompleteOutboundJob(): void {
             status: OutboundInvoiceStatus.DELIVERED,
             metadata: {
               ...(context.metadata ?? {}),
+              ...(context.transformedInvoice
+                ? { transformedInvoice: context.transformedInvoice }
+                : {}),
               firsSignedData,
             },
           });
@@ -118,11 +152,14 @@ export function registerCompleteOutboundJob(): void {
           irn,
         });
       } catch (err: any) {
-        const { context } = job.attrs.data;
-        if (context?.irn) {
-          await outboundRepo.update(context.irn, {
-            status: OutboundInvoiceStatus.FAILED,
-          });
+        const resolvedIrn = irn || job.attrs.data.context?.irn;
+        if (resolvedIrn) {
+          job.attrs.data.context.irn = resolvedIrn;
+          await outboundRepo.update(
+            resolvedIrn,
+            { status: OutboundInvoiceStatus.FAILED },
+            job.attrs.data.tenantId,
+          ).catch(() => {});
         }
         await chainFail(job, err);
         throw err;

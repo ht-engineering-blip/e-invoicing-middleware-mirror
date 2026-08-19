@@ -617,10 +617,15 @@ export class OutboundInvoiceRepository {
       const query: any = { irn };
       if (tenantId) query.tenantId = tenantId;
 
+      const updateDoc: any = { $set: updateData };
+      if (data.status === OutboundInvoiceStatus.DELIVERED) {
+        updateDoc.$unset = { lastJobError: 1 };
+      }
+
       const doc = await this.outboundInvoiceModel
         .findOneAndUpdate(
           query,
-          { $set: updateData },
+          updateDoc,
           { returnDocument: "after", runValidators: true },
         )
         .exec();
@@ -782,10 +787,18 @@ export class OutboundInvoiceRepository {
     status: OutboundInvoiceStatus,
   ): Promise<OutboundInvoiceDocument> {
     try {
+      const updateDoc: any = { $set: { status } };
+      if (
+        status === OutboundInvoiceStatus.CREATED ||
+        status === OutboundInvoiceStatus.DELIVERED
+      ) {
+        updateDoc.$unset = { lastJobError: 1 };
+      }
+
       const doc = await this.outboundInvoiceModel
         .findOneAndUpdate(
           { irn },
-          { $set: { status } },
+          updateDoc,
           { returnDocument: "after" },
         )
         .exec();

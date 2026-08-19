@@ -7,10 +7,14 @@ import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
 import { buildQrUrl, getNestedValue } from "../../../../@lib";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import { Currency } from "../../../../@lib/adapters/firs/types";
+import { resolveCurrencyCode } from "../../utils/transformer/utils";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
 const outboundRepo = new OutboundInvoiceRepository();
+const firsService = new FIRSService();
 
 export function registerCompleteCreditNoteJob(): void {
   agenda.define(
@@ -26,8 +30,9 @@ export function registerCompleteCreditNoteJob(): void {
         mode: context.transformedInvoice ? "finalize" : "full-pipeline",
       });
 
+      let irn = context.irn;
+
       try {
-        let irn = context.irn;
         let qrCode: string | undefined;
         let firsSignedData: any;
         let creditNotePayload = context.transformedInvoice;
@@ -44,13 +49,35 @@ export function registerCompleteCreditNoteJob(): void {
 
           const payload = context.originalPayload;
 
-          // 1. Resolve credit note ID and reference IDs using tenant idKeyMap / referenceIdKeyMap
+          console.log(
+            "[DEBUG:complete-credit-note] Payload inspection:",
+            JSON.stringify(
+              {
+                eventType,
+                hasPayload: !!payload,
+                payloadKeys: payload ? Object.keys(payload) : [],
+                payloadSample: payload,
+                refKeyMap: authContext?.referenceIdKeyMap,
+                idKeyMap: authContext?.idKeyMap,
+              },
+              null,
+              2,
+            ),
+          );
+
           const idKey =
             authContext?.idKeyMap?.[eventType] ??
             authContext?.idKeyMap?.[eventType?.replace(/\./g, "_")];
-          const creditNoteId = idKey
-            ? getNestedValue(payload, idKey)
-            : context.erpInvoiceId;
+          const creditNoteId =
+            (idKey ? getNestedValue(payload, idKey) : undefined) ??
+            (idKey && idKey.startsWith("data.")
+              ? getNestedValue(payload, idKey.replace(/^data\./, ""))
+              : undefined) ??
+            payload?.data?.invoice_id ??
+            payload?.invoice_id ??
+            payload?.data?.invoiceId ??
+            payload?.invoiceId ??
+            context.erpInvoiceId;
 
           const refKey =
             authContext?.referenceIdKeyMap?.[eventType] ??
@@ -66,7 +93,11 @@ export function registerCompleteCreditNoteJob(): void {
                 ids.push(String(item).trim());
               } else if (typeof item === "object") {
                 const candidate =
-                  item.irn ?? item.invoice_id ?? item.invoice_number ?? item.id;
+                  item.irn ??
+                  item.invoice_id ??
+                  item.invoice_number ??
+                  item.id ??
+                  item.referenceId;
                 if (candidate) {
                   ids.push(String(candidate).trim());
                 }
@@ -75,11 +106,15 @@ export function registerCompleteCreditNoteJob(): void {
             return ids;
           };
 
-          const configuredRef = refKey
-            ? getNestedValue(payload, refKey)
-            : (payload.data?.billing_reference ??
-              payload.billing_reference ??
-              payload.referenceId);
+          const configuredRef =
+            (refKey ? getNestedValue(payload, refKey) : undefined) ??
+            (refKey && refKey.startsWith("data.")
+              ? getNestedValue(payload, refKey.replace(/^data\./, ""))
+              : undefined) ??
+            payload?.data?.billing_reference ??
+            payload?.billing_reference ??
+            payload?.data?.referenceId ??
+            payload?.referenceId;
 
           const referenceIds = extractReferenceIds(configuredRef);
 
@@ -112,25 +147,24 @@ export function registerCompleteCreditNoteJob(): void {
 
             const originalTransformed =
               originalInvoice.metadata?.transformedInvoice;
-            if (!originalTransformed) {
-              throw new Error(
-                `Transformed invoice payload not found on original invoice ${refId}`,
-              );
-            }
 
             originalInvoices.push(originalInvoice);
 
             billingReferences.push({
               irn: originalInvoice.irn,
               issue_date:
-                originalTransformed.issue_date ||
-                originalInvoice.createdAt.toISOString().slice(0, 10),
+                originalTransformed?.issue_date ||
+                (originalInvoice.createdAt
+                  ? new Date(originalInvoice.createdAt)
+                      .toISOString()
+                      .slice(0, 10)
+                  : new Date().toISOString().slice(0, 10)),
             });
           }
 
           const fallbackOriginalInvoice = originalInvoices[0];
           const fallbackOriginalTransformed =
-            fallbackOriginalInvoice.metadata.transformedInvoice;
+            fallbackOriginalInvoice?.metadata?.transformedInvoice;
 
           // 2. Transform or clone into credit note payload
           const lines = payload.data?.invoice_line ?? payload.invoice_line;
@@ -147,6 +181,11 @@ export function registerCompleteCreditNoteJob(): void {
               context.sourceType,
             );
           } else {
+            if (!fallbackOriginalTransformed) {
+              throw new Error(
+                `Transformed invoice payload not found on original invoice ${referenceIds[0]}`,
+              );
+            }
             logger.info(
               "[Job:complete-credit-note] Minimal credit note payload detected — cloning original...",
               { jobChainId },
@@ -186,13 +225,35 @@ export function registerCompleteCreditNoteJob(): void {
                     : fallbackOriginalTransformed.issue_date,
               }),
             );
-          } else {
             creditNotePayload.billing_reference = billingReferences;
+          }
+
+          // Inherit supplier and customer parties from original invoice if missing or default on credit note
+          if (
+            fallbackOriginalTransformed?.accounting_supplier_party &&
+            (!creditNotePayload.accounting_supplier_party ||
+              !creditNotePayload.accounting_supplier_party.tin)
+          ) {
+            creditNotePayload.accounting_supplier_party =
+              fallbackOriginalTransformed.accounting_supplier_party;
+          }
+
+          if (
+            fallbackOriginalTransformed?.accounting_customer_party &&
+            (!creditNotePayload.accounting_customer_party ||
+              !creditNotePayload.accounting_customer_party.tin ||
+              creditNotePayload.accounting_customer_party.tin === "00000000-0000")
+          ) {
+            creditNotePayload.accounting_customer_party =
+              fallbackOriginalTransformed.accounting_customer_party;
           }
 
           // Assign credit note's own IRN
           irn = irn ?? creditNotePayload.irn;
-          if (irn) creditNotePayload.irn = irn;
+          if (irn) {
+            creditNotePayload.irn = irn;
+            job.attrs.data.context.irn = irn;
+          }
 
           if (authContext?.businessId) {
             creditNotePayload.business_id = authContext.businessId;
@@ -208,6 +269,29 @@ export function registerCompleteCreditNoteJob(): void {
               .toTimeString()
               .slice(0, 8);
           }
+
+          let currencies: Currency[] = [];
+          try {
+            currencies = await firsService.getResource<Currency>("currencies");
+          } catch {
+            // fallback gracefully
+          }
+
+          const fallbackCurrency = resolveCurrencyCode(
+            creditNotePayload.document_currency_code ||
+              creditNotePayload.tax_currency_code ||
+              fallbackOriginalTransformed?.document_currency_code ||
+              fallbackOriginalTransformed?.tax_currency_code,
+            currencies,
+          );
+
+          creditNotePayload.tax_currency_code = creditNotePayload.tax_currency_code
+            ? resolveCurrencyCode(creditNotePayload.tax_currency_code, currencies)
+            : fallbackCurrency;
+
+          creditNotePayload.document_currency_code = creditNotePayload.document_currency_code
+            ? resolveCurrencyCode(creditNotePayload.document_currency_code, currencies)
+            : fallbackCurrency;
 
           if (creditNoteId) {
             creditNotePayload.invoice_reference = String(creditNoteId);
@@ -258,7 +342,10 @@ export function registerCompleteCreditNoteJob(): void {
             );
           }
 
-          const result = await outboundService.generateQRCode(irn, businessId);
+          const result = await outboundService.generateQRCode(
+            irn,
+            authContext?.tenantId ?? tenantId,
+          );
           qrCode = result.qrCode!;
           firsSignedData = result.data;
         }
@@ -295,13 +382,16 @@ export function registerCompleteCreditNoteJob(): void {
           irn,
         });
       } catch (err: any) {
-        const { context } = job.attrs.data;
-        if (context?.irn) {
-          await outboundRepo.update(
-            context.irn,
-            { status: OutboundInvoiceStatus.FAILED },
-            job.attrs.data.tenantId,
-          );
+        const resolvedIrn = irn || job.attrs.data.context?.irn;
+        if (resolvedIrn) {
+          job.attrs.data.context.irn = resolvedIrn;
+          await outboundRepo
+            .update(
+              resolvedIrn,
+              { status: OutboundInvoiceStatus.FAILED },
+              job.attrs.data.tenantId,
+            )
+            .catch(() => {});
         }
         await chainFail(job, err);
         throw err;

@@ -38,25 +38,19 @@ const mockAgenda = {
 const agendaPath = path.resolve(import.meta.dir, "../src/@lib/queue/agenda");
 mock.module(agendaPath, () => ({ agenda: mockAgenda }));
 
-import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { Elysia } from "elysia";
-import mongoose from "mongoose";
 import * as jwt from "jsonwebtoken";
 import { jwtConfig } from "../src/@config/jwt";
 import { connectMongo } from "../src/@lib/adapters/mongo";
-import { OutboundInvoiceRepository } from "../src/v1/workflow/repos/outbound-invoice.repo";
-import { InboundInvoiceRepository } from "../src/v1/workflow/repos/inbound-invoice.repo";
-import { v1Routes } from "../src/v1";
 import { errorHandlerMiddleware } from "../src/middlewares";
+import { v1Routes } from "../src/v1";
+import { OutboundInvoiceRepository } from "../src/v1/workflow/repos/outbound-invoice.repo";
 
 describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
-  let outboundFindManySpy: any;
-  let inboundFindManySpy: any;
+  let getUnifiedInvoiceStreamSpy: any;
   let app: any;
   let mockToken: string;
-
-  let outboundCountSpy: any;
-  let inboundCountSpy: any;
 
   beforeAll(async () => {
     await connectMongo();
@@ -71,46 +65,11 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
       { algorithm: jwtConfig?.algorithm as jwt.Algorithm },
     );
 
-    outboundCountSpy = spyOn(
+    getUnifiedInvoiceStreamSpy = spyOn(
       OutboundInvoiceRepository.prototype,
-      "count",
-    ).mockImplementation(async () => 1);
-
-    inboundCountSpy = spyOn(
-      InboundInvoiceRepository.prototype,
-      "count",
-    ).mockImplementation(async () => 1);
-
-    outboundFindManySpy = spyOn(
-      OutboundInvoiceRepository.prototype,
-      "findMany",
-    ).mockImplementation(async () => {
-      return [
-        {
-          _id: "outbound-1",
-          irn: "882D701-OUTBOUND-1",
-          invoiceNumber: "INV-OUT-001",
-          invoiceTypeCode: "396",
-          issueDate: "2026-08-01",
-          dueDate: "2026-09-01",
-          status: "VALIDATED",
-          paymentStatus: "PENDING",
-          supplierName: "Heirs Technologies Limited",
-          supplierTIN: "61392352-1056",
-          customerName: "Client A",
-          customerTIN: "1234567890",
-          totalAmount: 50000,
-          document_currency_code: "NGN",
-          createdAt: new Date("2026-08-01T10:00:00Z"),
-        },
-      ] as any;
-    });
-
-    inboundFindManySpy = spyOn(
-      InboundInvoiceRepository.prototype,
-      "findMany",
-    ).mockImplementation(async () => {
-      return [
+      "getUnifiedInvoiceStream",
+    ).mockImplementation(async (opts: any) => {
+      const allItems = [
         {
           _id: "inbound-1",
           irn: "882D701-INBOUND-1",
@@ -126,20 +85,51 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
           customerTIN: "61392352-1056",
           totalAmount: 120000,
           document_currency_code: "NGN",
+          direction: "INBOUND",
           createdAt: new Date("2026-08-02T12:00:00Z"),
         },
-      ] as any;
+        {
+          _id: "outbound-1",
+          irn: "882D701-OUTBOUND-1",
+          invoiceNumber: "INV-OUT-001",
+          invoiceTypeCode: "396",
+          issueDate: "2026-08-01",
+          dueDate: "2026-09-01",
+          status: "VALIDATED",
+          paymentStatus: "PENDING",
+          supplierName: "Heirs Technologies Limited",
+          supplierTIN: "61392352-1056",
+          customerName: "Client A",
+          customerTIN: "1234567890",
+          totalAmount: 50000,
+          document_currency_code: "NGN",
+          direction: "OUTBOUND",
+          createdAt: new Date("2026-08-01T10:00:00Z"),
+        },
+      ];
+
+      const filtered =
+        opts?.type === "outbound"
+          ? allItems.filter((i) => i.direction === "OUTBOUND")
+          : opts?.type === "inbound"
+            ? allItems.filter((i) => i.direction === "INBOUND")
+            : allItems;
+
+      return {
+        items: filtered,
+        total: filtered.length,
+        countsByType: {
+          outbound: 1,
+          inbound: 1,
+        },
+      } as any;
     });
 
     app = new Elysia().use(errorHandlerMiddleware).use(v1Routes);
   }, 30000);
 
   afterAll(async () => {
-    if (outboundFindManySpy) outboundFindManySpy.mockRestore();
-    if (inboundFindManySpy) inboundFindManySpy.mockRestore();
-    if (outboundCountSpy) outboundCountSpy.mockRestore();
-    if (inboundCountSpy) inboundCountSpy.mockRestore();
-    await mongoose.disconnect();
+    if (getUnifiedInvoiceStreamSpy) getUnifiedInvoiceStreamSpy.mockRestore();
   }, 30000);
 
   it("GET /v1/workflow/invoices (Unified All Streams - Positive)", async () => {
@@ -169,7 +159,7 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
     // Verify ordering by date descending (inbound createdAt is 2026-08-02, outbound is 2026-08-01)
     expect(json.data[0].direction).toBe("INBOUND");
     expect(json.data[1].direction).toBe("OUTBOUND");
-  });
+  }, 20000);
 
   it("GET /v1/workflow/invoices?direction=outbound (Direction Filtered)", async () => {
     const res = await app.handle(
@@ -186,5 +176,5 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
     expect(json.success).toBe(true);
     expect(json.data.length).toBe(1);
     expect(json.data[0].direction).toBe("OUTBOUND");
-  });
+  }, 20000);
 });

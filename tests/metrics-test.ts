@@ -30,7 +30,9 @@ async function main() {
 
   const app = new Elysia().use(errorHandlerMiddleware).use(v1Routes);
 
-  console.log("\n================ TEST 1: GET /v1/workflow/invoices/metrics ================");
+  console.log(
+    "\n================ TEST 1: GET /v1/workflow/invoices/metrics ================",
+  );
   const res1 = await app.handle(
     new Request("http://localhost/v1/workflow/invoices/metrics", {
       method: "GET",
@@ -41,7 +43,9 @@ async function main() {
   const json1 = await res1.json();
   console.log("Metrics Response:", JSON.stringify(json1, null, 2));
 
-  console.log("\n================ TEST 2: GET /v1/workflow/invoices (Unified List) ================");
+  console.log(
+    "\n================ TEST 2: GET /v1/workflow/invoices (Unified List) ================",
+  );
   const res2 = await app.handle(
     new Request("http://localhost/v1/workflow/invoices", {
       method: "GET",
@@ -50,12 +54,14 @@ async function main() {
   );
   console.log(`Status: ${res2.status}`);
   const json2 = await res2.json();
-  console.log(`Success: ${json2.success}, Total: ${json2.pagination?.total}, Items returned: ${json2.data?.length}`);
+  console.log(
+    `Success: ${json2.success}, Total: ${json2.pagination?.total}, Items returned: ${json2.data?.length}`,
+  );
 
   process.exit(0);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error("Test error:", err);
   process.exit(1);
 });
