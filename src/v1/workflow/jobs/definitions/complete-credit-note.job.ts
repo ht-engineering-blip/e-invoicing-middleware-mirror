@@ -241,8 +241,7 @@ export function registerCompleteCreditNoteJob(): void {
           if (
             fallbackOriginalTransformed?.accounting_customer_party &&
             (!creditNotePayload.accounting_customer_party ||
-              !creditNotePayload.accounting_customer_party.tin ||
-              creditNotePayload.accounting_customer_party.tin === "00000000-0000")
+              !creditNotePayload.accounting_customer_party.tin)
           ) {
             creditNotePayload.accounting_customer_party =
               fallbackOriginalTransformed.accounting_customer_party;
@@ -285,13 +284,21 @@ export function registerCompleteCreditNoteJob(): void {
             currencies,
           );
 
-          creditNotePayload.tax_currency_code = creditNotePayload.tax_currency_code
-            ? resolveCurrencyCode(creditNotePayload.tax_currency_code, currencies)
-            : fallbackCurrency;
+          creditNotePayload.tax_currency_code =
+            creditNotePayload.tax_currency_code
+              ? resolveCurrencyCode(
+                  creditNotePayload.tax_currency_code,
+                  currencies,
+                )
+              : fallbackCurrency;
 
-          creditNotePayload.document_currency_code = creditNotePayload.document_currency_code
-            ? resolveCurrencyCode(creditNotePayload.document_currency_code, currencies)
-            : fallbackCurrency;
+          creditNotePayload.document_currency_code =
+            creditNotePayload.document_currency_code
+              ? resolveCurrencyCode(
+                  creditNotePayload.document_currency_code,
+                  currencies,
+                )
+              : fallbackCurrency;
 
           if (creditNoteId) {
             creditNotePayload.invoice_reference = String(creditNoteId);

@@ -1,17 +1,19 @@
-import { AppError, safeSearchRegExp } from '../../../@lib';
-import { ModelWrapper } from '../../../@lib/adapters/mongo/model-wrapper';
+import { AppError, safeSearchRegExp } from "../../../@lib";
+import { ModelWrapper } from "../../../@lib/adapters/mongo/model-wrapper";
 import {
   InboundInvoiceDocument,
   InboundInvoiceModel,
   InboundInvoiceStatus,
   PaymentStatus,
-} from '../models/inbound-invoice.model';
+} from "../models/inbound-invoice.model";
 
 export class InboundInvoiceRepository {
   private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
   constructor() {
-    this.inboundInvoiceModel = new ModelWrapper<InboundInvoiceDocument>(InboundInvoiceModel);
+    this.inboundInvoiceModel = new ModelWrapper<InboundInvoiceDocument>(
+      InboundInvoiceModel,
+    );
   }
 
   /**
@@ -100,7 +102,7 @@ export class InboundInvoiceRepository {
     where?: any,
     select?: any,
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
   ): Promise<InboundInvoiceDocument[]> {
     try {
       const query = this.buildInboundInvoiceQuery(where);
@@ -117,32 +119,39 @@ export class InboundInvoiceRepository {
 
       return docs as unknown as InboundInvoiceDocument[];
     } catch (error) {
-      console.error('Error finding inbound invoices:', error);
-      throw new AppError(500, 'Failed to fetch inbound invoices');
+      console.error("Error finding inbound invoices:", error);
+      throw new AppError(500, "Failed to fetch inbound invoices");
     }
   }
 
   /**
    * Find one inbound invoice
    */
-  async findOne(where: any, select?: any): Promise<InboundInvoiceDocument | null> {
+  async findOne(
+    where: any,
+    select?: any,
+  ): Promise<InboundInvoiceDocument | null> {
     try {
       const query = this.buildInboundInvoiceQuery(where);
       const projection = this.buildInboundInvoiceProjection(select);
 
-      const doc = await this.inboundInvoiceModel.findOne(query, projection).exec();
+      const doc = await this.inboundInvoiceModel
+        .findOne(query, projection)
+        .exec();
 
       return doc;
     } catch (error) {
-      console.error('Error finding inbound invoice:', error);
-      throw new AppError(500, 'Failed to fetch inbound invoice');
+      console.error("Error finding inbound invoice:", error);
+      throw new AppError(500, "Failed to fetch inbound invoice");
     }
   }
 
   /**
    * Create a new inbound invoice
    */
-  async create(data: Partial<InboundInvoiceDocument>): Promise<InboundInvoiceDocument> {
+  async create(
+    data: Partial<InboundInvoiceDocument>,
+  ): Promise<InboundInvoiceDocument> {
     try {
       const doc = await this.inboundInvoiceModel.create({
         ...data,
@@ -160,14 +169,14 @@ export class InboundInvoiceRepository {
 
       return doc;
     } catch (error: any) {
-      console.error('Error creating inbound invoice:', error);
-      if (error.name === 'ValidationError') {
-        throw new AppError(400, 'Invalid input');
+      console.error("Error creating inbound invoice:", error);
+      if (error.name === "ValidationError") {
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
-        throw new AppError(409, 'Invoice with this IRN already exists');
+        throw new AppError(409, "Invoice with this IRN already exists");
       }
-      throw new AppError(500, 'Failed to create inbound invoice');
+      throw new AppError(500, "Failed to create inbound invoice");
     }
   }
 
@@ -176,7 +185,7 @@ export class InboundInvoiceRepository {
    */
   async update(
     irn: string,
-    data: Partial<InboundInvoiceDocument>
+    data: Partial<InboundInvoiceDocument>,
   ): Promise<InboundInvoiceDocument> {
     try {
       // Remove undefined values
@@ -189,23 +198,27 @@ export class InboundInvoiceRepository {
       }, {} as any);
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateData }, { returnDocument: 'after', runValidators: true })
+        .findOneAndUpdate(
+          { irn },
+          { $set: updateData },
+          { returnDocument: "after", runValidators: true },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error: any) {
-      console.error('Error updating inbound invoice:', error);
-      if (error.name === 'ValidationError') {
-        throw new AppError(400, 'Invalid input');
+      console.error("Error updating inbound invoice:", error);
+      if (error.name === "ValidationError") {
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update inbound invoice');
+      throw new AppError(500, "Failed to update inbound invoice");
     }
   }
 
@@ -214,12 +227,14 @@ export class InboundInvoiceRepository {
    */
   async delete(irn: string): Promise<boolean> {
     try {
-      const result = await this.inboundInvoiceModel.findOneAndDelete({ irn }).exec();
+      const result = await this.inboundInvoiceModel
+        .findOneAndDelete({ irn })
+        .exec();
 
       return result !== null;
     } catch (error) {
-      console.error('Error deleting inbound invoice:', error);
-      throw new AppError(500, 'Failed to delete inbound invoice');
+      console.error("Error deleting inbound invoice:", error);
+      throw new AppError(500, "Failed to delete inbound invoice");
     }
   }
 
@@ -235,7 +250,7 @@ export class InboundInvoiceRepository {
         .exec();
       return count;
     } catch (error) {
-      console.error('Error counting inbound invoices:', error);
+      console.error("Error counting inbound invoices:", error);
       return 0;
     }
   }
@@ -246,7 +261,7 @@ export class InboundInvoiceRepository {
   async findByBusinessId(
     businessId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: InboundInvoiceDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
@@ -274,15 +289,19 @@ export class InboundInvoiceRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching inbound invoices:', error);
-      throw new AppError(500, 'Failed to fetch inbound invoices');
+      console.error("Error fetching inbound invoices:", error);
+      throw new AppError(500, "Failed to fetch inbound invoices");
     }
   }
 
   /**
    * Find inbound invoice by IRN
    */
-  async findByIRN(irn: string, tenantId?: string, businessId?: string): Promise<InboundInvoiceDocument | null> {
+  async findByIRN(
+    irn: string,
+    tenantId?: string,
+    businessId?: string,
+  ): Promise<InboundInvoiceDocument | null> {
     try {
       const query: any = { irn };
       if (tenantId) query.tenantId = tenantId;
@@ -290,8 +309,8 @@ export class InboundInvoiceRepository {
       const doc = await this.inboundInvoiceModel.findOne(query).exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching inbound invoice:', error);
-      throw new AppError(500, 'Failed to fetch inbound invoice');
+      console.error("Error fetching inbound invoice:", error);
+      throw new AppError(500, "Failed to fetch inbound invoice");
     }
   }
 
@@ -300,7 +319,7 @@ export class InboundInvoiceRepository {
    */
   async findByInvoiceNumber(
     businessId: string,
-    invoiceNumber: string
+    invoiceNumber: string,
   ): Promise<InboundInvoiceDocument | null> {
     try {
       const doc = await this.inboundInvoiceModel
@@ -308,8 +327,8 @@ export class InboundInvoiceRepository {
         .exec();
       return doc;
     } catch (error) {
-      console.error('Error fetching inbound invoice:', error);
-      throw new AppError(500, 'Failed to fetch inbound invoice');
+      console.error("Error fetching inbound invoice:", error);
+      throw new AppError(500, "Failed to fetch inbound invoice");
     }
   }
 
@@ -318,24 +337,28 @@ export class InboundInvoiceRepository {
    */
   async updateStatus(
     irn: string,
-    status: InboundInvoiceStatus
+    status: InboundInvoiceStatus,
   ): Promise<InboundInvoiceDocument> {
     try {
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: { status } }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: { status } },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error updating invoice status:', error);
+      console.error("Error updating invoice status:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update invoice status');
+      throw new AppError(500, "Failed to update invoice status");
     }
   }
 
@@ -350,29 +373,34 @@ export class InboundInvoiceRepository {
       downloaded: boolean;
       synced: boolean;
       paymentUpdated: boolean;
-    }>
+    }>,
   ): Promise<InboundInvoiceDocument> {
     try {
       const updateFields: any = {};
       Object.keys(workflowState).forEach((key) => {
-        updateFields[`workflowState.${key}`] = workflowState[key as keyof typeof workflowState];
+        updateFields[`workflowState.${key}`] =
+          workflowState[key as keyof typeof workflowState];
       });
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateFields }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: updateFields },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error updating workflow state:', error);
+      console.error("Error updating workflow state:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update workflow state');
+      throw new AppError(500, "Failed to update workflow state");
     }
   }
 
@@ -387,7 +415,7 @@ export class InboundInvoiceRepository {
       paymentMethod?: string;
       transactionReference?: string;
       amountPaid?: number;
-    }
+    },
   ): Promise<InboundInvoiceDocument> {
     try {
       const updateData: any = { paymentStatus };
@@ -397,20 +425,24 @@ export class InboundInvoiceRepository {
       }
 
       const doc = await this.inboundInvoiceModel
-        .findOneAndUpdate({ irn }, { $set: updateData }, { returnDocument: 'after' })
+        .findOneAndUpdate(
+          { irn },
+          { $set: updateData },
+          { returnDocument: "after" },
+        )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error updating payment information:', error);
+      console.error("Error updating payment information:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to update payment information');
+      throw new AppError(500, "Failed to update payment information");
     }
   }
 
@@ -420,7 +452,7 @@ export class InboundInvoiceRepository {
   async reject(
     irn: string,
     rejectionReason: string,
-    rejectedBy: string
+    rejectedBy: string,
   ): Promise<InboundInvoiceDocument> {
     try {
       const doc = await this.inboundInvoiceModel
@@ -434,21 +466,21 @@ export class InboundInvoiceRepository {
               rejectedAt: new Date(),
             },
           },
-          { returnDocument: 'after' }
+          { returnDocument: "after" },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error rejecting invoice:', error);
+      console.error("Error rejecting invoice:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to reject invoice');
+      throw new AppError(500, "Failed to reject invoice");
     }
   }
 
@@ -463,7 +495,7 @@ export class InboundInvoiceRepository {
       payload: any;
       response?: any;
       success: boolean;
-    }
+    },
   ): Promise<InboundInvoiceDocument> {
     try {
       const doc = await this.inboundInvoiceModel
@@ -474,21 +506,21 @@ export class InboundInvoiceRepository {
               webhookEvents: event,
             },
           },
-          { returnDocument: 'after' }
+          { returnDocument: "after" },
         )
         .exec();
 
       if (!doc) {
-        throw new AppError(404, 'Inbound invoice not found');
+        throw new AppError(404, "Inbound invoice not found");
       }
 
       return doc;
     } catch (error) {
-      console.error('Error adding webhook event:', error);
+      console.error("Error adding webhook event:", error);
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError(500, 'Failed to add webhook event');
+      throw new AppError(500, "Failed to add webhook event");
     }
   }
 
@@ -499,7 +531,7 @@ export class InboundInvoiceRepository {
     searchQuery: string,
     businessId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: InboundInvoiceDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
@@ -536,8 +568,8 @@ export class InboundInvoiceRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error searching inbound invoices:', error);
-      throw new AppError(500, 'Failed to search inbound invoices');
+      console.error("Error searching inbound invoices:", error);
+      throw new AppError(500, "Failed to search inbound invoices");
     }
   }
 
@@ -548,7 +580,7 @@ export class InboundInvoiceRepository {
     businessId: string,
     status: InboundInvoiceStatus,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: InboundInvoiceDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
@@ -576,8 +608,8 @@ export class InboundInvoiceRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching invoices by status:', error);
-      throw new AppError(500, 'Failed to fetch invoices');
+      console.error("Error fetching invoices by status:", error);
+      throw new AppError(500, "Failed to fetch invoices");
     }
   }
 
@@ -588,7 +620,7 @@ export class InboundInvoiceRepository {
     businessId: string,
     paymentStatus: PaymentStatus,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: InboundInvoiceDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
@@ -616,8 +648,8 @@ export class InboundInvoiceRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching invoices by payment status:', error);
-      throw new AppError(500, 'Failed to fetch invoices');
+      console.error("Error fetching invoices by payment status:", error);
+      throw new AppError(500, "Failed to fetch invoices");
     }
   }
 
@@ -627,7 +659,7 @@ export class InboundInvoiceRepository {
   async findOverdue(
     businessId: string,
     limit: number = 20,
-    page: number = 1
+    page: number = 1,
   ): Promise<{ data: InboundInvoiceDocument[]; meta: any }> {
     try {
       const offset = (page - 1) * limit;
@@ -659,8 +691,8 @@ export class InboundInvoiceRepository {
         meta,
       };
     } catch (error) {
-      console.error('Error fetching overdue invoices:', error);
-      throw new AppError(500, 'Failed to fetch overdue invoices');
+      console.error("Error fetching overdue invoices:", error);
+      throw new AppError(500, "Failed to fetch overdue invoices");
     }
   }
 
@@ -668,7 +700,7 @@ export class InboundInvoiceRepository {
    * Bulk update invoices
    */
   async bulkUpdate(
-    updates: Array<{ irn: string; data: Partial<InboundInvoiceDocument> }>
+    updates: Array<{ irn: string; data: Partial<InboundInvoiceDocument> }>,
   ): Promise<boolean> {
     try {
       const bulkOps = updates.map((update) => ({
@@ -681,9 +713,8 @@ export class InboundInvoiceRepository {
       const result = await this.inboundInvoiceModel.bulkWrite(bulkOps);
       return result.modifiedCount > 0;
     } catch (error) {
-      console.error('Error bulk updating inbound invoices:', error);
-      throw new AppError(500, 'Failed to bulk update inbound invoices');
+      console.error("Error bulk updating inbound invoices:", error);
+      throw new AppError(500, "Failed to bulk update inbound invoices");
     }
   }
 }
- 
