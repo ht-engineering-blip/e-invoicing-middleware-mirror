@@ -188,7 +188,7 @@ export const protectedOnboardingRoutes = new Elysia()
             clientId:
               body?.clientId ||
               (isMock ? "a6de8bd8-43be-47b9-80a5-988ee3fb9cea" : undefined),
-            serviceId: body?.serviceId || (isMock ? "34A843BE" : undefined),
+            serviceId: body?.serviceId,
           },
           getActor(auth),
         );

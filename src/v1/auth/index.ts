@@ -253,11 +253,12 @@ const authRoutes = new Elysia()
         if (tenant) {
           try {
             // Get service id from irn template
-            let serviceId =
+            const serviceId =
               firsResult.irn_template?.split("-")[1] || "34A843BE";
             const credentials = {
               clientId: firsResult.id,
               serviceId,
+              irnTemplate: firsResult.irn_template,
             };
 
             await tenantService.updateFIRSCredentials(
@@ -280,9 +281,12 @@ const authRoutes = new Elysia()
                 );
               }
             } catch (onboardingErr) {
-              logger.warn("Failed to complete firsProvisioning onboarding step", {
-                error: onboardingErr,
-              });
+              logger.warn(
+                "Failed to complete firsProvisioning onboarding step",
+                {
+                  error: onboardingErr,
+                },
+              );
             }
 
             // Update tenant metadata with FIRS info
