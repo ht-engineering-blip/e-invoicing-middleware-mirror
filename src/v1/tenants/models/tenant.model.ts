@@ -90,7 +90,6 @@ export interface TenantDocument extends Document {
   webhookAuth: String,
   webhookEnabled: Boolean,
 
-  serviceId: string;
   businessName: string;
   tin: string;
   status: TenantStatus;
