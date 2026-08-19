@@ -129,7 +129,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error creating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
         throw new AppError(
@@ -163,7 +163,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: updateData },
-          { returnDocument: 'after', runValidators: true },
+          { returnDocument: "after", runValidators: true },
         )
         .exec();
 
@@ -175,7 +175,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error updating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
@@ -193,7 +193,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.INACTIVE } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -345,7 +345,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.ACTIVE } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -372,7 +372,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.SUSPENDED } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -410,15 +410,27 @@ export class TenantRepository {
           { tenantId },
           {
             $set: {
-              ...(credentials.clientId && { "config.firsCredentials.clientId": credentials.clientId }),
-              ...(credentials.serviceId && { "config.firsCredentials.serviceId": credentials.serviceId }),
-              ...(credentials.certificate && { "config.firsCredentials.certificate": credentials.certificate }),
-              ...(credentials.publicKey && { "config.firsCredentials.publicKey": credentials.publicKey }),
-              ...(credentials.apiKey && { "config.firsCredentials.apiKey": credentials.apiKey }),
-              ...(credentials.apiSecret && { "config.firsCredentials.apiSecret": credentials.apiSecret }),
+              ...(credentials.clientId && {
+                "config.firsCredentials.clientId": credentials.clientId,
+              }),
+              ...(credentials.serviceId && {
+                "config.firsCredentials.serviceId": credentials.serviceId,
+              }),
+              ...(credentials.certificate && {
+                "config.firsCredentials.certificate": credentials.certificate,
+              }),
+              ...(credentials.publicKey && {
+                "config.firsCredentials.publicKey": credentials.publicKey,
+              }),
+              ...(credentials.apiKey && {
+                "config.firsCredentials.apiKey": credentials.apiKey,
+              }),
+              ...(credentials.apiSecret && {
+                "config.firsCredentials.apiSecret": credentials.apiSecret,
+              }),
             },
           },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 

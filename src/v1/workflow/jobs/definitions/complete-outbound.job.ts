@@ -75,9 +75,13 @@ export function registerCompleteOutboundJob(): void {
             ? resolveCurrencyCode(transformed.tax_currency_code, currencies)
             : fallbackCurrency;
 
-          transformed.document_currency_code = transformed.document_currency_code
-            ? resolveCurrencyCode(transformed.document_currency_code, currencies)
-            : fallbackCurrency;
+          transformed.document_currency_code =
+            transformed.document_currency_code
+              ? resolveCurrencyCode(
+                  transformed.document_currency_code,
+                  currencies,
+                )
+              : fallbackCurrency;
 
           // Step 3: Persist invoice record
           if (irn) {
@@ -152,15 +156,6 @@ export function registerCompleteOutboundJob(): void {
           irn,
         });
       } catch (err: any) {
-        const resolvedIrn = irn || job.attrs.data.context?.irn;
-        if (resolvedIrn) {
-          job.attrs.data.context.irn = resolvedIrn;
-          await outboundRepo.update(
-            resolvedIrn,
-            { status: OutboundInvoiceStatus.FAILED },
-            job.attrs.data.tenantId,
-          ).catch(() => {});
-        }
         await chainFail(job, err);
         throw err;
       }

@@ -537,7 +537,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error("Error creating outbound invoice:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
         throw new AppError(409, "Invoice with this IRN already exists");
@@ -590,8 +590,9 @@ export class OutboundInvoiceRepository {
       return doc!;
     } catch (error: any) {
       console.error("Error upserting outbound invoice:", error);
-      if (error.name === "ValidationError")
-        throw new AppError(400, "Invalid input");
+      if (error.name === "ValidationError") {
+        throw new AppError(400, error);
+      }
       throw new AppError(500, "Failed to upsert outbound invoice");
     }
   }
@@ -623,11 +624,10 @@ export class OutboundInvoiceRepository {
       }
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate(
-          query,
-          updateDoc,
-          { returnDocument: "after", runValidators: true },
-        )
+        .findOneAndUpdate(query, updateDoc, {
+          returnDocument: "after",
+          runValidators: true,
+        })
         .exec();
 
       if (!doc) {
@@ -638,7 +638,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error("Error updating outbound invoice:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
@@ -796,11 +796,7 @@ export class OutboundInvoiceRepository {
       }
 
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate(
-          { irn },
-          updateDoc,
-          { returnDocument: "after" },
-        )
+        .findOneAndUpdate({ irn }, updateDoc, { returnDocument: "after" })
         .exec();
 
       if (!doc) {

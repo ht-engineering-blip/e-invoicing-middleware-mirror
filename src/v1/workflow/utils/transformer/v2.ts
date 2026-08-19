@@ -639,6 +639,14 @@ FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
             - Service ID: ${authContext?.serviceId}
             - Default IRN: ${invoice.irn ?? irn}
             `;
+    const isDev =
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV !== "production";
+
+    const tinFormatInstruction = isDev
+      ? `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. For accounting_customer_party.tin, a valid Nigerian TIN must be numeric (e.g., "61392352-1056" or 10-14 digits). If the source data does not provide a valid numeric TIN or provides an internal customer/party code (e.g. "AVONHEALTHCARE", "CUST01", "00000000-0000"), you MUST use the supplier TIN "${authContext?.businessTIN || "61392352-1056"}" for accounting_customer_party.tin.`
+      : `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. TIN format for accounting_customer_party.tin should be preserved from source.`;
+
     return `
 You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
 
@@ -704,7 +712,7 @@ ${JSON.stringify(invoiceTypes, null, 2)}
 - NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
-- TIN format should be preserved from source
+- ${tinFormatInstruction}
 
 ## FIELD METADATA REQUIREMENTS:
 ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
@@ -781,7 +789,19 @@ Complete the missing fields also generate emails here missing currency should de
       }),
     });
 
-    const json = await response.json();
+    const json: any = await response.json().catch(() => null);
+
+    if (!response.ok || !json?.choices?.[0]?.message?.content) {
+      const errorMsg =
+        json?.error?.message ||
+        json?.message ||
+        `OpenAI API request failed with status ${response.status} (${response.statusText})`;
+      logger.error("[TransformerV2] OpenAI call failed", {
+        status: response.status,
+        error: json?.error || json,
+      });
+      throw new Error(`OpenAI LLM error (${response.status}): ${errorMsg}`);
+    }
 
     return json.choices[0].message.content;
   }

@@ -152,7 +152,7 @@ export class WebhookEventRepository {
     } catch (error: any) {
       console.error("Error creating webhook event:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
         throw new AppError(
@@ -197,7 +197,7 @@ export class WebhookEventRepository {
     } catch (error: any) {
       console.error("Error updating webhook event:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
