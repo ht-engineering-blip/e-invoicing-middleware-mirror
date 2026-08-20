@@ -17,6 +17,8 @@ export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
   private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
+  private metricsCache = new Map<string, { data: any; timestamp: number }>();
+
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
       OutboundInvoiceModel,
@@ -324,66 +326,92 @@ export class OutboundInvoiceRepository {
         },
       };
 
-      let aggregationResult: any;
+      let items: any[] = [];
+      let total = 0;
 
       if (requestedType === "inbound") {
         const inboundPipeline: any[] = [
           { $match: inboundMatch },
-          inboundProjectStage,
           { $sort: { createdAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                inboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.inboundInvoiceModel
+        const [aggregationResult] = await this.inboundInvoiceModel
           .aggregate(inboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        total = aggregationResult?.totalCount?.[0]?.count || 0;
+        items = aggregationResult?.items || [];
       } else if (requestedType === "outbound") {
         const outboundPipeline: any[] = [
           { $match: outboundMatch },
-          outboundProjectStage,
           { $sort: { createdAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                outboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
+        const [aggregationResult] = await this.outboundInvoiceModel
           .aggregate(outboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        total = aggregationResult?.totalCount?.[0]?.count || 0;
+        items = aggregationResult?.items || [];
       } else {
+        const fetchLimit = offset + limit;
         const unifiedPipeline: any[] = [
           { $match: outboundMatch },
+          { $sort: { createdAt: -1 } },
+          { $limit: fetchLimit },
           outboundProjectStage,
           {
             $unionWith: {
               coll: "inbound_invoices",
-              pipeline: [{ $match: inboundMatch }, inboundProjectStage],
+              pipeline: [
+                { $match: inboundMatch },
+                { $sort: { createdAt: -1 } },
+                { $limit: fetchLimit },
+                inboundProjectStage,
+              ],
             },
           },
           { $sort: { createdAt: -1 } },
-          {
-            $facet: {
-              totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
-            },
-          },
+          { $skip: offset },
+          { $limit: limit },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
-          .aggregate(unifiedPipeline)
-          .option({ maxTimeMS: 25000 })
-          .exec();
-      }
 
-      const total = aggregationResult?.totalCount?.[0]?.count || 0;
-      const items = aggregationResult?.items || [];
+        const [unifiedItems, outboundCount, inboundCount] = await Promise.all([
+          this.outboundInvoiceModel
+            .aggregate(unifiedPipeline)
+            .option({ maxTimeMS: 25000 })
+            .exec(),
+          this.outboundInvoiceModel
+            .countDocuments(outboundMatch)
+            .maxTimeMS(25000)
+            .exec(),
+          this.inboundInvoiceModel
+            .countDocuments(inboundMatch)
+            .maxTimeMS(25000)
+            .exec(),
+        ]);
+
+        items = unifiedItems || [];
+        total = (outboundCount || 0) + (inboundCount || 0);
+      }
 
       return { items, total };
     } catch (error) {
@@ -439,6 +467,12 @@ export class OutboundInvoiceRepository {
         if (params.to) inboundMatch.createdAt.$lte = params.to;
       }
 
+      const cacheKey = `${tenantId || "admin"}:${businessId || ""}:${params.from?.getTime() || ""}:${params.to?.getTime() || ""}`;
+      const cached = this.metricsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < 30000) {
+        return cached.data;
+      }
+
       const [outboundCount, inboundCount] = await Promise.all([
         this.outboundInvoiceModel
           .countDocuments(outboundMatch)
@@ -450,11 +484,14 @@ export class OutboundInvoiceRepository {
           .exec(),
       ]);
 
-      return {
+      const result = {
         total: (outboundCount || 0) + (inboundCount || 0),
         outbound: outboundCount || 0,
         inbound: inboundCount || 0,
       };
+
+      this.metricsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
     } catch (error) {
       console.error("Error computing invoice metrics:", error);
       throw new AppError(500, "Failed to compute invoice metrics");
