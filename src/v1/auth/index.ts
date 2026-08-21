@@ -69,7 +69,6 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError("Invalid credentials");
         }
 
-        console.log({ tenant }, tenant.config?.firsCredentials);
         // Check if tenant is active
         /*   if (tenant.status !== 'active') {
           throw new UnauthorizedError('Tenant account is not active');
@@ -254,7 +253,9 @@ const authRoutes = new Elysia()
 
         // Find tenant by token, TIN, or email
         let tenant = tenantIdFromToken
-          ? await tenantService.getTenantById(tenantIdFromToken).catch(() => null)
+          ? await tenantService
+              .getTenantById(tenantIdFromToken)
+              .catch(() => null)
           : null;
 
         if (!tenant) {

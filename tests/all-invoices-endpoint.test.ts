@@ -55,10 +55,20 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
   beforeAll(async () => {
     await connectMongo();
 
+    const testTenantId = process.env.TEST_TENANT_ID;
+    const testBusinessId = process.env.TEST_BUSINESS_ID;
+    const testSupplierTin = process.env.TEST_SUPPLIER_TIN;
+
+    if (!testTenantId || !testBusinessId || !testSupplierTin) {
+      throw new Error(
+        "Missing required environment variables: TEST_TENANT_ID, TEST_BUSINESS_ID, TEST_SUPPLIER_TIN",
+      );
+    }
+
     mockToken = jwt.sign(
       {
-        tenantId: "TES-1056-6B20",
-        businessId: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+        tenantId: testTenantId,
+        businessId: testBusinessId,
         scopes: ["*"],
       },
       jwtConfig?.secret!,
@@ -82,7 +92,7 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
           supplierName: "Vendor B",
           supplierTIN: "9876543210",
           customerName: "Heirs Technologies Limited",
-          customerTIN: "61392352-1056",
+          customerTIN: testSupplierTin,
           totalAmount: 120000,
           document_currency_code: "NGN",
           direction: "INBOUND",
@@ -98,7 +108,7 @@ describe("Unified Invoices Endpoint (GET /v1/workflow/invoices)", () => {
           status: "VALIDATED",
           paymentStatus: "PENDING",
           supplierName: "Heirs Technologies Limited",
-          supplierTIN: "61392352-1056",
+          supplierTIN: testSupplierTin,
           customerName: "Client A",
           customerTIN: "1234567890",
           totalAmount: 50000,

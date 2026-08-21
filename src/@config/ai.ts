@@ -15,7 +15,7 @@ type ApiKeyMap = Record<
 
 const aiConfigSchema = z
   .object({
-    provider: z.enum(["openai", "gemini"]).default("openai"),
+    provider: z.enum(["openai", "gemini"]).default("gemini"),
     inferenceModel: z.string().default("gpt-4o-mini"),
     openApiEndpoint: z
       .string()
