@@ -37,6 +37,7 @@ export function registerCompleteCreditNoteJob(): void {
         let firsSignedData: any;
         let creditNotePayload = context.transformedInvoice;
         let source = context.source as OutboundInvoiceSource;
+        let transmissionFailed = false;
 
         if (!context.transformedInvoice) {
           // ── Full-pipeline mode ────────────────────────────────────────────────
@@ -335,6 +336,7 @@ export function registerCompleteCreditNoteJob(): void {
 
           qrCode = outboundResult.qrCode as string;
           firsSignedData = outboundResult.data;
+          transmissionFailed = !!outboundResult.transmissionFailed;
         } else {
           // ── Finalize mode ─────────────────────────────────────────────────────
           // Used as the LAST step in a chain where individual steps already ran.
@@ -359,11 +361,15 @@ export function registerCompleteCreditNoteJob(): void {
 
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
+          const finalStatus = transmissionFailed
+            ? OutboundInvoiceStatus.TRANSMISTION_FAILED
+            : OutboundInvoiceStatus.DELIVERED;
+
           await outboundRepo.update(
             irn,
             {
               qrCode,
-              status: OutboundInvoiceStatus.DELIVERED,
+              status: finalStatus,
               metadata: {
                 ...(context.metadata ?? {}),
                 ...(creditNotePayload
@@ -374,7 +380,9 @@ export function registerCompleteCreditNoteJob(): void {
             },
             tenantId,
           );
-          await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          if (!transmissionFailed) {
+            await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          }
         }
 
         logger.info("[Job:complete-credit-note] Done — credit note DELIVERED", {

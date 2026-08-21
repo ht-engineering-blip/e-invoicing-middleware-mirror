@@ -1,12 +1,20 @@
-import { generateRandomString, logger } from '../../../@lib';
-import { AppError, ConflictError, NotFoundError, ValidationError } from '../../../@lib/errors';
-import { SystemConfigRepository } from '../repos/system-config.repo';
-import { SystemConfigKey, IERPConfiguration } from '../models/system-config.model';
-import { TransformWorkflowService } from '../../workflow/services/workflows/transform.service';
-import { FIRSService } from '../../../@lib/adapters/firs/firs.service';
-import { AuthContext } from '../../../middlewares';
-import { InvoiceSchemaDictionaryDocument } from '../../workflow/models';
-import { generateIRN } from '../../workflow/utils/transformer/utils';
+import { generateRandomString, logger } from "../../../@lib";
+import {
+  AppError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "../../../@lib/errors";
+import { SystemConfigRepository } from "../repos/system-config.repo";
+import {
+  SystemConfigKey,
+  IERPConfiguration,
+} from "../models/system-config.model";
+import { TransformWorkflowService } from "../../workflow/services/workflows/transform.service";
+import { FIRSService } from "../../../@lib/adapters/firs/firs.service";
+import { AuthContext } from "../../../middlewares";
+import { InvoiceSchemaDictionaryDocument } from "../../workflow/models";
+import { generateIRN } from "../../workflow/utils/transformer/utils";
 
 export class SystemConfigService {
   private configRepo: SystemConfigRepository;
@@ -26,13 +34,15 @@ export class SystemConfigService {
    */
   async getFIRSDictionary(): Promise<any> {
     try {
-      const config = await this.configRepo.getByKey(SystemConfigKey.FIRS_DICTIONARY);
+      const config = await this.configRepo.getByKey(
+        SystemConfigKey.FIRS_DICTIONARY,
+      );
 
       if (!config) {
         return {
           schema: null,
           version: 0,
-          message: 'FIRS dictionary not configured',
+          message: "FIRS dictionary not configured",
         };
       }
 
@@ -43,8 +53,8 @@ export class SystemConfigService {
         updatedBy: config.updatedBy,
       };
     } catch (error: any) {
-      logger.error('Error fetching FIRS dictionary', { error: error.message });
-      throw new AppError(500, 'Failed to fetch FIRS dictionary');
+      logger.error("Error fetching FIRS dictionary", { error: error.message });
+      throw new AppError(500, "Failed to fetch FIRS dictionary");
     }
   }
 
@@ -53,24 +63,27 @@ export class SystemConfigService {
    */
   async updateFIRSDictionary(
     schema: Record<string, any>,
-    updatedBy: string = 'admin'
+    updatedBy: string = "admin",
   ): Promise<any> {
     try {
       // Validate schema structure
-      if (!schema || typeof schema !== 'object') {
-        throw new ValidationError('Invalid schema format');
+      if (!schema || typeof schema !== "object") {
+        throw new ValidationError("Invalid schema format");
       }
 
       const config = await this.configRepo.upsert(
         SystemConfigKey.FIRS_DICTIONARY,
         schema,
         {
-          description: 'FIRS UBL Invoice Schema Dictionary',
+          description: "FIRS UBL Invoice Schema Dictionary",
           updatedBy,
-        }
+        },
       );
 
-      logger.info('FIRS dictionary updated', { version: config.version, updatedBy });
+      logger.info("FIRS dictionary updated", {
+        version: config.version,
+        updatedBy,
+      });
 
       return {
         success: true,
@@ -79,9 +92,9 @@ export class SystemConfigService {
         updatedAt: config.updatedAt,
       };
     } catch (error: any) {
-      logger.error('Error updating FIRS dictionary', { error: error.message });
+      logger.error("Error updating FIRS dictionary", { error: error.message });
       if (error instanceof ValidationError) throw error;
-      throw new AppError(500, 'Failed to update FIRS dictionary');
+      throw new AppError(500, "Failed to update FIRS dictionary");
     }
   }
 
@@ -92,7 +105,9 @@ export class SystemConfigService {
    */
   async getSupportedERPs(): Promise<IERPConfiguration[]> {
     try {
-      const config = await this.configRepo.getByKey(SystemConfigKey.SUPPORTED_ERPS);
+      const config = await this.configRepo.getByKey(
+        SystemConfigKey.SUPPORTED_ERPS,
+      );
 
       if (!config) {
         return [];
@@ -100,8 +115,8 @@ export class SystemConfigService {
 
       return config.configValue as IERPConfiguration[];
     } catch (error: any) {
-      logger.error('Error fetching supported ERPs', { error: error.message });
-      throw new AppError(500, 'Failed to fetch supported ERPs');
+      logger.error("Error fetching supported ERPs", { error: error.message });
+      throw new AppError(500, "Failed to fetch supported ERPs");
     }
   }
 
@@ -109,13 +124,13 @@ export class SystemConfigService {
    * Add a new ERP configuration
    */
   async addSupportedERP(
-    erpConfig: Omit<IERPConfiguration, 'createdAt' | 'updatedAt'>,
-    updatedBy: string = 'admin'
+    erpConfig: Omit<IERPConfiguration, "createdAt" | "updatedAt">,
+    updatedBy: string = "admin",
   ): Promise<IERPConfiguration> {
     try {
       // Validate required fields
       if (!erpConfig.type || !erpConfig.name) {
-        throw new ValidationError('ERP type and name are required');
+        throw new ValidationError("ERP type and name are required");
       }
 
       // Get existing ERPs
@@ -123,7 +138,7 @@ export class SystemConfigService {
 
       // Check if ERP type already exists
       const exists = existingERPs.find(
-        (erp) => erp.type.toLowerCase() === erpConfig.type.toLowerCase()
+        (erp) => erp.type.toLowerCase() === erpConfig.type.toLowerCase(),
       );
       if (exists) {
         throw new ConflictError(`ERP type '${erpConfig.type}' already exists`);
@@ -144,18 +159,22 @@ export class SystemConfigService {
         SystemConfigKey.SUPPORTED_ERPS,
         existingERPs,
         {
-          description: 'List of supported ERP systems',
+          description: "List of supported ERP systems",
           updatedBy,
-        }
+        },
       );
 
-      logger.info('ERP configuration added', { erpType: erpConfig.type, updatedBy });
+      logger.info("ERP configuration added", {
+        erpType: erpConfig.type,
+        updatedBy,
+      });
 
       return newERP;
     } catch (error: any) {
-      logger.error('Error adding ERP configuration', { error: error.message });
-      if (error instanceof ValidationError || error instanceof ConflictError) throw error;
-      throw new AppError(500, 'Failed to add ERP configuration');
+      logger.error("Error adding ERP configuration", { error: error.message });
+      if (error instanceof ValidationError || error instanceof ConflictError)
+        throw error;
+      throw new AppError(500, "Failed to add ERP configuration");
     }
   }
 
@@ -165,13 +184,13 @@ export class SystemConfigService {
   async updateSupportedERP(
     erpType: string,
     updates: Partial<IERPConfiguration>,
-    updatedBy: string = 'admin'
+    updatedBy: string = "admin",
   ): Promise<IERPConfiguration> {
     try {
       const existingERPs = await this.getSupportedERPs();
 
       const index = existingERPs.findIndex(
-        (erp) => erp.type.toLowerCase() === erpType.toLowerCase()
+        (erp) => erp.type.toLowerCase() === erpType.toLowerCase(),
       );
 
       if (index === -1) {
@@ -190,30 +209,35 @@ export class SystemConfigService {
         SystemConfigKey.SUPPORTED_ERPS,
         existingERPs,
         {
-          description: 'List of supported ERP systems',
+          description: "List of supported ERP systems",
           updatedBy,
-        }
+        },
       );
 
-      logger.info('ERP configuration updated', { erpType, updatedBy });
+      logger.info("ERP configuration updated", { erpType, updatedBy });
 
       return existingERPs[index];
     } catch (error: any) {
-      logger.error('Error updating ERP configuration', { error: error.message });
+      logger.error("Error updating ERP configuration", {
+        error: error.message,
+      });
       if (error instanceof NotFoundError) throw error;
-      throw new AppError(500, 'Failed to update ERP configuration');
+      throw new AppError(500, "Failed to update ERP configuration");
     }
   }
 
   /**
    * Remove an ERP configuration
    */
-  async removeSupportedERP(erpType: string, updatedBy: string = 'admin'): Promise<boolean> {
+  async removeSupportedERP(
+    erpType: string,
+    updatedBy: string = "admin",
+  ): Promise<boolean> {
     try {
       const existingERPs = await this.getSupportedERPs();
 
       const index = existingERPs.findIndex(
-        (erp) => erp.type.toLowerCase() === erpType.toLowerCase()
+        (erp) => erp.type.toLowerCase() === erpType.toLowerCase(),
       );
 
       if (index === -1) {
@@ -227,33 +251,40 @@ export class SystemConfigService {
         SystemConfigKey.SUPPORTED_ERPS,
         existingERPs,
         {
-          description: 'List of supported ERP systems',
+          description: "List of supported ERP systems",
           updatedBy,
-        }
+        },
       );
 
-      logger.info('ERP configuration removed', { erpType, updatedBy });
+      logger.info("ERP configuration removed", { erpType, updatedBy });
 
       return true;
     } catch (error: any) {
-      logger.error('Error removing ERP configuration', { error: error.message });
+      logger.error("Error removing ERP configuration", {
+        error: error.message,
+      });
       if (error instanceof NotFoundError) throw error;
-      throw new AppError(500, 'Failed to remove ERP configuration');
+      throw new AppError(500, "Failed to remove ERP configuration");
     }
   }
 
   /**
    * Get a specific ERP configuration
    */
-  async getERPByType(erpType: string): Promise<Partial<InvoiceSchemaDictionaryDocument> | null> {
+  async getERPByType(
+    erpType: string,
+  ): Promise<Partial<InvoiceSchemaDictionaryDocument> | null> {
     try {
-        const erp = await new TransformWorkflowService().getInvoiceSchema(erpType);
-
+      const erp = await new TransformWorkflowService().getInvoiceSchema(
+        erpType,
+      );
 
       return erp || null;
     } catch (error: any) {
-      logger.error('Error fetching ERP configuration', { error: error.message });
-      throw new AppError(500, 'Failed to fetch ERP configuration');
+      logger.error("Error fetching ERP configuration", {
+        error: error.message,
+      });
+      throw new AppError(500, "Failed to fetch ERP configuration");
     }
   }
 
@@ -264,11 +295,11 @@ export class SystemConfigService {
    */
   async testTransform(
     erpType: string,
-    sampleInvoice: Record<string, any>
+    sampleInvoice: Record<string, any>,
   ): Promise<{
     success: boolean;
     original: any;
-    transformed: any; 
+    transformed: any;
     errors?: string[];
   }> {
     try {
@@ -277,31 +308,31 @@ export class SystemConfigService {
       if (!erpConfig) {
         throw new NotFoundError(`ERP type '${erpType}' not configured`);
       }
- 
+
       // Create tempAuthContext
       const tempAuthContext: AuthContext = {
         tenantId: "SANDBOX",
-        businessId:"a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+        businessId: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
         serviceId: "34A843BE",
         businessName: "Sandbox Corp",
-        isAdmin: false
-      }
-      let irn = generateIRN(generateRandomString(5),tempAuthContext.serviceId)
+        isAdmin: false,
+      };
+      let irn = generateIRN(generateRandomString(5), tempAuthContext.serviceId);
       sampleInvoice.irn = irn;
       // Perform transformation using the transform service
       const result = await this.transformService.transformInvoice(
         sampleInvoice,
         tempAuthContext,
-        erpType as any, 
+        erpType as any,
       );
 
       return {
         success: true,
         original: sampleInvoice,
-        transformed: result, 
+        transformed: result,
       };
     } catch (error: any) {
-      logger.error('Test transform failed', { erpType, error: error.message });
+      logger.error("Test transform failed", { erpType, error: error.message });
       return {
         success: false,
         original: sampleInvoice,
@@ -314,9 +345,7 @@ export class SystemConfigService {
   /**
    * Test invoice validation in sandbox
    */
-  async testValidate(
-    invoice: Record<string, any>
-  ): Promise<{
+  async testValidate(invoice: Record<string, any>): Promise<{
     success: boolean;
     valid: boolean;
     errors?: string[];
@@ -324,18 +353,23 @@ export class SystemConfigService {
   }> {
     try {
       // Validate using FIRS service
-      const result: any = await this.firsService.validateInvoice(invoice.tenant_id, invoice);
+      const result: any = await this.firsService.validateInvoice(
+        invoice.tenant_id,
+        invoice,
+      );
 
       const isValid = result?.data?.ok === true;
 
       return {
         success: true,
         valid: isValid,
-        errors: isValid ? undefined : result?.data?.errors || ['Validation failed'],
+        errors: isValid
+          ? undefined
+          : result?.data?.errors || ["Validation failed"],
         warnings: [],
       };
     } catch (error: any) {
-      logger.error('Test validate failed', { error: error.message });
+      logger.error("Test validate failed", { error: error.message });
       return {
         success: false,
         valid: false,
@@ -349,7 +383,7 @@ export class SystemConfigService {
    */
   async testTransformAndValidate(
     erpType: string,
-    sampleInvoice: Record<string, any>
+    sampleInvoice: Record<string, any>,
   ): Promise<{
     success: boolean;
     original: any;
@@ -370,13 +404,15 @@ export class SystemConfigService {
           transformed: null,
           validation: {
             valid: false,
-            errors: transformResult.errors || ['Transform failed'],
+            errors: transformResult.errors || ["Transform failed"],
           },
         };
       }
 
       // Then validate
-      const validateResult = await this.testValidate(transformResult.transformed);
+      const validateResult = await this.testValidate(
+        transformResult.transformed,
+      );
 
       return {
         success: true,
@@ -388,7 +424,10 @@ export class SystemConfigService {
         },
       };
     } catch (error: any) {
-      logger.error('Test transform and validate failed', { erpType, error: error.message });
+      logger.error("Test transform and validate failed", {
+        erpType,
+        error: error.message,
+      });
       return {
         success: false,
         original: sampleInvoice,
