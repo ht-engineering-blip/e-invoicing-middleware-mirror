@@ -397,6 +397,7 @@ export class TenantRepository {
     tenantId: string,
     credentials: {
       clientId?: string;
+      businessId?: string;
       serviceId?: string;
       certificate?: string;
       publicKey?: string;
@@ -405,11 +406,16 @@ export class TenantRepository {
     },
   ): Promise<TenantDocument> {
     try {
+      console.log({ credentials });
+
       const doc = await this.tenantModel
         .findOneAndUpdate(
           { tenantId },
           {
             $set: {
+              ...(credentials.businessId && {
+                businessId: credentials.businessId,
+              }),
               ...(credentials.clientId && {
                 "config.firsCredentials.clientId": credentials.clientId,
               }),
@@ -430,9 +436,10 @@ export class TenantRepository {
               }),
             },
           },
-          { returnDocument: "after" },
         )
         .exec();
+
+      console.log("Doc:", doc);
 
       if (!doc) {
         throw new AppError(404, "Tenant not found");

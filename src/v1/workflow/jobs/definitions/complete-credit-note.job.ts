@@ -195,11 +195,11 @@ export function registerCompleteCreditNoteJob(): void {
             );
           }
 
-          // Dynamically set invoice_type_code from payload or default to 381
+          // Dynamically set invoice_type_code from payload or default to 380
           const resolvedInvoiceTypeCode =
             payload.data?.invoice_type_code ??
             payload.invoice_type_code ??
-            (hasLines ? creditNotePayload.invoice_type_code : "381");
+            (hasLines ? creditNotePayload.invoice_type_code : "380");
 
           creditNotePayload.invoice_type_code = String(
             resolvedInvoiceTypeCode,

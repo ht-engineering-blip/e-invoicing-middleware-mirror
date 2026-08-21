@@ -167,7 +167,9 @@ export class TenantService extends BaseService {
     if (includeOnboarding) {
       try {
         const onboarding = await this.onboardingRepo.findByTenantId(tenantId);
-        return { ...tenant.toObject(), onboarding };
+        const rawTenant =
+          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        return { ...rawTenant, onboarding };
       } catch (error) {
         // If onboarding not found, return tenant without it
         return tenant;
@@ -229,6 +231,7 @@ export class TenantService extends BaseService {
   async listTenants(filters?: {
     status?: string;
     erpSystem?: string;
+    search?: string;
     skip?: number;
     limit?: number;
     includeOnboarding?: boolean;
@@ -242,8 +245,9 @@ export class TenantService extends BaseService {
     const query: any = {};
     if (filters?.status) query.status._eq = filters.status;
     if (filters?.erpSystem) query.erpSystem._eq = filters.erpSystem;
+    if (filters?.search) query.search = filters.search;
 
-    let tenants = await this.tenantRepo.findMany(query, skip, limit);
+    let tenants = await this.tenantRepo.findMany(query, undefined, limit, skip);
     const total = await this.tenantRepo.count(query);
 
     // Include onboarding status if requested
@@ -272,6 +276,34 @@ export class TenantService extends BaseService {
   }
 
   /**
+   * Get tenant analytics counts
+   */
+  async getTenantAnalytics(): Promise<{
+    total: number;
+    active: number;
+    invited: number;
+    suspended: number;
+  }> {
+    const total = await this.tenantRepo.count({});
+    const active = await this.tenantRepo.count({
+      status: { _eq: TenantStatus.ACTIVE },
+    });
+    const invited = await this.tenantRepo.count({
+      status: { _eq: TenantStatus.ONBOARDING },
+    });
+    const suspended = await this.tenantRepo.count({
+      status: { _eq: TenantStatus.SUSPENDED },
+    });
+
+    return {
+      total,
+      active,
+      invited,
+      suspended,
+    };
+  }
+
+  /**
    * Update tenant
    */
   async updateTenant(
@@ -280,6 +312,8 @@ export class TenantService extends BaseService {
     actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
+    const tenantObj =
+      typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
     const updateData: any = {};
 
@@ -309,10 +343,13 @@ export class TenantService extends BaseService {
     if (input.contactPhone) updateData.contactPhone = input.contactPhone;
     if (input.erpWebhookUrl) updateData.erpWebhookUrl = input.erpWebhookUrl;
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
-    if (input.webhookEnabled !== undefined)
+    if (input.webhookEnabled !== undefined) {
       updateData.webhookEnabled = input.webhookEnabled;
-    if (input.passwordChangedAt)
+    }
+    if (input.passwordChangedAt) {
       updateData.passwordChangedAt = input.passwordChangedAt;
+    }
+    if (input.status) updateData.status = input.status;
 
     // Encrypt ERP API key if provided
     if (input.erpApiKey) {
@@ -325,7 +362,7 @@ export class TenantService extends BaseService {
     // Update features
     if (input.features) {
       updateData["config.features"] = {
-        ...tenant?.config?.features,
+        ...tenantObj.config?.features,
         ...input.features,
       };
     }
@@ -333,7 +370,7 @@ export class TenantService extends BaseService {
     // Update limits
     if (input.limits) {
       updateData["config.limits"] = {
-        ...(tenant?.config?.limits || {}),
+        ...(tenantObj.config?.limits || {}),
         ...(input?.limits || {}),
       };
     }
@@ -346,14 +383,14 @@ export class TenantService extends BaseService {
     // Update metadata
     if (input.metadata) {
       updateData["metadata"] = {
-        ...tenant.metadata,
+        ...tenantObj.metadata,
         ...input.metadata,
       };
     }
 
     if (input.config) {
       updateData["config"] = {
-        ...tenant.config,
+        ...tenantObj.config,
         ...input.config,
       };
     }
@@ -495,6 +532,7 @@ export class TenantService extends BaseService {
 
     if (credentials.clientId) {
       updateData["clientId"] = encryptSensitiveData(credentials.clientId);
+      updateData["businessId"] = credentials.clientId;
     }
     if (credentials.apiKey) {
       updateData["apiKey"] = encryptSensitiveData(credentials.apiKey);
@@ -520,6 +558,44 @@ export class TenantService extends BaseService {
       resourceId: tenant.tenantId,
       description: "FIRS credentials updated",
       metadata: {},
+    });
+
+    return updatedTenant!;
+  }
+
+  /**
+   * Update tenant's business ID
+   */
+  async updateBusinessId(
+    tenantId: string,
+    businessId: string,
+    actor?: any,
+  ): Promise<TenantDocument> {
+    const tenant = await this.getTenantById(tenantId);
+    
+    // Encrypt the new business ID (which is the client ID in FIRS integration)
+    const encryptedClientId = encryptSensitiveData(businessId);
+    
+    const updatedTenant = await this.tenantRepo.updateFIRSCredentials(
+      tenantId,
+      { 
+        clientId: encryptedClientId,
+        businessId: businessId
+      },
+    );
+
+    // Audit log
+    await this.createAuditLog({
+      tenantId: tenant.tenantId,
+      eventType: AuditEventType.TENANT_UPDATED,
+      severity: AuditEventSeverity.INFO,
+      actorType: actor?.type || "system",
+      actorId: actor?.id || "system",
+      actorName: actor?.name,
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
+      description: "Tenant business ID updated",
+      metadata: { businessId },
     });
 
     return updatedTenant!;
@@ -916,6 +992,10 @@ export class TenantService extends BaseService {
       updateData,
     );
 
+    if (input.status === "active") {
+      await this.activateTenant(tenantId, actor);
+    }
+
     // Audit log
     await this.createAuditLog({
       tenantId: tenant.tenantId,
@@ -1151,7 +1231,12 @@ export class TenantService extends BaseService {
     }
 
     // Get all tenants
-    const tenants = await this.tenantRepo.findMany(query, skip, limit);
+    const tenants = await this.tenantRepo.findMany(
+      query,
+      undefined,
+      limit,
+      skip,
+    );
     const total = await this.tenantRepo.count(query);
 
     // Map tenants to ERP config format
@@ -1391,9 +1476,11 @@ export class TenantService extends BaseService {
       throw new ConflictError("Email is already in use by another tenant");
     }
 
+    const rawTenant =
+      typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
     const verificationToken = await this.createAuthToken(
       {
-        ...tenant.toObject(),
+        ...rawTenant,
         contactEmail: normalizedNewEmail,
         newEmail: normalizedNewEmail,
       },

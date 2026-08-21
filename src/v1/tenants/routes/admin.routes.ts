@@ -15,6 +15,7 @@ import { templateEngine } from "../../../templates/engine";
 import {
   createTenantValidation,
   listTenantsValidation,
+  getTenantAnalyticsValidation,
   getTenantByIdValidation,
   updateTenantValidation,
   activateTenantValidation,
@@ -77,9 +78,10 @@ const adminTenantRoutes = new Elysia({
         const tenant = await tenantService.createTenant(body, getActor(auth));
 
         /* Notify Tenant to complete onboarding */
+        const rawTenant = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
         let activationToken = await authService.createAuthToken(
           {
-            ...tenant.toObject(),
+            ...rawTenant,
             activationTokenId: tenant.metadata?.activationTokenId,
           },
           "12HRS",
@@ -106,6 +108,28 @@ const adminTenantRoutes = new Elysia({
   )
 
   /**
+   * GET /api/v1/tenants/analytics
+   * Retrieve summary analytics counts for tenants
+   */
+  .get(
+    "/analytics",
+    async ({ auth, tenantService }) => {
+      try {
+        onlyAdmin(auth!, "Forbidden: Admin access required");
+        const analytics = await tenantService.getTenantAnalytics();
+        return ResponseBuilder.success(
+          analytics,
+          undefined,
+          "Tenant analytics retrieved successfully",
+        );
+      } catch (error: any) {
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
+      }
+    },
+    getTenantAnalyticsValidation,
+  )
+
+  /**
    * GET /api/v1/tenants
    * List all tenants with pagination and filtering
    */
@@ -114,7 +138,7 @@ const adminTenantRoutes = new Elysia({
     async ({ auth, query, tenantService }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
-        const { page, limit, onboarding, status } = query;
+        const { page, limit, onboarding, status, search } = query;
         const pageNum = Number(page || 1);
         const limitNum = Number(limit || 20);
         const includeOnboarding =
@@ -123,6 +147,7 @@ const adminTenantRoutes = new Elysia({
 
         const result = await tenantService.listTenants({
           status,
+          search,
           skip,
           limit: limitNum,
           includeOnboarding,
@@ -131,8 +156,8 @@ const adminTenantRoutes = new Elysia({
         return ResponseBuilder.paginate(
           result.tenants,
           result.total,
-          page!,
-          limit!,
+          pageNum,
+          limitNum,
         );
       } catch (error: any) {
         return ResponseBuilder.error(error.message, error.statusCode || 500);
@@ -566,11 +591,12 @@ const adminTenantRoutes = new Elysia({
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
+        const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
         const rawIdKeyMap =
-          tenant.config?.idKeyMap instanceof Map
-            ? Object.fromEntries(tenant.config.idKeyMap)
-            : tenant.config?.idKeyMap || {};
+          tenantObj.config?.idKeyMap instanceof Map
+            ? Object.fromEntries(tenantObj.config.idKeyMap)
+            : tenantObj.config?.idKeyMap || {};
 
         const idKeyMap = {
           ...rawIdKeyMap,
@@ -578,7 +604,7 @@ const adminTenantRoutes = new Elysia({
         };
 
         const updatedConfig = {
-          ...tenant.config,
+          ...tenantObj.config,
           idKeyMap,
         };
 
@@ -624,16 +650,19 @@ const adminTenantRoutes = new Elysia({
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
+        const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
         const referenceIdKeyMap =
-          tenant.config?.referenceIdKeyMap instanceof Map
-            ? tenant.config.referenceIdKeyMap
-            : new Map(Object.entries(tenant.config?.referenceIdKeyMap || {}));
+          tenantObj.config?.referenceIdKeyMap instanceof Map
+            ? tenantObj.config.referenceIdKeyMap
+            : new Map(
+                Object.entries(tenantObj.config?.referenceIdKeyMap || {}),
+              );
 
         referenceIdKeyMap.set(body.eventType.replace(/\./g, "_"), body.idKey);
 
         const updatedConfig = {
-          ...tenant.config,
+          ...tenantObj.config,
           referenceIdKeyMap,
         };
 
@@ -743,12 +772,13 @@ const adminTenantRoutes = new Elysia({
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
+        const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
-        const idKeyMap = { ...parseMapToRecord(tenant.config?.idKeyMap) };
+        const idKeyMap = { ...parseMapToRecord(tenantObj.config?.idKeyMap) };
         const referenceIdKeyMap = {
-          ...parseMapToRecord(tenant.config?.referenceIdKeyMap),
+          ...parseMapToRecord(tenantObj.config?.referenceIdKeyMap),
         };
-        let invoiceIdKey = (tenant.config?.invoiceIdKey ||
+        let invoiceIdKey = (tenantObj.config?.invoiceIdKey ||
           "invoiceId") as string;
 
         const matchedDef = findKeyTypeDefinition(body.keyType);
@@ -781,7 +811,7 @@ const adminTenantRoutes = new Elysia({
         }
 
         const updatedConfig = {
-          ...tenant.config,
+          ...tenantObj.config,
           invoiceIdKey,
           idKeyMap,
           referenceIdKeyMap,
@@ -872,9 +902,10 @@ const adminTenantRoutes = new Elysia({
         if (!tenant) {
           return ResponseBuilder.error("Tenant not found", 404);
         }
+        const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
         // Check if already activated
-        if (tenant.password || tenant.metadata?.activationCompleted) {
+        if (tenantObj.password || tenantObj.metadata?.activationCompleted) {
           return ResponseBuilder.error(
             "Account has already been activated",
             400,
@@ -884,8 +915,8 @@ const adminTenantRoutes = new Elysia({
         // Check if previous token is still in timeframe and disable/invalidate it using service helper
         if (tenantService.isActivationTokenInTimeframe(tenant)) {
           logger.info("Admin disabling previous activation token", {
-            tenantId: tenant.tenantId,
-            tokenId: tenant.metadata?.activationTokenId,
+            tenantId: tenantObj.tenantId,
+            tokenId: tenantObj.metadata?.activationTokenId,
           });
           // Overwritten by new values in the update below
         }
@@ -897,13 +928,13 @@ const adminTenantRoutes = new Elysia({
         ); // 12 hours
 
         const metadata = {
-          ...tenant.metadata,
+          ...tenantObj.metadata,
           activationTokenId,
           activationTokenExpiresAt,
         };
 
         await tenantService.updateTenant(
-          tenant.tenantId,
+          tenantObj.tenantId,
           { metadata },
           getActor(auth),
         );
@@ -911,7 +942,7 @@ const adminTenantRoutes = new Elysia({
         // Resend activation email with new token ID
         let activationToken = await authService.createAuthToken(
           {
-            ...tenant.toObject(),
+            ...tenantObj,
             activationTokenId,
           } as any,
           "12HRS",

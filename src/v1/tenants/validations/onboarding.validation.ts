@@ -179,3 +179,22 @@ export const resendTenantTokenValidation = {
       "Check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.",
   },
 };
+
+export const updateBusinessIdValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  body: t.Object({
+    businessId: t.String({
+      minLength: 2,
+      description: "The new Business ID/Client ID of the tenant",
+      examples: ["a6de8bd8-43be-47b9-80a5-988ee3fb9cea"],
+    }),
+  }),
+  detail: {
+    tags: ["Onboarding"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Update Tenant Business ID",
+    description: "Update the business ID (which is the client ID in FIRS integration) of a tenant.",
+  },
+};

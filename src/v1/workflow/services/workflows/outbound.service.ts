@@ -19,9 +19,9 @@ export class OutboundWorkflowService {
    * Final step of the outbound chain: generate QR code from FIRS.
    * All prior steps (validate, sign, transmit, confirm) must already be done.
    */
-  async generateQRCode(irn: string, businessId: string) {
+  async generateQRCode(irn: string, tenantId: string) {
     const firsService = new FIRSService();
-    const firsCreds = await this.tenantService.getFIRSCredentials(businessId);
+    const firsCreds = await this.tenantService.getFIRSCredentials(tenantId);
 
     const encryptedData = await firsService.generateQRCodeV2(
       irn,
@@ -298,12 +298,16 @@ export class OutboundWorkflowService {
         });
       }
 
+      console.log("[Job:complete-outbound] Transmition Started", { invoice });
+
       // Step 5: Transmit
       if (transmit && (toTransmit || !wf.transmitted)) {
         const transmitRes: any = await firsService.transmitInvoice(
           invoice.tenant_id,
           invoice.irn,
         );
+
+        console.log("TRENSMITTED RES", { transmitRes });
 
         if (
           transmitRes &&
@@ -337,6 +341,8 @@ export class OutboundWorkflowService {
 
       return encryptedData;
     } catch (error: any) {
+      console.error("TRANSMISSION FAILED", { error });
+
       await this.outboundRepo.update(invoice.irn, {
         status: OutboundInvoiceStatus.FAILED,
       });

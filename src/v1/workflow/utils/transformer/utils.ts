@@ -40,7 +40,6 @@ export function sanitizeInvoiceIRNs(invoice: any): void {
 
   const isAdjustmentNote = [
     "380",
-    "381",
     "383",
     "384",
     "385",
