@@ -41,19 +41,24 @@ import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.exampl
 export class FIRSInvoiceTransformerV2 {
   private apiKey: string;
   private apiEndpoint: string;
-  private provider: 'openai' | 'gemini';
+  private provider: "openai" | "gemini";
   private model: string;
 
   constructor(
     apiKey: string,
     apiEndpoint: string = "https://api.openai.com/v1/chat/completions",
-    provider: 'openai' | 'gemini' = 'openai',
-    model: string = 'gpt-4o-mini',
+    provider: "openai" | "gemini" = "gemini",
+    model: string = "gpt-4o-mini",
   ) {
     this.apiKey = apiKey;
     this.apiEndpoint = apiEndpoint;
     this.provider = provider;
     this.model = model;
+    console.log("[TransformerV2] Initialized with:", {
+      endpoint: this.apiEndpoint,
+      provider: this.provider,
+      model: this.model,
+    });
   }
 
   /**
@@ -804,6 +809,8 @@ Complete the missing fields also generate emails here missing currency should de
         `OpenAI API request failed with status ${response.status} (${response.statusText})`;
       logger.error("[TransformerV2] OpenAI call failed", {
         status: response.status,
+        endpoint: this.apiEndpoint,
+        model: this.model,
         error: json?.error || json,
       });
       throw new Error(`OpenAI LLM error (${response.status}): ${errorMsg}`);

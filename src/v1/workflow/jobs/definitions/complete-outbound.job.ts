@@ -31,6 +31,7 @@ export function registerCompleteOutboundJob(): void {
         let irn = context.irn;
         let qrCode: string | undefined;
         let firsSignedData: any;
+        let transmissionFailed = false;
 
         if (!context.transformedInvoice) {
           // ── Full-pipeline mode ────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export function registerCompleteOutboundJob(): void {
           );
           qrCode = result.qrCode as string;
           firsSignedData = result.data;
+          transmissionFailed = !!result.transmissionFailed;
         } else {
           // ── Finalize mode ─────────────────────────────────────────────────────
           // Used as the LAST step in a chain where individual steps already ran.
@@ -127,9 +129,13 @@ export function registerCompleteOutboundJob(): void {
 
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
+          const finalStatus = transmissionFailed
+            ? OutboundInvoiceStatus.TRANSMISTION_FAILED
+            : OutboundInvoiceStatus.DELIVERED;
+
           await outboundRepo.update(irn, {
             qrCode,
-            status: OutboundInvoiceStatus.DELIVERED,
+            status: finalStatus,
             metadata: {
               ...(context.metadata ?? {}),
               ...(context.transformedInvoice
@@ -138,7 +144,9 @@ export function registerCompleteOutboundJob(): void {
               firsSignedData,
             },
           });
-          await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          if (!transmissionFailed) {
+            await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          }
         }
 
         logger.info("[Job:complete-outbound] Done — invoice DELIVERED", {

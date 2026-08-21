@@ -19,9 +19,9 @@ export class OutboundWorkflowService {
    * Final step of the outbound chain: generate QR code from FIRS.
    * All prior steps (validate, sign, transmit, confirm) must already be done.
    */
-  async generateQRCode(irn: string, tenantId: string) {
+  async generateQRCode(irn: string, tenat: string) {
     const firsService = new FIRSService();
-    const firsCreds = await this.tenantService.getFIRSCredentials(tenantId);
+    const firsCreds = await this.tenantService.getFIRSCredentials(tenat);
 
     const encryptedData = await firsService.generateQRCodeV2(
       irn,
@@ -301,51 +301,66 @@ export class OutboundWorkflowService {
       console.log("[Job:complete-outbound] Transmition Started", { invoice });
 
       // Step 5: Transmit
+      let transmissionFailed = false;
       if (transmit && (toTransmit || !wf.transmitted)) {
-        const transmitRes: any = await firsService.transmitInvoice(
-          invoice.tenant_id,
-          invoice.irn,
-        );
+        try {
+          const transmitRes: any = await firsService.transmitInvoice(
+            invoice.tenant_id,
+            invoice.irn,
+          );
 
-        console.log("TRENSMITTED RES", { transmitRes });
+          console.log("TRENSMITTED RES", { transmitRes });
 
-        if (
-          transmitRes &&
-          transmitRes.code &&
-          transmitRes.code !== 200 &&
-          !transmitRes?.data?.ok
-        ) {
-          const detail =
-            transmitRes?.message ||
-            (transmitRes?.errors
-              ? Array.isArray(transmitRes.errors)
-                ? transmitRes.errors.join("; ")
-                : JSON.stringify(transmitRes.errors)
-              : "") ||
-            transmitRes?.data?.message ||
-            "";
-          throw new Error(`Transmission failed${detail ? `: ${detail}` : ""}`);
+          if (
+            transmitRes &&
+            transmitRes.code &&
+            transmitRes.code !== 200 &&
+            !transmitRes?.data?.ok
+          ) {
+            const detail =
+              transmitRes?.message ||
+              (transmitRes?.errors
+                ? Array.isArray(transmitRes.errors)
+                  ? transmitRes.errors.join("; ")
+                  : JSON.stringify(transmitRes.errors)
+                : "") ||
+              transmitRes?.data?.message ||
+              "";
+            throw new Error(`Transmission failed${detail ? `: ${detail}` : ""}`);
+          }
+
+          await this.outboundRepo.update(invoice.irn, {
+            status: OutboundInvoiceStatus.DELIVERED,
+          });
+
+          await this.outboundRepo.updateWorkflowState(invoice.irn, {
+            transmitted: true,
+            delivered: true,
+          });
+          wf.transmitted = true;
+          wf.delivered = true;
+        } catch (transmitError: any) {
+          console.error("TRANSMISSION FAILED (tolerated)", { transmitError });
+          transmissionFailed = true;
+
+          await this.outboundRepo.update(invoice.irn, {
+            status: OutboundInvoiceStatus.TRANSMISTION_FAILED,
+            metadata: {
+              ...stored?.metadata,
+              workflowState: wf,
+              transmissionError: transmitError.message || String(transmitError),
+            },
+          });
         }
-
-        await this.outboundRepo.update(invoice.irn, {
-          status: OutboundInvoiceStatus.DELIVERED,
-        });
-
-        await this.outboundRepo.updateWorkflowState(invoice.irn, {
-          transmitted: true,
-          delivered: true,
-        });
-        wf.transmitted = true;
-        wf.delivered = true;
       }
 
-      return encryptedData;
+      return {
+        qrCode: encryptedData.qrCode,
+        data: encryptedData.data,
+        transmissionFailed,
+      };
     } catch (error: any) {
-      console.error("TRANSMISSION FAILED", { error });
-
-      await this.outboundRepo.update(invoice.irn, {
-        status: OutboundInvoiceStatus.FAILED,
-      });
+      console.error("OUTBOUND WORKFLOW STEP FAILED", { error });
       throw error;
     }
   }
