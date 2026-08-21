@@ -236,4 +236,46 @@ describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
     expect(loginResult.authToken).toBeDefined();
     expect(loginResult.member.email).toBe(memberEmail);
   }, 60000);
+
+  it("should successfully update and decrypt the tenant's business ID", async () => {
+    const fakeBusinessName = faker.company.name();
+    const fakeTin = faker.string.numeric({ length: 10 });
+    const fakeEmail = faker.internet.email().toLowerCase();
+    const fakePhone = faker.phone.number();
+
+    const tenant = await tenantService.createTenant({
+      businessName: fakeBusinessName,
+      tin: fakeTin,
+      businessRegistrationNumber: `RC-${faker.string.numeric({ length: 6 })}`,
+      contactEmail: fakeEmail,
+      contactPhone: fakePhone,
+      expectedVolume: 100,
+      erpSystem: "tally",
+    }, {
+      id: "admin-user-2",
+      type: "user",
+      name: "Global Admin",
+    });
+
+    testTenants.push(tenant.tenantId);
+
+    const newBusinessId = "new-test-business-id-uuid-9999";
+    const updatedTenant = await tenantService.updateBusinessId(
+      tenant.tenantId,
+      newBusinessId,
+      { id: "admin-user-2", type: "user" }
+    );
+
+    expect(updatedTenant).toBeDefined();
+    expect(updatedTenant.businessId).toBe(newBusinessId);
+
+    // Verify retrieval by business ID
+    const retrieved = await tenantService.getTenantByBusinessId(newBusinessId);
+    expect(retrieved).toBeDefined();
+    expect(retrieved.tenantId).toBe(tenant.tenantId);
+
+    // Verify FIRS credentials decryption matches the business ID
+    const credentials = await tenantService.getFIRSCredentials(tenant.tenantId);
+    expect(credentials.clientId).toBe(newBusinessId);
+  });
 });

@@ -69,7 +69,7 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError("Invalid credentials");
         }
 
-        console.log({ tenant });
+        console.log({ tenant }, tenant.config?.firsCredentials);
         // Check if tenant is active
         /*   if (tenant.status !== 'active') {
           throw new UnauthorizedError('Tenant account is not active');
@@ -174,7 +174,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/oauth/firs",
-    async ({ body, tenantService, firsService, set }) => {
+    async ({ body, tenantService, firsService, set, headers }) => {
       try {
         logger.info("FIRS OAuth authentication request", {
           email: body.email,
@@ -238,10 +238,30 @@ const authRoutes = new Elysia()
           tin: firsResult.tin,
         });
 
-        // Find tenant by TIN or email
-        let tenant = await tenantService
-          .getTenantByTinOrEmail(firsResult.tin)
-          .catch(() => null);
+        let tenantIdFromToken: string | undefined;
+        const authHeader = headers["authorization"];
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          try {
+            const token = authHeader.substring(7);
+            const decoded = jwt.verify(token, jwtConfig?.secret!) as any;
+            if (decoded && decoded.tenantId) {
+              tenantIdFromToken = decoded.tenantId;
+            }
+          } catch (e) {
+            // Ignore token decoding errors
+          }
+        }
+
+        // Find tenant by token, TIN, or email
+        let tenant = tenantIdFromToken
+          ? await tenantService.getTenantById(tenantIdFromToken).catch(() => null)
+          : null;
+
+        if (!tenant) {
+          tenant = await tenantService
+            .getTenantByTinOrEmail(firsResult.tin)
+            .catch(() => null);
+        }
 
         if (!tenant && body.email) {
           tenant = await tenantService
@@ -486,7 +506,6 @@ const protectedAuthRoutes = new Elysia()
           throw new UnauthorizedError("Not authenticated");
         }
 
-        console.log(auth);
         // Handle team member authentication
         if (auth.isTeamMember && auth.userId) {
           logger.info("Fetching team member details", {

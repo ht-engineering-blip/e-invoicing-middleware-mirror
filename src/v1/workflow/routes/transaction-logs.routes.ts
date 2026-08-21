@@ -420,121 +420,65 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
     "/outbound/:irn/retry-from-step",
     async ({ params, body, auth, outboundRepo, webhookEventRepo, set }) => {
       try {
-        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
-        const invoice = await outboundRepo.findByIrn(params.irn, tenantId);
+        const invoice = await outboundRepo.findByIrn(params.irn);
+
         if (!invoice) {
-          set.status = 404;
-          return ResponseBuilder.error("Invoice not found", 404);
+          return {
+            success: false,
+            error: "Invoice not found",
+            statusCode: 404,
+          };
+        }
+
+        if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
+          return { success: false, error: "Not authorized", statusCode: 403 };
+        }
+
+        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+          return {
+            success: false,
+            error: "Only FAILED invoices can be retried",
+            statusCode: 400,
+          };
         }
 
         const startAction = body.fromStep;
         if (!ACTION_TO_JOB[startAction]) {
-          set.status = 400;
-          return ResponseBuilder.error(`Unknown action: ${startAction}`, 400);
+          return {
+            success: false,
+            error: `Unknown action: ${startAction}`,
+            statusCode: 400,
+          };
         }
 
-        // ── Recover original action chain & payload from the invoice's existing webhook events ──
-        let originalActions: string[] | null = null;
-        let originalWebhookUrl = "";
-        let originalEventType = "erp.invoice.submitted";
-        let originalPayload: any = null;
-        const existingEventIds: string[] = invoice.webhookEvents ?? [];
+        // Default chain from the requested step onward
+        const defaultChain = [
+          "transform",
+          "validate",
+          "sign",
+          "generate_irn",
+          "transmit",
+          "confirm_invoice_status",
+          "complete_outbound",
+        ];
 
-        if (existingEventIds.length > 0) {
-          // Find the earliest non-retry event (the original trigger for this invoice)
-          const fetchedEvents = await Promise.all(
-            existingEventIds.map((id) =>
-              webhookEventRepo.findByEventId(id, tenantId).catch(() => null),
-            ),
-          );
-          const validEvents = fetchedEvents
-            .filter((e): e is NonNullable<typeof e> => e !== null)
-            .filter((e) => (e.metadata as any)?.source !== "manual_retry");
-
-          const originalEvent = (
-            validEvents.length > 0
-              ? validEvents
-              : fetchedEvents.filter((e): e is NonNullable<typeof e> => e !== null)
-          ).sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          )[0];
-
-          if (originalEvent) {
-            originalWebhookUrl = originalEvent.webhookUrl ?? "";
-            originalEventType = originalEvent.eventType ?? originalEventType;
-            originalPayload = originalEvent.payload;
-
-            // Tier 1: matchedRoutes stored in metadata (webhook-triggered flows)
-            const matchedRoutes: any[] =
-              (originalEvent as any).metadata?.matchedRoutes ?? [];
-            const fromRoutes = matchedRoutes.flatMap(
-              (r: any) => r.actions ?? [],
-            );
-            if (fromRoutes.length > 0) {
-              originalActions = fromRoutes;
-            } else if (originalEvent.jobIds?.length) {
-              // Tier 2: read the first Agenda job's data.actions
-              const { jobs } = await agenda.db.queryJobs({
-                ids: [originalEvent.jobIds[0]],
-              });
-              const jobActions: string[] | undefined = (jobs[0] as any)?.data
-                ?.actions;
-              if (jobActions?.length) originalActions = jobActions;
-            }
-          }
-        }
-
-        // Determine effective retry payload
-        const retryPayload =
-          originalPayload ??
-          invoice.metadata?.rawPayload ??
-          invoice.metadata?.originalPayload ??
-          invoice.metadata?.transformedInvoice ??
-          invoice.metadata;
-
-        // ── Build the retry action list from the recovered chain ──────────────────
-        let actions: string[];
-        if (originalActions?.length) {
-          const startIndex = originalActions.indexOf(startAction);
-          // If step is in the original chain, resume from there; otherwise run just that step
-          actions =
-            startIndex >= 0 ? originalActions.slice(startIndex) : [startAction];
-        } else {
-          // No history recoverable — fall back to the canonical outbound chain order
-          const fallbackChain = [
-            "generate_irn",
-            "transform",
-            "validate",
-            "sign",
-            "transmit",
-            "confirm_invoice_status",
-            "complete_outbound",
-            "report_vat",
-            "sync_erp",
-          ];
-          const startIndex = fallbackChain.indexOf(startAction);
-          actions =
-            startIndex >= 0 ? fallbackChain.slice(startIndex) : [startAction];
-        }
+        const startIndex = defaultChain.indexOf(startAction);
+        const actions =
+          startIndex >= 0 ? defaultChain.slice(startIndex) : [startAction];
 
         // Create a retry webhook event to anchor the new chain
         const eventId = `wh_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         await webhookEventRepo.create({
           tenantId: invoice.tenantId,
           eventId,
-          eventType: originalEventType,
-          payload: retryPayload,
+          eventType: "invoice.retry",
+          payload: { irn: params.irn, fromStep: startAction },
           resourceId: params.irn,
           resourceType: "invoice",
-          webhookUrl: originalWebhookUrl,
+          webhookUrl: "",
           maxRetries: 0,
           jobErrors: [],
-          metadata: {
-            source: "manual_retry",
-            fromStep: startAction,
-            originalEventId: existingEventIds[0],
-          },
+          metadata: { source: "manual_retry", fromStep: startAction },
         } as any);
 
         await outboundRepo.addWebhookEvent(params.irn, eventId);
@@ -548,34 +492,25 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const jobChainId = await scheduleJobChain({
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
-          eventType: originalEventType,
-          payload: retryPayload,
+          eventType: "invoice.retry",
+          payload: invoice.metadata,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
-          initialContext: {
-            transformedInvoice: invoice.metadata?.transformedInvoice,
-            validationResult: invoice.metadata?.validationResult,
-            signedInvoice: invoice.metadata?.signedInvoice,
-            transmissionResult: invoice.metadata?.transmissionResult,
-            firsSignedData: invoice.metadata?.firsSignedData,
-            qrCode: invoice.qrCode ? String(invoice.qrCode) : undefined,
-            metadata: invoice.metadata,
-          },
         });
 
-        return ResponseBuilder.success(
-          { irn: params.irn, fromStep: startAction, actions, jobChainId },
-          undefined,
-          `Retry scheduled from step: ${startAction}`,
-        );
+        return {
+          success: true,
+          message: `Retry scheduled from step: ${startAction}`,
+          data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
+        };
       } catch (error: any) {
-        set.status = 500;
         logger.error("Failed to retry invoice", { error: error.message });
-        return ResponseBuilder.error(
-          error.message || "Failed to retry invoice",
-          error.statusCode || 500,
-        );
+        return {
+          success: false,
+          error: error.message || "Failed to retry invoice",
+          statusCode: error.statusCode || 500,
+        };
       }
     },
     retryInvoiceFromStepValidation,

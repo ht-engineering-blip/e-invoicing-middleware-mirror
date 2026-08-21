@@ -80,6 +80,7 @@ export interface ITenantConfig {
  */
 export interface TenantDocument extends Document {
   tenantId: string;
+  businessId?: string;
   businessRegistrationNumber: string;
   contactEmail: string;
   contactPhone: string;
@@ -110,6 +111,11 @@ const TenantSchema = new Schema<TenantDocument>(
       type: String,
       required: true,
       unique: true,
+    },
+    businessId: {
+      type: String,
+      index: true,
+      sparse: true,
     },
     businessRegistrationNumber: {
       type: String,

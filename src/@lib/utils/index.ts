@@ -102,6 +102,8 @@ const DEFAULT_SENSITIVE_KEYS = [
   "privateKey",
   "clientSecret",
   "certificate",
+  "apiKey",
+  "apiSecret",
 ];
 
 /**

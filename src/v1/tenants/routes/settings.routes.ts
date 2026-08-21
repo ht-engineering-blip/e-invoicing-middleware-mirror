@@ -66,6 +66,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         onlySelf(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
+        const tenantObj = tenant.toObject();
 
         // Build update data (cannot update TIN or BRN)
         const updateData: any = {};
@@ -77,7 +78,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         // Update metadata for address, website, industry
         if (body.address || body.website || body.industry) {
           updateData.metadata = {
-            ...tenant.metadata,
+            ...tenantObj.metadata,
             ...(body.address && { address: body.address }),
             ...(body.website && { website: body.website }),
             ...(body.industry && { industry: body.industry }),

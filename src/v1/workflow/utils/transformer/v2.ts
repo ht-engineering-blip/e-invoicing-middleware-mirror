@@ -41,13 +41,19 @@ import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.exampl
 export class FIRSInvoiceTransformerV2 {
   private apiKey: string;
   private apiEndpoint: string;
+  private provider: 'openai' | 'gemini';
+  private model: string;
 
   constructor(
     apiKey: string,
     apiEndpoint: string = "https://api.openai.com/v1/chat/completions",
+    provider: 'openai' | 'gemini' = 'openai',
+    model: string = 'gpt-4o-mini',
   ) {
     this.apiKey = apiKey;
     this.apiEndpoint = apiEndpoint;
+    this.provider = provider;
+    this.model = model;
   }
 
   /**
@@ -667,8 +673,8 @@ ${JSON.stringify(missingFields)}
 - irn: Generate unique reference if not provided, use ${invoice.irn ?? irn} as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice, "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice request, "380" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -741,7 +747,7 @@ Each invoice_line must contain:
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
 13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
-14. Map ERP standard invoice_type_code 380 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note.
+14. Map ERP standard invoice_type_code 381 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note (380).
 15. Extract nexted keys in payload to match the valid FIRS schema
 16. optional fields should not be included if not provided by invoice input! [allowance_charge]
 17. Descriptions and should have default values derived from product
@@ -772,7 +778,7 @@ Complete the missing fields also generate emails here missing currency should de
       },
 
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: this.model,
         temperature: 0,
         max_tokens: 4000,
         response_format: { type: "json_object" },

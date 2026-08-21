@@ -52,8 +52,10 @@ export class TransformWorkflowService {
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {
     const transformer = new FIRSInvoiceTransformer(
-      aiConfig?.openAIApiKey!,
-      aiConfig?.openApiEndpoint!,
+      aiConfig?.apiKey!,
+      aiConfig?.apiEndpoint!,
+      aiConfig?.provider!,
+      aiConfig?.model!,
     );
 
     const result = await transformer.transformAndValidate(
@@ -89,8 +91,10 @@ export class TransformWorkflowService {
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {
     const transformer = new FIRSInvoiceTransformerV2(
-      aiConfig?.openAIApiKey!,
-      aiConfig?.openApiEndpoint!,
+      aiConfig?.apiKey!,
+      aiConfig?.apiEndpoint!,
+      aiConfig?.provider,
+      aiConfig?.model!,
     );
 
     const result = await transformer.transformAndValidate(
