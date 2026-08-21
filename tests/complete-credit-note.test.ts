@@ -16,9 +16,34 @@ import { agenda } from "../src/@lib/queue/agenda";
 
 describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
   let app: any;
-  const testTenantId = "TES-1056-6B20";
+  const testTenantId = process.env.TEST_TENANT_ID;
   const webhookPath = "credit-note-test-webhook";
   const jobRegistry: Record<string, Function> = {};
+
+  const testEmail = process.env.TEST_CONTACT_EMAIL;
+  const testPassword = process.env.TEST_PASSWORD;
+  const testPhone = process.env.TEST_CONTACT_PHONE;
+  const testServiceId = process.env.TEST_FIRS_SERVICE_ID;
+  const testPublicKey = process.env.TEST_FIRS_PUBLIC_KEY;
+  const testCertificate = process.env.TEST_FIRS_CERTIFICATE;
+  const testBusinessId = process.env.TEST_BUSINESS_ID;
+  const testSupplierTin = process.env.TEST_SUPPLIER_TIN;
+
+  if (
+    !testTenantId ||
+    !testEmail ||
+    !testPassword ||
+    !testPhone ||
+    !testServiceId ||
+    !testPublicKey ||
+    !testCertificate ||
+    !testBusinessId ||
+    !testSupplierTin
+  ) {
+    throw new Error(
+      "Missing required test environment variables. Please check your .env file setup.",
+    );
+  }
 
   let originalDefine: any;
   let originalNow: any;
@@ -69,23 +94,17 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
 
     registerCompleteCreditNoteJob();
 
-    const { publicKey } = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-    });
-    const base64Key = Buffer.from(publicKey).toString("base64");
-
     await TenantModel.findOneAndUpdate(
       { tenantId: testTenantId },
       {
         $set: {
           tenantId: testTenantId,
           businessName: "Heirs Technologies Limited",
-          tin: "61392352-1056",
+          tin: testSupplierTin,
           businessRegistrationNumber: "RC-61392352",
-          contactEmail: "send.info@okeketech.com",
-          contactPhone: "+2348012345678",
-          password: "hashedpassword123",
+          contactEmail: testEmail,
+          contactPhone: testPhone,
+          password: testPassword,
           status: TenantStatus.ACTIVE,
           metadata: {
             webhookPath: webhookPath,
@@ -101,10 +120,10 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
               erp_creditnote_issued: "data.billing_reference[0]",
             },
             firsCredentials: {
-              serviceId: "34A843BE",
-              clientId: encryptSensitiveData("a6de8bd8-43be-47b9-80a5-988ee3fb9cea"),
-              certificate: encryptSensitiveData("CERT-FIRS-1056"),
-              publicKey: encryptSensitiveData(base64Key),
+              serviceId: testServiceId,
+              clientId: encryptSensitiveData(testBusinessId),
+              certificate: encryptSensitiveData(testCertificate),
+              publicKey: encryptSensitiveData(testPublicKey),
             },
             erpSyncConfig: {
               enabled: false,
@@ -137,23 +156,17 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
   }, 30000);
 
   beforeEach(async () => {
-    const { publicKey } = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-    });
-    const base64Key = Buffer.from(publicKey).toString("base64");
-
     await TenantModel.findOneAndUpdate(
       { tenantId: testTenantId },
       {
         $set: {
           tenantId: testTenantId,
           businessName: "Heirs Technologies Limited",
-          tin: "61392352-1056",
+          tin: testSupplierTin,
           businessRegistrationNumber: "RC-61392352",
-          contactEmail: "send.info@okeketech.com",
-          contactPhone: "+2348012345678",
-          password: "hashedpassword123",
+          contactEmail: testEmail,
+          contactPhone: testPhone,
+          password: testPassword,
           status: TenantStatus.ACTIVE,
           metadata: {
             webhookPath: webhookPath,
@@ -169,10 +182,10 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
               erp_creditnote_issued: "data.billing_reference[0]",
             },
             firsCredentials: {
-              serviceId: "34A843BE",
-              clientId: encryptSensitiveData("a6de8bd8-43be-47b9-80a5-988ee3fb9cea"),
-              certificate: encryptSensitiveData("CERT-FIRS-1056"),
-              publicKey: encryptSensitiveData(base64Key),
+              serviceId: testServiceId,
+              clientId: encryptSensitiveData(testBusinessId),
+              certificate: encryptSensitiveData(testCertificate),
+              publicKey: encryptSensitiveData(testPublicKey),
             },
             erpSyncConfig: {
               enabled: false,
@@ -201,7 +214,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
         $set: {
           irn: originalIrn,
           tenantId: testTenantId,
-          businessId: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+          businessId: testBusinessId,
           invoiceNumber: originalInvoiceRef,
           status: OutboundInvoiceStatus.DELIVERED,
           workflowState: {
@@ -214,10 +227,10 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
           metadata: {
             transformedInvoice: {
               accounting_supplier_party: {
-                tin: "61392352-1056",
+                tin: testSupplierTin,
                 party_name: "Heirs Technologies Limited",
-                email: "send.info@okeketech.com",
-                telephone: "+2348012345678",
+                email: testEmail,
+                telephone: testPhone,
                 business_description: "Technology Services",
                 postal_address: {
                   state: "Lagos",
@@ -228,9 +241,9 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
                 },
               },
               accounting_customer_party: {
-                tin: "61392352-1056",
+                tin: testSupplierTin,
                 party_name: "Heirs Technologies Customer",
-                email: "send.info@okeketech.com",
+                email: testEmail,
                 telephone: "+2348163565148",
                 business_description: "Technology Services",
                 postal_address: {
@@ -256,7 +269,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
       timestamp: new Date().toISOString(),
       webhook_id: crypto.randomUUID(),
       data: {
-        business_id: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+        business_id: testBusinessId,
         invoice_id: creditNoteInvoiceId,
         invoice_number: creditNoteRef,
         issue_date: "2026-08-18",
@@ -266,9 +279,9 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
         document_currency_code: "NGN",
         accounting_supplier_party: {
           party_name: "Heirs Technologies Limited",
-          tin: "61392352-1056",
-          email: "send.info@okeketech.com",
-          telephone: "+2348012345678",
+          tin: testSupplierTin,
+          email: testEmail,
+          telephone: testPhone,
           business_description: "Technology Services",
           postal_address: {
             state: "Lagos",
@@ -280,8 +293,8 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
         },
         accounting_customer_party: {
           party_name: "Heirs Technologies Customer",
-          tin: "61392352-1056",
-          email: "send.info@okeketech.com",
+          tin: testSupplierTin,
+          email: testEmail,
           telephone: "+2348163565148",
           business_description: "Technology Services",
           postal_address: {
@@ -398,7 +411,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
           stepIndex: 0,
           authContext: {
             tenantId: testTenantId,
-            businessId: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
+            businessId: testBusinessId,
           },
           context: {
             originalPayload: {
