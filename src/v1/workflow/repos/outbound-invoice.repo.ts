@@ -123,7 +123,11 @@ export class OutboundInvoiceRepository {
     to?: Date;
     page?: number;
     limit?: number;
-  }): Promise<{ items: any[]; total: number }> {
+  }): Promise<{
+    items: any[];
+    total: number;
+    countsByType?: { outbound: number; inbound: number };
+  }> {
     try {
       const page = Math.max(1, params.page || 1);
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
@@ -138,7 +142,14 @@ export class OutboundInvoiceRepository {
       // 1. Build outbound match query
       const outboundMatch: any = {};
       if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
-      if (params.status?.trim()) outboundMatch.status = params.status.trim();
+      if (params.status?.trim()) {
+        const statusVal = params.status.trim().toUpperCase();
+        if (statusVal === "FAILED") {
+          outboundMatch.status = { $in: ["FAILED", "TRANSMISTION_FAILED"] };
+        } else {
+          outboundMatch.status = statusVal;
+        }
+      }
       if (params.source?.trim()) outboundMatch.source = params.source.trim();
       if (params.erpInvoiceId?.trim())
         outboundMatch.erpInvoiceId = params.erpInvoiceId.trim();
@@ -166,7 +177,9 @@ export class OutboundInvoiceRepository {
       } else if (!isAdmin && tenantId) {
         inboundMatch.tenantId = tenantId;
       }
-      if (params.status?.trim()) inboundMatch.status = params.status.trim();
+      if (params.status?.trim()) {
+        inboundMatch.status = params.status.trim().toUpperCase();
+      }
       if (params.paymentStatus?.trim()) {
         inboundMatch["payment.paymentStatus"] = params.paymentStatus.trim();
       }
@@ -325,12 +338,22 @@ export class OutboundInvoiceRepository {
       };
 
       let aggregationResult: any;
+      let outboundTotal = 0;
+      let inboundTotal = 0;
+
+      // Count operations to populate countsByType correctly
+      const [outboundCount, inboundCount] = await Promise.all([
+        this.outboundInvoiceModel.countDocuments(outboundMatch).exec(),
+        this.inboundInvoiceModel.countDocuments(inboundMatch).exec(),
+      ]);
+      outboundTotal = outboundCount || 0;
+      inboundTotal = inboundCount || 0;
 
       if (requestedType === "inbound") {
         const inboundPipeline: any[] = [
           { $match: inboundMatch },
           inboundProjectStage,
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
@@ -346,7 +369,7 @@ export class OutboundInvoiceRepository {
         const outboundPipeline: any[] = [
           { $match: outboundMatch },
           outboundProjectStage,
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
@@ -368,7 +391,7 @@ export class OutboundInvoiceRepository {
               pipeline: [{ $match: inboundMatch }, inboundProjectStage],
             },
           },
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
@@ -382,19 +405,25 @@ export class OutboundInvoiceRepository {
           .exec();
       }
 
-      const total = aggregationResult?.totalCount?.[0]?.count || 0;
+      const total = requestedType === "outbound"
+        ? outboundTotal
+        : requestedType === "inbound"
+          ? inboundTotal
+          : outboundTotal + inboundTotal;
+
       const items = aggregationResult?.items || [];
 
-      return { items, total };
+      return {
+        items,
+        total,
+        countsByType: {
+          outbound: outboundTotal,
+          inbound: inboundTotal,
+        },
+      };
     } catch (error) {
-      console.error(
-        "Error executing unified invoice aggregation stream:",
-        error,
-      );
-      throw new AppError(
-        500,
-        "Failed to retrieve unified invoice aggregation stream",
-      );
+      console.error("Error executing unified invoice aggregation stream:", error);
+      throw new AppError(500, "Failed to retrieve unified invoice stream");
     }
   }
 

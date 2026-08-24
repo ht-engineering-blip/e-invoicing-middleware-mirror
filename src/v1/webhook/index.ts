@@ -551,6 +551,7 @@ export const webhookRoutes = new Elysia({
             routeId: matchedRoutes[0]?.routeId,
             erpInvoiceId,
             irn,
+            initialContext: { source: OutboundInvoiceSource.WEBHOOK },
           })
             .then((id) => (jobChainId = id))
             .catch((err) =>

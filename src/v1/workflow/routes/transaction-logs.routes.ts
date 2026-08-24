@@ -61,9 +61,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         );
 
         // Execute MongoDB Aggregation Pipeline for all cases (outbound, inbound, or unified)
-        const result: any = await outboundRepo.getUnifiedInvoiceStream({
+        const result = await outboundRepo.getUnifiedInvoiceStream({
           auth,
-          type: (query as any).type || (query as any).direction,
+          type: query.type || query.direction,
           status: query.status,
           source: query.source,
           erpInvoiceId: query.erpInvoiceId,
