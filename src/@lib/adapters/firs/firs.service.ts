@@ -7,7 +7,6 @@ import https from "node:https";
 import { decryptInvoice } from "firs-einvoicing";
 import { AppError, HandleErrorResponse, RestClient } from "../rest";
 import { generateQRCode } from "./generateQR";
-
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
 import type {
@@ -205,8 +204,6 @@ export class FIRSService {
       credentials,
     );
 
-    console.log({ response });
-
     if (response.code !== 200) {
       throw new Error(
         `FIRS authentication failed with status: ${response.code}`,
@@ -217,10 +214,6 @@ export class FIRSService {
 
     // Step 2: Get user information using the access token
     const userInfo = await this.getFIRSUserInfo(authResponse.entity_id);
-
-    console.log({ userInfo });
-
-    console.log(userInfo.code);
 
     if (userInfo) {
       const userData = userInfo.data || userInfo;
@@ -271,16 +264,12 @@ export class FIRSService {
     }
   }
 
-  public async validateInvoice(tenantId: string, invoice: any) {
+  public async validateInvoice(invoice: any) {
     const client = this.appClient;
     return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
   }
 
-  public async searchInvoice(
-    tenantId: string,
-    business_id: string,
-    irn: string,
-  ) {
+  public async searchInvoice(business_id: string, irn: string) {
     const client = this.appClient;
     return client.get<{ data: SearchResponse }>(
       `api/v1/invoice/${business_id}`,
@@ -290,24 +279,24 @@ export class FIRSService {
     );
   }
 
-  public async signInvoice(tenantId: string, invoice: any) {
+  public async signInvoice(invoice: any) {
     const client = this.appClient;
     return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
   }
 
-  public async transmitInvoice(tenantId: string, irn: string) {
+  public async transmitInvoice(irn: string) {
     const client = this.appClient;
 
     console.log("API CALLED");
-    const res = await client.post(`api/v1/invoice/transmit/${irn}`, {});
-
-    console.log("API RES", { res });
+    const res = await client.post<OkayResponse>(
+      `api/v1/invoice/transmit/${irn}`,
+      {},
+    );
 
     return res;
   }
 
   public async downloadInvoice(
-    tenantId: string,
     irn: string,
   ): Promise<FIRSDownloadInvoiceResponse> {
     const client = this.appClient;
@@ -317,7 +306,7 @@ export class FIRSService {
     );
   }
 
-  public async confirmSignedInvoice(tenantId: string, irn: string) {
+  public async confirmSignedInvoice(irn: string) {
     const client = this.appClient;
     return client.get<{ data: ConfirmResponse }>(
       `api/v1/invoice/confirm/${irn}`,
@@ -370,7 +359,7 @@ export class FIRSService {
     }
   }
 
-  public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
+  public async acknowledgeInvoiceReceipt(irn: string) {
     const client = this.appClient;
     return client.execute(
       `api/v1/invoice/transmit/${irn}`,
@@ -387,10 +376,7 @@ export class FIRSService {
    *
    * @param reportData - VAT post-payment report data (see VATPostPaymentReportData interface)
    */
-  public async reportVATPostPayment(
-    tenantId: string,
-    reportData: VATPostPaymentReportData,
-  ) {
+  public async reportVATPostPayment(reportData: VATPostPaymentReportData) {
     const client = this.appClient;
     return client.post("api/v1/vat/postpayment", reportData);
   }
@@ -399,15 +385,12 @@ export class FIRSService {
    * Update invoice payment status on FIRS
    * PATCH /api/v1/invoice/update/:irn
    */
-  public async reportInvoice(
-    tenantId: string,
-    input: {
-      irn: string;
-      payment_status: "PENDING" | "PAID" | "CANCELED";
-      reference?: string;
-      [key: string]: any;
-    },
-  ) {
+  public async reportInvoice(input: {
+    irn: string;
+    payment_status: "PENDING" | "PAID" | "CANCELED";
+    reference?: string;
+    [key: string]: any;
+  }) {
     const client = this.appClient;
     const { irn, payment_status, reference } = input;
     const body: Record<string, any> = { payment_status };

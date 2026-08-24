@@ -69,5 +69,20 @@ export const EMBEDDED_TEMPLATES: Record<string, string> = {
 <a href="{{verificationLink}}" class="cta-button">Verify Email</a>
 <br/>
 <p style="margin-top: 15px; font-size: 13px;">Or copy this link: <a href="{{verificationLink}}" style="text-decoration: none;">{{verificationLink}}</a></p>
-<p style="margin-top: 15px; font-size: 13px; color: #666;">This verification link is valid for 12 hours. If you did not request this change, please ignore this email.</p>`
+<p style="margin-top: 15px; font-size: 13px; color: #666;">This verification link is valid for 12 hours. If you did not request this change, please ignore this email.</p>`,
+
+    emailChangeAlertOldEmail: `<h2>Security Alert: Contact Email Change Requested</h2>
+<p>Hello {{businessName}},</p>
+<p>A request was received to update the contact email address for your E-Invoicing account from <strong>{{oldEmail}}</strong> to <strong>{{newEmail}}</strong>.</p>
+<p>A verification link was sent to the new email address to complete this request.</p>
+<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
+  <strong>⚠️ Security Notice:</strong>
+  <p style="margin: 5px 0 0 0;">If you did NOT request this change, someone may have unauthorized access to your account. Please contact support immediately to secure your account.</p>
+</div>`,
+
+    emailChangeSuccessNotification: `<h2>Contact Email Changed Successfully</h2>
+<p>Hello {{businessName}},</p>
+<p>The primary contact email address for your E-Invoicing account has been successfully updated from <strong>{{oldEmail}}</strong> to <strong>{{newEmail}}</strong>.</p>
+<p>All future notifications, billing details, and platform alerts will be sent to <strong>{{newEmail}}</strong>.</p>
+<p style="margin-top: 15px; font-size: 13px; color: #666;">If you did not authorize this change, please contact support immediately.</p>`
 };

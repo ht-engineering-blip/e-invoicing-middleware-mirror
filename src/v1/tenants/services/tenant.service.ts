@@ -399,6 +399,56 @@ export class TenantService extends BaseService {
 
     const updatedTenant = await this.tenantRepo.update(tenantId, updateData);
 
+    // Send security notification if contact email was updated by admin
+    if (
+      updateData.contactEmail &&
+      updateData.contactEmail !==
+        (tenant.contactEmail || "").trim().toLowerCase()
+    ) {
+      const oldEmail = (tenant.contactEmail || "").trim().toLowerCase();
+      const newEmail = updateData.contactEmail;
+      const successEmailContent: MailContent = {
+        subject: "Contact Email Changed Successfully",
+        html: withTemplate(
+          templateEngine.render("emailChangeSuccessNotification", {
+            businessName: tenant.businessName,
+            oldEmail: oldEmail || "N/A",
+            newEmail,
+          }),
+        ),
+      };
+
+      try {
+        await this.sendEmail({
+          to: newEmail,
+          subject: successEmailContent.subject,
+          html: successEmailContent.html,
+        });
+      } catch (err: any) {
+        logger.warn("Failed to send email change notification to new email", {
+          tenantId,
+          newEmail,
+          error: err.message,
+        });
+      }
+
+      if (oldEmail && oldEmail !== newEmail && this.isValidEmail(oldEmail)) {
+        try {
+          await this.sendEmail({
+            to: oldEmail,
+            subject: successEmailContent.subject,
+            html: successEmailContent.html,
+          });
+        } catch (err: any) {
+          logger.warn("Failed to send email change notification to old email", {
+            tenantId,
+            oldEmail,
+            error: err.message,
+          });
+        }
+      }
+    }
+
     // Audit log
     await this.createAuditLog({
       tenantId: tenant.tenantId,
@@ -572,15 +622,15 @@ export class TenantService extends BaseService {
     actor?: any,
   ): Promise<TenantDocument> {
     const tenant = await this.getTenantById(tenantId);
-    
+
     // Encrypt the new business ID (which is the client ID in FIRS integration)
     const encryptedClientId = encryptSensitiveData(businessId);
-    
+
     const updatedTenant = await this.tenantRepo.updateFIRSCredentials(
       tenantId,
-      { 
+      {
         clientId: encryptedClientId,
-        businessId: businessId
+        businessId: businessId,
       },
     );
 
@@ -1444,23 +1494,45 @@ export class TenantService extends BaseService {
 
   /**
    * Request email change verification
-   * Generates a 12-hour signed JWT verification token and sends verification link to the new email address
+   * Generates a 12-hour signed JWT verification token, sends verification link to the new email address,
+   * and sends an immediate security alert notification to the current email address.
    */
   async requestEmailChange(
     tenantId: string,
     newEmail: string,
     actor?: any,
+    currentPassword?: string,
   ): Promise<{ success: boolean; message: string }> {
     const tenant = await this.getTenantById(tenantId);
     const normalizedNewEmail = (newEmail || "").trim().toLowerCase();
+    const oldEmail = (tenant.contactEmail || "").trim().toLowerCase();
+
+    // Re-authentication challenge: if password is set on the tenant and actor is not an admin, verify current password
+    const isAdmin =
+      actor?.isAdmin === true ||
+      actor?.type === "system" ||
+      actor?.role === "admin";
+
+    if (!isAdmin && tenant.password) {
+      if (!currentPassword) {
+        throw new ValidationError(
+          "Current password is required to request an email change",
+        );
+      }
+      const isPasswordValid = await this.verifyHash(
+        currentPassword,
+        tenant.password,
+      );
+      if (!isPasswordValid) {
+        throw new ValidationError("Invalid current password");
+      }
+    }
 
     if (!this.isValidEmail(normalizedNewEmail)) {
       throw new ValidationError("Invalid email address format");
     }
 
-    if (
-      normalizedNewEmail === (tenant.contactEmail || "").trim().toLowerCase()
-    ) {
+    if (normalizedNewEmail === oldEmail) {
       throw new ValidationError(
         "New email must be different from current contact email",
       );
@@ -1483,6 +1555,7 @@ export class TenantService extends BaseService {
         ...rawTenant,
         contactEmail: normalizedNewEmail,
         newEmail: normalizedNewEmail,
+        previousEmail: oldEmail,
       },
       "12HRS",
     );
@@ -1499,14 +1572,57 @@ export class TenantService extends BaseService {
       ),
     };
 
+    // 1. Send verification link to the NEW email
     await this.sendEmail({
       to: normalizedNewEmail,
       subject: verificationEmail.subject,
       html: verificationEmail.html,
     });
 
-    logger.info("Email change verification sent", {
+    // 2. Dual Notification: Send security alert to the CURRENT/OLD email
+    if (oldEmail && this.isValidEmail(oldEmail)) {
+      try {
+        const alertEmail: MailContent = {
+          subject: "Security Alert: Contact Email Change Requested",
+          html: withTemplate(
+            templateEngine.render("emailChangeAlertOldEmail", {
+              businessName: tenant.businessName,
+              oldEmail,
+              newEmail: normalizedNewEmail,
+            }),
+          ),
+        };
+        await this.sendEmail({
+          to: oldEmail,
+          subject: alertEmail.subject,
+          html: alertEmail.html,
+        });
+      } catch (err: any) {
+        logger.warn("Failed to send security alert to old email address", {
+          tenantId,
+          oldEmail,
+          error: err.message,
+        });
+      }
+    }
+
+    // Audit log for email change request
+    await this.createAuditLog({
+      tenantId: tenant.tenantId,
+      eventType: AuditEventType.TENANT_UPDATED,
+      severity: AuditEventSeverity.WARNING,
+      actorType: actor?.type || "user",
+      actorId: actor?.id || tenant.tenantId,
+      actorName: actor?.name || tenant.businessName,
+      resourceType: "tenant",
+      resourceId: tenant.tenantId,
+      description: `Tenant contact email change requested to ${normalizedNewEmail}`,
+      metadata: { previousEmail: oldEmail, newEmail: normalizedNewEmail },
+    });
+
+    logger.info("Email change verification sent with security alert", {
       tenantId,
+      oldEmail,
       newEmail: normalizedNewEmail,
     });
 
@@ -1559,6 +1675,7 @@ export class TenantService extends BaseService {
 
     const targetTenantId = tenantId || tokenTenantId;
     const tenant = await this.getTenantById(targetTenantId);
+    const oldEmail = (tenant.contactEmail || "").trim().toLowerCase();
 
     // Check again if email was taken by another tenant in the meantime
     const existing = await this.tenantRepo.findOne({
@@ -1574,6 +1691,53 @@ export class TenantService extends BaseService {
       contactEmail: newEmail,
     });
 
+    // Dual Notification on Success: Send confirmation to both old and new email
+    const successEmailContent: MailContent = {
+      subject: "Contact Email Changed Successfully",
+      html: withTemplate(
+        templateEngine.render("emailChangeSuccessNotification", {
+          businessName: tenant.businessName,
+          oldEmail: oldEmail || "N/A",
+          newEmail,
+        }),
+      ),
+    };
+
+    // 1. Send confirmation to new email
+    try {
+      await this.sendEmail({
+        to: newEmail,
+        subject: successEmailContent.subject,
+        html: successEmailContent.html,
+      });
+    } catch (err: any) {
+      logger.warn("Failed to send email change confirmation to new email", {
+        tenantId: targetTenantId,
+        newEmail,
+        error: err.message,
+      });
+    }
+
+    // 2. Send confirmation to previous email
+    if (oldEmail && oldEmail !== newEmail && this.isValidEmail(oldEmail)) {
+      try {
+        await this.sendEmail({
+          to: oldEmail,
+          subject: successEmailContent.subject,
+          html: successEmailContent.html,
+        });
+      } catch (err: any) {
+        logger.warn(
+          "Failed to send email change confirmation to previous email",
+          {
+            tenantId: targetTenantId,
+            oldEmail,
+            error: err.message,
+          },
+        );
+      }
+    }
+
     // Audit log
     await this.createAuditLog({
       tenantId: tenant.tenantId,
@@ -1585,14 +1749,14 @@ export class TenantService extends BaseService {
       resourceType: "tenant",
       resourceId: tenant.tenantId,
       description: `Tenant contact email updated to ${newEmail} after verification`,
-      metadata: { previousEmail: tenant.contactEmail, newEmail },
+      metadata: { previousEmail: oldEmail, newEmail },
     });
 
     logger.info(
       "Tenant contact email successfully updated after verification",
       {
         tenantId: targetTenantId,
-        oldEmail: tenant.contactEmail,
+        oldEmail,
         newEmail,
       },
     );

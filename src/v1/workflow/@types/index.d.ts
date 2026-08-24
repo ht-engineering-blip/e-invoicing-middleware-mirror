@@ -1,6 +1,8 @@
 interface OkayResponse {
   code: number;
-  data: { ok: boolean; errors?: string[] };
+  message?: string;
+  errors?: string[] | string;
+  data: { ok: boolean; message?: string; errors?: string[] };
 }
 
 interface ConfirmResponse {
@@ -44,6 +46,7 @@ interface SecureInvoice {
   tenant_id: string;
   business_id: string;
   irn: string;
+  invoice_line?: InvoiceLineInput[];
   [key: string]: unknown;
 }
 
@@ -100,6 +103,7 @@ interface PriceInput {
 interface InvoiceLineInput {
   hsn_code?: string;
   product_category?: string;
+  service_category?: string;
   discount_rate?: number;
   discount_amount?: number;
   fee_rate?: number;

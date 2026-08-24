@@ -434,15 +434,40 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return { success: false, error: "Not authorized", statusCode: 403 };
         }
 
-        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+        const retriableStatuses = [
+          OutboundInvoiceStatus.FAILED,
+          OutboundInvoiceStatus.TRANSMISTION_FAILED,
+          OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.VALIDATED,
+          OutboundInvoiceStatus.SIGNED,
+        ];
+
+        if (
+          !retriableStatuses.includes(invoice.status) &&
+          invoice.workflowState?.transmitted &&
+          invoice.workflowState?.delivered
+        ) {
           return {
             success: false,
-            error: "Only FAILED invoices can be retried",
+            error: "Only failed or incomplete invoices can be retried",
             statusCode: 400,
           };
         }
 
-        const startAction = body.fromStep;
+        const workflowState = invoice.workflowState;
+        let startAction = body?.fromStep;
+        if (!startAction) {
+          if (!workflowState?.validated) {
+            startAction = "validate";
+          } else if (!workflowState?.signed) {
+            startAction = "sign";
+          } else if (!workflowState?.transmitted) {
+            startAction = "transmit";
+          } else {
+            startAction = "complete_outbound";
+          }
+        }
+
         if (!ACTION_TO_JOB[startAction]) {
           return {
             success: false,
@@ -493,10 +518,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
           eventType: "invoice.retry",
-          payload: invoice.metadata,
+          payload: invoice.metadata?.transformedInvoice || invoice.metadata,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
+          initialContext: {
+            transformedInvoice: invoice.metadata?.transformedInvoice,
+            source: invoice.source,
+          },
         });
 
         return {
@@ -540,11 +569,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return ResponseBuilder.error("Invoice not found", 404);
         }
 
-        // Check if invoice is in failed state
-        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+        // Check if invoice is in failed or transmission-failed state
+        if (
+          invoice.status !== OutboundInvoiceStatus.FAILED &&
+          invoice.status !== OutboundInvoiceStatus.TRANSMISTION_FAILED
+        ) {
           set.status = 400;
           return ResponseBuilder.error(
-            "Only failed invoices can be resent",
+            "Only failed or transmission-failed invoices can be resent",
             400,
           );
         }
@@ -559,6 +591,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           restartFrom = "sign";
         } else if (!workflowState?.transmitted) {
           restartFrom = "transmit";
+        } else {
+          restartFrom = "complete_outbound";
         }
 
         // Update status to allow retry

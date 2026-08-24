@@ -71,7 +71,7 @@ export class InboundWorkflowService {
 
       // Step 0: Download the invoice from FIRS
       const downloadResponse: FIRSDownloadInvoiceResponse =
-        await firsService.downloadInvoice(tenant_id, irn);
+        await firsService.downloadInvoice(irn);
 
       const invoiceData: FIRSDownloadedInvoiceData = downloadResponse?.data;
 
@@ -108,7 +108,7 @@ export class InboundWorkflowService {
 
       // Acknowledge invoice receipt
       try {
-        await firsService.acknowledgeInvoiceReceipt(tenant_id, irn);
+        await firsService.acknowledgeInvoiceReceipt(irn);
       } catch (ackError: any) {
         logger.warn(`Failed to acknowledge invoice receipt for ${irn}:`, {
           error: ackError.message,

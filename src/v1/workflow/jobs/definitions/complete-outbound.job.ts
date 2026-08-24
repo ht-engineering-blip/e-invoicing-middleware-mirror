@@ -109,7 +109,7 @@ export function registerCompleteOutboundJob(): void {
         } else {
           // ── Finalize mode ─────────────────────────────────────────────────────
           // Used as the LAST step in a chain where individual steps already ran.
-          // Only generates QR code and marks the invoice as DELIVERED.
+          // Generates QR code and marks the invoice workflow as DELIVERED.
 
           logger.info("[Job:complete-outbound] Finalize mode", {
             jobChainId,
@@ -122,17 +122,21 @@ export function registerCompleteOutboundJob(): void {
             );
           }
 
+          if (context.transmissionFailed) transmissionFailed = true;
+
           const result = await outboundService.generateQRCode(irn, tenantId);
           qrCode = result.qrCode;
           firsSignedData = result.data;
         }
 
+        let finalStatus = OutboundInvoiceStatus.DELIVERED;
+
+        if (transmissionFailed) {
+          finalStatus = OutboundInvoiceStatus.TRANSMISTION_FAILED;
+        }
+
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
-          const finalStatus = transmissionFailed
-            ? OutboundInvoiceStatus.TRANSMISTION_FAILED
-            : OutboundInvoiceStatus.DELIVERED;
-
           await outboundRepo.update(irn, {
             qrCode,
             status: finalStatus,
@@ -144,14 +148,15 @@ export function registerCompleteOutboundJob(): void {
               firsSignedData,
             },
           });
-          if (!transmissionFailed) {
-            await outboundRepo.updateWorkflowState(irn, { delivered: true });
-          }
+
+          // Mark delivered: true so the Delivered progress badge turns green
+          await outboundRepo.updateWorkflowState(irn, { delivered: true });
         }
 
-        logger.info("[Job:complete-outbound] Done — invoice DELIVERED", {
+        logger.info("[Job:complete-outbound] Done — invoice finalized", {
           jobChainId,
           irn,
+          status: finalStatus,
         });
 
         await chainNext(job, { qrCode, firsSignedData, irn });
