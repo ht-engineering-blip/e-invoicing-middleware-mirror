@@ -195,7 +195,7 @@ export const FIRSInvoiceSchema = z
   })
   .refine(
     (data) => {
-      const adjustmentCodes = ["381", "383", "384", "393", "395"];
+      const adjustmentCodes = ["380", "383", "384", "393", "395"];
       if (adjustmentCodes.includes(data.invoice_type_code)) {
         return (
           Array.isArray(data.billing_reference) &&
@@ -206,7 +206,7 @@ export const FIRSInvoiceSchema = z
     },
     {
       message:
-        "billing_reference is required and must link to the original invoice when invoice_type_code is a Credit Note (381, 393, 395) or Debit Note (383, 384)",
+        "billing_reference is required and must link to the original invoice when invoice_type_code is a Credit Note (380, 393, 395) or Debit Note (383, 384)",
       path: ["billing_reference"],
     },
   );
@@ -224,15 +224,20 @@ export interface TransformationResult {
 export class FIRSInvoiceTransformer {
   private apiKey: string;
   private apiEndpoint: string;
+  private provider: 'openai' | 'gemini';
+  private model: string;
 
   constructor(
     apiKey: string,
     apiEndpoint: string = "https://api.openai.com/v1/chat/completions",
+    provider: 'openai' | 'gemini' = 'openai',
+    model: string = 'gpt-4o-mini',
   ) {
     this.apiKey = apiKey;
     this.apiEndpoint = apiEndpoint;
-    console.log({ endpoint: this.apiEndpoint });
-    console.log({ key: this.apiKey });
+    this.provider = provider;
+    this.model = model;
+    console.log({ endpoint: this.apiEndpoint, provider: this.provider, model: this.model });
   }
 
   /**
@@ -266,7 +271,7 @@ export class FIRSInvoiceTransformer {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        model: aiConfig?.inferenceModel,
+        model: this.model,
         messages: [
           {
             role: "system",

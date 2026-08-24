@@ -15,7 +15,6 @@ import type {
   FIRSDecryptInvoiceInput,
 } from "./types";
 
-
 export interface FIRSUserInfo {
   code: number;
   data: {
@@ -145,12 +144,16 @@ export default class FIRSClient extends RestClient {
     let response: AxiosResponse;
     if (headers && typeof headers === "object") {
       let verb: string = headers["verb"] || "post";
-      response = await (this.client as any)[verb || "post"](normalizedPath, payload, {
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
+      response = await (this.client as any)[verb || "post"](
+        normalizedPath,
+        payload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
         },
-      });
+      );
     } else {
       response = await this.client.post(normalizedPath, payload);
     }
@@ -294,8 +297,15 @@ export class FIRSService {
 
   public async transmitInvoice(tenantId: string, irn: string) {
     const client = this.appClient;
-    return client.post(`api/v1/invoice/transmit/${irn}`, {});
+
+    console.log("API CALLED");
+    const res = await client.post(`api/v1/invoice/transmit/${irn}`, {});
+
+    console.log("API RES", { res });
+
+    return res;
   }
+
   public async downloadInvoice(
     tenantId: string,
     irn: string,
@@ -325,6 +335,8 @@ export class FIRSService {
         certificate: businessCertificate,
       };
 
+      console.log("PERM KEYS", { keys });
+
       //const { encryptedData } = // Encrypt IRN and generate QR code
       const encryptionResult = await generateQRCode({
         // NOTE: You do not need to provide a timestamp manually. A timestamp is automatically generated at the time of processing.
@@ -346,6 +358,7 @@ export class FIRSService {
       };
     } catch (error: any) {
       console.error("Encryption/Decryption failed:", error.message);
+      throw new Error(`QR code generation failed: ${error.message}`);
     }
   }
 
@@ -356,7 +369,6 @@ export class FIRSService {
       console.error("Decryption failed:", error.message);
     }
   }
-
 
   public async acknowledgeInvoiceReceipt(tenantId: string, irn: string) {
     const client = this.appClient;

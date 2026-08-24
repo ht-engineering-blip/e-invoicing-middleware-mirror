@@ -23,11 +23,14 @@ import { connectMongo } from "./@lib/adapters/mongo";
 import { agenda } from "./@lib/queue/agenda";
 import { registerAllJobs } from "./v1/workflow/jobs";
 import { logger } from "./@lib/logger";
+import { aiConfig } from "./@config";
 
 const AGENDASH_PORT = Number(process.env.AGENDASH_PORT ?? 3001);
 
 async function startWorker() {
   logger.info("[Worker] Starting job worker...");
+
+  console.log(aiConfig);
 
   // 1. Connect to MongoDB
   await connectMongo();
@@ -80,3 +83,6 @@ startWorker().catch((err) => {
   logger.error("[Worker] Failed to start", { err });
   process.exit(1);
 });
+function parseAiConfig(): any {
+  throw new Error("Function not implemented.");
+}

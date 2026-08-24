@@ -34,6 +34,15 @@ export const listTenantsValidation = {
   },
 };
 
+export const getTenantAnalyticsValidation = {
+  detail: {
+    tags: ["Admin - Tenants"],
+    security: [{ adminKey: [] }],
+    summary: "Get tenant analytics summary",
+    description: "Retrieve counts for total, active, invited, and suspended tenants",
+  },
+};
+
 export const getTenantByIdValidation = {
   params: tenantIdParamValidator,
 

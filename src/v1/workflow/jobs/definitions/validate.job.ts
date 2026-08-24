@@ -3,6 +3,8 @@ import { agenda } from "../../../../@lib/queue/agenda";
 import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
 import { InvoiceWorkflowService } from "../../../invoicing/services";
+import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { OutboundInvoiceStatus } from "../../models";
 
 const invoiceService = new InvoiceWorkflowService();
 
@@ -30,6 +32,16 @@ export function registerValidateJob(): void {
       }
 
       logger.info("[Job:validate] Passed", { jobChainId });
+
+      if (context.irn) {
+        const outboundRepo = new OutboundInvoiceRepository();
+        await outboundRepo.update(context.irn, {
+          status: OutboundInvoiceStatus.VALIDATED,
+        });
+        await outboundRepo.updateWorkflowState(context.irn, {
+          validated: true,
+        });
+      }
 
       await chainNext(job, { validationResult: result });
     } catch (err: any) {

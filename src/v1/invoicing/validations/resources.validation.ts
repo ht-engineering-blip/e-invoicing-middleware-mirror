@@ -110,18 +110,54 @@ export const listCurrenciesValidation = {
           "application/json": {
             schema: resourceResponseSchema(
               t.Object({
+                symbol: t.String({
+                  example: "₦",
+                  description: "Currency symbol",
+                }),
+                name: t.String({
+                  example: "Nigerian Naira",
+                  description: "Currency name",
+                }),
+                symbol_native: t.String({
+                  example: "₦",
+                  description: "Native currency symbol",
+                }),
+                decimal_digits: t.Number({
+                  example: 2,
+                  description: "Decimal digits",
+                }),
+                rounding: t.Number({
+                  example: 0,
+                  description: "Rounding",
+                }),
                 code: t.String({
                   example: "NGN",
                   description: "ISO 4217 currency code",
                 }),
-                name: t.String({
-                  example: "Nigerian Naira",
-                  description: "Currency full name",
+                name_plural: t.String({
+                  example: "Nigerian nairas",
+                  description: "Plural name",
                 }),
               }),
               [
-                { code: "NGN", name: "Nigerian Naira" },
-                { code: "USD", name: "United States Dollar" },
+                {
+                  symbol: "₦",
+                  name: "Nigerian Naira",
+                  symbol_native: "₦",
+                  decimal_digits: 2,
+                  rounding: 0,
+                  code: "NGN",
+                  name_plural: "Nigerian nairas",
+                },
+                {
+                  symbol: "$",
+                  name: "US Dollar",
+                  symbol_native: "$",
+                  decimal_digits: 2,
+                  rounding: 0,
+                  code: "USD",
+                  name_plural: "US dollars",
+                },
               ],
             ),
           },

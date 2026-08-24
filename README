@@ -1,11 +1,13 @@
 # HT E-INVOICING MIDDLEWARE
 
 ## Important Notice: Taxpayer Credentials
-As of the latest updates, the middleware requires **Taxpayers to configure their own FIRS API Key and Secret** for all invoice-specific operations (e.g., validate, sign, transmit, report). 
+
+As of the latest updates, the middleware requires **Taxpayers to configure their own FIRS API Key and Secret** for all invoice-specific operations (e.g., validate, sign, transmit, report).
 
 The system **no longer falls back to the System Integrator API key** for these operations.
 
 ### What you need to do:
+
 1. Ensure that each tenant/taxpayer in the system provides their FIRS credentials.
 2. Save these credentials in the database under the `TenantModel`, specifically inside the `config.firsCredentials.apiKey` and `config.firsCredentials.apiSecret` fields.
 3. If these credentials are missing, any invoicing operation performed by that tenant will fail with: `FIRS credentials (API Key and Secret) are not configured for tenant`.
@@ -13,20 +15,24 @@ The system **no longer falls back to the System Integrator API key** for these o
 ---
 
 ## 🚀 Runtime & Polyfills
+
 To resolve older Bun runtime incompatibilities (e.g. `node:v8` `isBuildingSnapshot` not being implemented), all execution paths must run with the preload polyfill configuration.
 
 Always run with the configured scripts in `package.json`:
-* **API Server (Development)**: `bun run dev` (uses `--preload ./preload.ts`)
-* **Job Worker (Development)**: `bun run worker:dev` (uses `--preload ./preload.ts`)
-* **Job Worker (Production)**: `bun run worker` (uses `--preload ./preload.ts`)
+
+- **API Server (Development)**: `bun run dev` (uses `--preload ./preload.ts`)
+- **Job Worker (Development)**: `bun run worker:dev` (uses `--preload ./preload.ts`)
+- **Job Worker (Production)**: `bun run worker` (uses `--preload ./preload.ts`)
 
 ---
 
 ## 🩺 Health Check Endpoint
+
 An unauthenticated health check endpoint is available at `/health`:
-* **Method**: `GET`
-* **Route**: `/health`
-* **Response Format**:
+
+- **Method**: `GET`
+- **Route**: `/health`
+- **Response Format**:
   ```json
   {
     "success": true,
@@ -37,10 +43,11 @@ An unauthenticated health check endpoint is available at `/health`:
     }
   }
   ```
-If MongoDB is disconnected, it will automatically attempt reconnection (via lazy-loading middleware) and return status `503 Service Unavailable` if the connection fails.
+  If MongoDB is disconnected, it will automatically attempt reconnection (via lazy-loading middleware) and return status `503 Service Unavailable` if the connection fails.
 
 ---
 
 ## 📋 Invoice Type Mapping Rules
-* **Commercial Invoices (Type 380)** sent from source ERPs are automatically transformed and mapped to **Type 396 (Invoice Request)** before validation to meet FIRS schema specifications.
-* **Credit Notes (381, 393, 395)** and **Debit Notes (383, 384)** enforce a required `billing_reference` linking back to the original invoice. Standard invoices (`396`) do not require a `billing_reference`.
+
+- **Commercial Invoices (Type 380)** sent from source ERPs are automatically transformed and mapped to **Type 396 (Invoice Request)** before validation to meet FIRS schema specifications.
+- **Credit Notes (381, 393, 395)** and **Debit Notes (383, 384)** enforce a required `billing_reference` linking back to the original invoice. Standard invoices (`396`) do not require a `billing_reference`.

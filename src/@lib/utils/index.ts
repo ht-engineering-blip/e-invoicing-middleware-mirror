@@ -25,32 +25,20 @@ export function buildQrUrl(
 }
 
 /**
- * Resolve a dot-notation path against a nested object.
- * Returns undefined if any segment is missing.
- * Example: getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
- */
-export function getNestedValue(obj: any, path: string): any {
-  if (!obj || !path) return undefined;
-  return path
-    .split(".")
-    .reduce((acc, key) => (acc != null ? acc[key] : undefined), obj);
-}
-
-/**
  * Resolve a dot-notation (or bracket-notation) path against a nested object/array.
  * Returns undefined if any segment is missing.
  *
  * Supports:
- *   "header.id"            → plain nested object
- *   "items[0].description" → array index access
- *   "items.0.description"  → same, dot-notation index
- *   "items[*].description" → returns array of values from every element
+ *   "header.id"                    → plain nested object
+ *   "data.billing_reference[0]"   → array index access
+ *   "items.0.description"          → same, dot-notation index
+ *   "items[*].description"         → returns array of values from every element
  *
  * Examples:
  *   getNestedValue({ header: { id: "INV-1" } }, "header.id") → "INV-1"
- *   getNestedValue({ items: [{ qty: 2 }, { qty: 5 }] }, "items[*].qty") → [2, 5]
+ *   getNestedValue({ data: { billing_reference: [{ irn: "123" }] } }, "data.billing_reference[0]") → { irn: "123" }
  */
-export function _getNestedValue(obj: any, path: string): any {
+export function getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined;
   // Normalise bracket notation → dot notation, trim each segment, drop blanks
   const keys = path
@@ -61,6 +49,8 @@ export function _getNestedValue(obj: any, path: string): any {
   if (keys.length === 0) return undefined;
   return _traverse(obj, keys);
 }
+
+export const _getNestedValue = getNestedValue;
 
 function _traverse(current: any, keys: string[]): any {
   if (keys.length === 0) return current;
@@ -112,6 +102,8 @@ const DEFAULT_SENSITIVE_KEYS = [
   "privateKey",
   "clientSecret",
   "certificate",
+  "apiKey",
+  "apiSecret",
 ];
 
 /**

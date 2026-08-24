@@ -6,18 +6,20 @@ import { OutboundWorkflowService } from "../../services";
 import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
-import { buildQrUrl } from "../../../../@lib";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import { Currency } from "../../../../@lib/adapters/firs/types";
+import { resolveCurrencyCode } from "../../utils/transformer/utils";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
 const outboundRepo = new OutboundInvoiceRepository();
+const firsService = new FIRSService();
 
 export function registerCompleteOutboundJob(): void {
   agenda.define(
     "workflow:complete-outbound",
     async (job: Job<JobChainData>) => {
       const { tenantId, authContext, context, jobChainId } = job.attrs.data;
-      const businessId = authContext?.businessId ?? tenantId;
 
       logger.info("[Job:complete-outbound] Starting", {
         jobChainId,
@@ -29,7 +31,7 @@ export function registerCompleteOutboundJob(): void {
         let irn = context.irn;
         let qrCode: string | undefined;
         let firsSignedData: any;
-        let source = context.source as OutboundInvoiceSource;
+        let transmissionFailed = false;
 
         if (!context.transformedInvoice) {
           // ── Full-pipeline mode ────────────────────────────────────────────────
@@ -38,12 +40,14 @@ export function registerCompleteOutboundJob(): void {
 
           logger.info("[Job:complete-outbound] Full-pipeline mode", {
             jobChainId,
+            irn,
+            tenantId,
           });
 
           // Step 1: Transform ERP payload → FIRS format
           const transformed = await transformService.transformInvoiceV2(
             context.originalPayload,
-            authContext as any,
+            authContext,
             context.sourceType,
           );
 
@@ -51,11 +55,37 @@ export function registerCompleteOutboundJob(): void {
           irn = irn ?? transformed.irn;
           if (irn) transformed.irn = irn;
 
+          // Step 2.5: Resolve currencies and apply fallback checks
+          let currencies: Currency[] = [];
+          try {
+            currencies = await firsService.getResource<Currency>("currencies");
+          } catch {
+            // fallback gracefully
+          }
+
+          const fallbackCurrency = resolveCurrencyCode(
+            transformed.document_currency_code || transformed.tax_currency_code,
+            currencies,
+          );
+
+          transformed.tax_currency_code = transformed.tax_currency_code
+            ? resolveCurrencyCode(transformed.tax_currency_code, currencies)
+            : fallbackCurrency;
+
+          transformed.document_currency_code =
+            transformed.document_currency_code
+              ? resolveCurrencyCode(
+                  transformed.document_currency_code,
+                  currencies,
+                )
+              : fallbackCurrency;
+
           // Step 3: Persist invoice record
           if (irn) {
+            const source = context.source as OutboundInvoiceSource;
             await outboundRepo.upsertByIrn({
               irn,
-              tenantId: authContext?.tenantId ?? tenantId,
+              tenantId: authContext?.tenantId,
               erpSystem: authContext?.tenantERP,
               createdBy: authContext?.tenantId,
               source: source ?? OutboundInvoiceSource.API,
@@ -66,6 +96,8 @@ export function registerCompleteOutboundJob(): void {
             transformed.tenant_id = tenantId;
           }
 
+          console.log("TRANSFORM PAYLOAD DATA", { transformed });
+
           // Step 4: validate → sign (if needed) → confirm → QR → transmit
           const result = await outboundService.handleOutboundWorkflow(
             transformed,
@@ -73,6 +105,7 @@ export function registerCompleteOutboundJob(): void {
           );
           qrCode = result.qrCode as string;
           firsSignedData = result.data;
+          transmissionFailed = !!result.transmissionFailed;
         } else {
           // ── Finalize mode ─────────────────────────────────────────────────────
           // Used as the LAST step in a chain where individual steps already ran.
@@ -89,22 +122,31 @@ export function registerCompleteOutboundJob(): void {
             );
           }
 
-          const result = await outboundService.generateQRCode(irn, businessId);
-          qrCode = result.qrCode!;
+          const result = await outboundService.generateQRCode(irn, tenantId);
+          qrCode = result.qrCode;
           firsSignedData = result.data;
         }
 
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
+          const finalStatus = transmissionFailed
+            ? OutboundInvoiceStatus.TRANSMISTION_FAILED
+            : OutboundInvoiceStatus.DELIVERED;
+
           await outboundRepo.update(irn, {
             qrCode,
-            status: OutboundInvoiceStatus.DELIVERED,
+            status: finalStatus,
             metadata: {
               ...(context.metadata ?? {}),
+              ...(context.transformedInvoice
+                ? { transformedInvoice: context.transformedInvoice }
+                : {}),
               firsSignedData,
             },
           });
-          await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          if (!transmissionFailed) {
+            await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          }
         }
 
         logger.info("[Job:complete-outbound] Done — invoice DELIVERED", {
@@ -112,14 +154,10 @@ export function registerCompleteOutboundJob(): void {
           irn,
         });
 
-        await chainNext(job, {
-          qrCode: buildQrUrl(irn, !!qrCode) as string,
-          firsSignedData,
-          irn,
-        });
+        await chainNext(job, { qrCode, firsSignedData, irn });
       } catch (err: any) {
         const { context } = job.attrs.data;
-        if (context?.irn) {
+        if (context.irn) {
           await outboundRepo.update(context.irn, {
             status: OutboundInvoiceStatus.FAILED,
           });

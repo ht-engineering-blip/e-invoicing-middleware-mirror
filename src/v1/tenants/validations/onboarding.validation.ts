@@ -46,29 +46,6 @@ export const updateCredentialsValidation = {
     },
     { examples: [updateCredentialsExample] },
   ),
-  beforeHandle({ body, set }: any) {
-    if (!body?.mock) {
-      if (
-        body?.certificate &&
-        !body.certificate.includes("-----BEGIN CERTIFICATE-----")
-      ) {
-        set.status = 400;
-        return {
-          success: false,
-          error: "Invalid certificate format. Must be PEM encoded.",
-          statusCode: 400,
-        };
-      }
-      if (body?.publicKey && !body.publicKey.includes("-----BEGIN")) {
-        set.status = 400;
-        return {
-          success: false,
-          error: "Invalid public key format. Must be PEM encoded.",
-          statusCode: 400,
-        };
-      }
-    }
-  },
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -200,5 +177,24 @@ export const resendTenantTokenValidation = {
     summary: "Resend Onboarding Token",
     description:
       "Check timeframe of existing token, invalidate/delete if valid, and resend new activation token email to tenant contact email.",
+  },
+};
+
+export const updateBusinessIdValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  body: t.Object({
+    businessId: t.String({
+      minLength: 2,
+      description: "The new Business ID/Client ID of the tenant",
+      examples: ["a6de8bd8-43be-47b9-80a5-988ee3fb9cea"],
+    }),
+  }),
+  detail: {
+    tags: ["Onboarding"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Update Tenant Business ID",
+    description: "Update the business ID (which is the client ID in FIRS integration) of a tenant.",
   },
 };

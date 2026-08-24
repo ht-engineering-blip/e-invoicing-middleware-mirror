@@ -3,6 +3,8 @@ import { agenda } from '../../../../@lib/queue/agenda';
 import { logger } from '../../../../@lib/logger';
 import { chainNext, chainFail } from '../chain';
 import { InvoiceWorkflowService } from '../../../invoicing/services';
+import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { OutboundInvoiceStatus } from "../../models";
 
 const invoiceService = new InvoiceWorkflowService();
 
@@ -36,6 +38,16 @@ export async function processTransmitJob(
     }
 
     logger.info("[Job:transmit] Transmitted", { jobChainId, irn: context.irn });
+
+    if (context.irn) {
+      const outboundRepo = new OutboundInvoiceRepository();
+      await outboundRepo.update(context.irn, {
+        status: OutboundInvoiceStatus.TRANSMITTED,
+      });
+      await outboundRepo.updateWorkflowState(context.irn, {
+        transmitted: true,
+      });
+    }
 
     await chainNext(job, { transmissionResult: result.data });
   } catch (err: any) {

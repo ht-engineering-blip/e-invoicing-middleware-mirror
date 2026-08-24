@@ -129,7 +129,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error creating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
         throw new AppError(
@@ -163,7 +163,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: updateData },
-          { returnDocument: 'after', runValidators: true },
+          { returnDocument: "after", runValidators: true },
         )
         .exec();
 
@@ -175,7 +175,7 @@ export class TenantRepository {
     } catch (error: any) {
       console.error("Error updating tenant:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
@@ -193,7 +193,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.INACTIVE } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -345,7 +345,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.ACTIVE } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -372,7 +372,7 @@ export class TenantRepository {
         .findOneAndUpdate(
           { tenantId },
           { $set: { status: TenantStatus.SUSPENDED } },
-          { returnDocument: 'after' },
+          { returnDocument: "after" },
         )
         .exec();
 
@@ -397,6 +397,7 @@ export class TenantRepository {
     tenantId: string,
     credentials: {
       clientId?: string;
+      businessId?: string;
       serviceId?: string;
       certificate?: string;
       publicKey?: string;
@@ -405,22 +406,40 @@ export class TenantRepository {
     },
   ): Promise<TenantDocument> {
     try {
+      console.log({ credentials });
+
       const doc = await this.tenantModel
         .findOneAndUpdate(
           { tenantId },
           {
             $set: {
-              ...(credentials.clientId && { "config.firsCredentials.clientId": credentials.clientId }),
-              ...(credentials.serviceId && { "config.firsCredentials.serviceId": credentials.serviceId }),
-              ...(credentials.certificate && { "config.firsCredentials.certificate": credentials.certificate }),
-              ...(credentials.publicKey && { "config.firsCredentials.publicKey": credentials.publicKey }),
-              ...(credentials.apiKey && { "config.firsCredentials.apiKey": credentials.apiKey }),
-              ...(credentials.apiSecret && { "config.firsCredentials.apiSecret": credentials.apiSecret }),
+              ...(credentials.businessId && {
+                businessId: credentials.businessId,
+              }),
+              ...(credentials.clientId && {
+                "config.firsCredentials.clientId": credentials.clientId,
+              }),
+              ...(credentials.serviceId && {
+                "config.firsCredentials.serviceId": credentials.serviceId,
+              }),
+              ...(credentials.certificate && {
+                "config.firsCredentials.certificate": credentials.certificate,
+              }),
+              ...(credentials.publicKey && {
+                "config.firsCredentials.publicKey": credentials.publicKey,
+              }),
+              ...(credentials.apiKey && {
+                "config.firsCredentials.apiKey": credentials.apiKey,
+              }),
+              ...(credentials.apiSecret && {
+                "config.firsCredentials.apiSecret": credentials.apiSecret,
+              }),
             },
           },
-          { returnDocument: 'after' },
         )
         .exec();
+
+      console.log("Doc:", doc);
 
       if (!doc) {
         throw new AppError(404, "Tenant not found");

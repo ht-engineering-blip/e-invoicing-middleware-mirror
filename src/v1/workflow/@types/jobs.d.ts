@@ -21,6 +21,7 @@ interface JobChainData {
     serviceId?: string;
     tenantERP?: string;
     referenceIdKeyMap?: Record<string, string>;
+    idKeyMap?: Record<string, string>;
     isAdmin: false;
   };
 
@@ -66,4 +67,6 @@ interface ScheduleChainInput {
   erpInvoiceId?: string;
   /** Pre-generated IRN from the webhook handler (avoids duplicate generation) */
   irn?: string;
+  /** Optional initial context values to preload (useful when retrying mid-chain) */
+  initialContext?: Partial<JobChainData["context"]>;
 }

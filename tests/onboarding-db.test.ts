@@ -1,21 +1,20 @@
-import { describe, it, expect, spyOn, beforeAll, afterAll } from "bun:test";
-import mongoose from "mongoose";
 import { faker } from "@faker-js/faker";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { connectMongo } from "../src/@lib/adapters/mongo";
-import { TenantService } from "../src/v1/tenants/services/tenant.service";
-import {
-  TeamMemberService,
-  InviteTeamMemberInput,
-} from "../src/v1/tenants/services/team-member.service";
-import { TenantStatus } from "../src/v1/tenants/models/tenant.model";
+import { hashString } from "../src/@lib/utils/encryption";
 import {
   TeamMemberRole,
   TeamMemberStatus,
 } from "../src/v1/tenants/models/team-member.model";
-import { hashString } from "../src/@lib/utils/encryption";
-import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
+import { TenantStatus } from "../src/v1/tenants/models/tenant.model";
 import { TeamMemberRepository } from "../src/v1/tenants/repos/team-member.repo";
 import { TenantOnboardingRepository } from "../src/v1/tenants/repos/tenant-onboarding.repo";
+import { TenantRepository } from "../src/v1/tenants/repos/tenant.repo";
+import {
+  InviteTeamMemberInput,
+  TeamMemberService,
+} from "../src/v1/tenants/services/team-member.service";
+import { TenantService } from "../src/v1/tenants/services/tenant.service";
 
 describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
   let tenantService: TenantService;
@@ -67,9 +66,7 @@ describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
         console.error(`Failed to clean up team member ${userId}:`, err);
       }
     }
-    // Close mongoose connection
     if (sendEmailSpy) sendEmailSpy.mockRestore();
-    await mongoose.connection.close();
   });
 
   it("should successfully complete the entire tenant onboarding, activation, and team member invitation flow", async () => {
@@ -239,4 +236,46 @@ describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
     expect(loginResult.authToken).toBeDefined();
     expect(loginResult.member.email).toBe(memberEmail);
   }, 60000);
+
+  it("should successfully update and decrypt the tenant's business ID", async () => {
+    const fakeBusinessName = faker.company.name();
+    const fakeTin = faker.string.numeric({ length: 10 });
+    const fakeEmail = faker.internet.email().toLowerCase();
+    const fakePhone = faker.phone.number();
+
+    const tenant = await tenantService.createTenant({
+      businessName: fakeBusinessName,
+      tin: fakeTin,
+      businessRegistrationNumber: `RC-${faker.string.numeric({ length: 6 })}`,
+      contactEmail: fakeEmail,
+      contactPhone: fakePhone,
+      expectedVolume: 100,
+      erpSystem: "tally",
+    }, {
+      id: "admin-user-2",
+      type: "user",
+      name: "Global Admin",
+    });
+
+    testTenants.push(tenant.tenantId);
+
+    const newBusinessId = "new-test-business-id-uuid-9999";
+    const updatedTenant = await tenantService.updateBusinessId(
+      tenant.tenantId,
+      newBusinessId,
+      { id: "admin-user-2", type: "user" }
+    );
+
+    expect(updatedTenant).toBeDefined();
+    expect(updatedTenant.businessId).toBe(newBusinessId);
+
+    // Verify retrieval by business ID
+    const retrieved = await tenantService.getTenantByBusinessId(newBusinessId);
+    expect(retrieved).toBeDefined();
+    expect(retrieved.tenantId).toBe(tenant.tenantId);
+
+    // Verify FIRS credentials decryption matches the business ID
+    const credentials = await tenantService.getFIRSCredentials(tenant.tenantId);
+    expect(credentials.clientId).toBe(newBusinessId);
+  });
 });

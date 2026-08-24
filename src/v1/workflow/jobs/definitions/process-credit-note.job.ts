@@ -22,36 +22,64 @@ export function registerProcessCreditNoteJob(): void {
 
       try {
         const payload = context.originalPayload;
+        const eventType = job.attrs.data.eventType;
 
-        const idKeyMap = authContext?.referenceIdKeyMap;
+        const idKey =
+          authContext?.idKeyMap?.[eventType] ??
+          authContext?.idKeyMap?.[eventType?.replace(/\./g, "_")];
+        const creditNoteId =
+          (idKey ? getNestedValue(payload, idKey) : undefined) ??
+          (idKey && idKey.startsWith("data.")
+            ? getNestedValue(payload, idKey.replace(/^data\./, ""))
+            : undefined) ??
+          payload?.data?.invoice_id ??
+          payload?.invoice_id ??
+          payload?.data?.invoiceId ??
+          payload?.invoiceId ??
+          context.erpInvoiceId;
 
-        const refKey = idKeyMap?.[job.attrs.data.eventType];
-        const creditNoteId = context.erpInvoiceId;
-        const referenceIds: string[] = [];
+        const refKey =
+          authContext?.referenceIdKeyMap?.[eventType] ??
+          authContext?.referenceIdKeyMap?.[eventType?.replace(/\./g, "_")];
 
-        if (refKey) {
-          const configuredRef = getNestedValue(payload, refKey);
-          if (Array.isArray(configuredRef)) {
-            referenceIds.push(...configuredRef.map(String));
-          } else if (configuredRef) {
-            referenceIds.push(String(configuredRef));
+        const extractReferenceIds = (value: any): string[] => {
+          if (!value) return [];
+          const list = Array.isArray(value) ? value : [value];
+          const ids: string[] = [];
+          for (const item of list) {
+            if (!item) continue;
+            if (typeof item === "string" || typeof item === "number") {
+              ids.push(String(item).trim());
+            } else if (typeof item === "object") {
+              const candidate =
+                item.irn ??
+                item.invoice_id ??
+                item.invoice_number ??
+                item.id ??
+                item.referenceId;
+              if (candidate) {
+                ids.push(String(candidate).trim());
+              }
+            }
           }
-        } else {
-          // Legacy fallback to prevent breaking existing integrations
-          const referenceId =
-            payload.referenceId ?? payload.reference_id ?? payload.invoiceId;
-          if (Array.isArray(payload.referenceIds)) {
-            referenceIds.push(...payload.referenceIds.map(String));
-          } else if (Array.isArray(payload.reference_ids)) {
-            referenceIds.push(...payload.reference_ids.map(String));
-          } else if (referenceId) {
-            referenceIds.push(String(referenceId));
-          }
-        }
+          return ids;
+        };
+
+        const configuredRef =
+          (refKey ? getNestedValue(payload, refKey) : undefined) ??
+          (refKey && refKey.startsWith("data.")
+            ? getNestedValue(payload, refKey.replace(/^data\./, ""))
+            : undefined) ??
+          payload?.data?.billing_reference ??
+          payload?.billing_reference ??
+          payload?.data?.referenceId ??
+          payload?.referenceId;
+
+        const referenceIds = extractReferenceIds(configuredRef);
 
         if (referenceIds.length === 0) {
           throw new Error(
-            "Missing referenceId, reference_id, or referenceIds in credit note payload",
+            "Missing billing reference or reference ID in credit note payload",
           );
         }
 
@@ -77,31 +105,26 @@ export function registerProcessCreditNoteJob(): void {
 
           const originalTransformed =
             originalInvoice.metadata?.transformedInvoice;
-          if (!originalTransformed) {
-            throw new Error(
-              `Transformed invoice payload not found on original invoice ${refId}`,
-            );
-          }
 
           originalInvoices.push(originalInvoice);
 
           billingReferences.push({
             irn: originalInvoice.irn,
             issue_date:
-              originalTransformed.issue_date ||
-              originalInvoice.createdAt.toISOString().slice(0, 10),
+              originalTransformed?.issue_date ||
+              (originalInvoice.createdAt
+                ? new Date(originalInvoice.createdAt).toISOString().slice(0, 10)
+                : new Date().toISOString().slice(0, 10)),
           });
         }
 
         const fallbackOriginalInvoice = originalInvoices[0];
         const fallbackOriginalTransformed =
-          fallbackOriginalInvoice.metadata.transformedInvoice;
+          fallbackOriginalInvoice?.metadata?.transformedInvoice;
 
-        // Check if this is a full credit note payload containing items/lines
-        const hasLines =
-          Array.isArray(payload.invoice_line) ||
-          Array.isArray(payload.items) ||
-          Array.isArray(payload.invoiceLine);
+        // 2. Transform or clone into credit note payload
+        const lines = payload.data?.invoice_line ?? payload.invoice_line;
+        const hasLines = Array.isArray(lines) && lines.length > 0;
 
         let creditNotePayload: any;
 
@@ -116,30 +139,50 @@ export function registerProcessCreditNoteJob(): void {
             context.sourceType,
           );
         } else {
+          if (!fallbackOriginalTransformed) {
+            throw new Error(
+              `Transformed invoice payload not found on original invoice ${referenceIds[0]}`,
+            );
+          }
           logger.info(
             "[Job:process-credit-note] Minimal credit note payload detected — cloning original...",
             { jobChainId },
           );
-          // Construct the credit note payload based on the first original invoice
           creditNotePayload = JSON.parse(
             JSON.stringify(fallbackOriginalTransformed),
           );
         }
 
-        // Convert to Credit Note
-        creditNotePayload.invoice_type_code = "381";
+        // Dynamically set invoice_type_code from payload or default to 380
+        const resolvedInvoiceTypeCode =
+          payload.data?.invoice_type_code ??
+          payload.invoice_type_code ??
+          (hasLines ? creditNotePayload.invoice_type_code : "380");
 
-        // Preserve billing_reference if already provided in the webhook payload, otherwise use resolved ones
+        creditNotePayload.invoice_type_code = String(
+          resolvedInvoiceTypeCode,
+        ).trim();
+
+        // Assign billing reference (use incoming if provided, otherwise resolved from original invoice)
+        const incomingBillingRefs =
+          payload.data?.billing_reference ?? payload.billing_reference;
+
         if (
-          Array.isArray(payload.billing_reference) &&
-          payload.billing_reference.length > 0
+          Array.isArray(incomingBillingRefs) &&
+          incomingBillingRefs.length > 0
         ) {
-          creditNotePayload.billing_reference = payload.billing_reference;
-        } else if (
-          Array.isArray(payload.billing_references) &&
-          payload.billing_references.length > 0
-        ) {
-          creditNotePayload.billing_reference = payload.billing_references;
+          creditNotePayload.billing_reference = incomingBillingRefs.map(
+            (ref: any) => ({
+              irn:
+                typeof ref === "object"
+                  ? (ref.irn ?? ref.invoice_id ?? fallbackOriginalInvoice.irn)
+                  : String(ref),
+              issue_date:
+                typeof ref === "object"
+                  ? (ref.issue_date ?? fallbackOriginalTransformed.issue_date)
+                  : fallbackOriginalTransformed.issue_date,
+            }),
+          );
         } else {
           creditNotePayload.billing_reference = billingReferences;
         }

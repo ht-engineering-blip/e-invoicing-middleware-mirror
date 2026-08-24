@@ -16,6 +16,7 @@ import {
   updateInvoiceIdKeyValidation,
   testWebhookValidation,
   resendTenantTokenValidation,
+  updateBusinessIdValidation,
 } from "../validations/onboarding.validation";
 import { AuthService } from "../../auth/services";
 import { MailContent, withTemplate } from "../../../@lib/messaging";
@@ -185,10 +186,7 @@ export const protectedOnboardingRoutes = new Elysia()
           {
             certificate,
             publicKey,
-            clientId:
-              body?.clientId ||
-              (isMock ? "a6de8bd8-43be-47b9-80a5-988ee3fb9cea" : undefined),
-            serviceId: body?.serviceId || (isMock ? "34A843BE" : undefined),
+            serviceId: body.serviceId,
           },
           getActor(auth),
         );
@@ -254,9 +252,11 @@ export const protectedOnboardingRoutes = new Elysia()
 
         // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
+        const tenantObj = tenant.toObject();
 
         // Persist invoiceIdKey if provided; otherwise keep existing value
-        const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
+        const invoiceIdKey =
+          body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;
 
         await tenantService.updateTenant(
           params.tenantId,
@@ -264,11 +264,11 @@ export const protectedOnboardingRoutes = new Elysia()
             webhookUrl,
             webhookEnabled: true,
             config: {
-              ...tenant.config,
+              ...tenantObj.config,
               invoiceIdKey,
             },
             metadata: {
-              ...tenant.metadata,
+              ...tenantObj.metadata,
               webhookUrl,
               webhookPath,
               webhookSecretHash: crypto
@@ -345,15 +345,17 @@ export const protectedOnboardingRoutes = new Elysia()
 
         // Load current tenant to merge existing config
         const tenant = await tenantService.getTenantById(params.tenantId);
+        const tenantObj = tenant.toObject();
 
         // Persist invoiceIdKey if provided; otherwise keep existing value
-        const invoiceIdKey = body?.invoiceIdKey ?? tenant.config?.invoiceIdKey;
+        const invoiceIdKey =
+          body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;
 
         await tenantService.updateTenant(
           params.tenantId,
           {
             config: {
-              ...tenant.config,
+              ...tenantObj.config,
               invoiceIdKey,
             },
           } as any,
@@ -606,4 +608,46 @@ export const protectedOnboardingRoutes = new Elysia()
       }
     },
     resendTenantTokenValidation,
+  )
+
+  /**
+   * PUT /tenants/:tenantId/business-id
+   * Update tenant's business ID
+   */
+  .put(
+    "/:tenantId/business-id",
+    async ({ params, body, auth, tenantService, set }) => {
+      try {
+        // Check authorization
+        onlySelf(auth!, params.tenantId);
+
+        logger.info("Updating tenant business ID", {
+          tenantId: params.tenantId,
+          businessId: body.businessId,
+        });
+
+        const updatedTenant = await tenantService.updateBusinessId(
+          params.tenantId,
+          body.businessId,
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          {
+            tenantId: updatedTenant.tenantId,
+            businessId: body.businessId,
+          },
+          undefined,
+          "Business ID updated successfully",
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to update business ID", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to update business ID",
+          error.statusCode || 500,
+        );
+      }
+    },
+    updateBusinessIdValidation,
   );

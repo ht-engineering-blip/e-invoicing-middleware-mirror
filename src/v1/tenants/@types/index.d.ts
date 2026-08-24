@@ -33,6 +33,7 @@ interface UpdateTenantInput {
     };
     metadata?: any;
     config?: any;
+    status?: TenantStatus | string;
 }
 
 interface FIRSCredentialsInput {

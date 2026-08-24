@@ -192,6 +192,14 @@ FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
             `;
   }
 
+  const isDev =
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV !== "production";
+
+  const tinFormatInstruction = isDev
+    ? `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. For accounting_customer_party.tin, a valid Nigerian TIN must be numeric (e.g., "61392352-1056" or 10-14 digits). If the source data does not provide a valid numeric TIN or provides an internal customer/party code (e.g. "AVONHEALTHCARE", "CUST01", "00000000-0000"), you MUST use the supplier TIN "${authContext?.businessTIN || "61392352-1056"}" for accounting_customer_party.tin.`
+    : `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. TIN format for accounting_customer_party.tin should be preserved from source.`;
+
   return `You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
 
 ${businessContext}
@@ -205,8 +213,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice, "380" / "381" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("380", "381", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice request, "380" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -250,7 +258,7 @@ ${JSON.stringify(invoiceTypes, null, 2)}
 - NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
 - All party objects require: party_name, tin, email, postal_address
 - Telephone must start with "+" if provided
-- TIN format should be preserved from source
+- ${tinFormatInstruction}
 
 ## FIELD METADATA REQUIREMENTS:
 ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
@@ -278,7 +286,7 @@ Each invoice_line must contain:
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
 13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
-14. Map ERP standard invoice_type_code 380 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note.
+14. Map ERP standard invoice_type_code 381 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note (380).
 
 ## MAPPING RULES TO USE INCASE THE FIELDS EXIST:
 ${JSON.stringify(mappingRules)}

@@ -19,9 +19,9 @@ export class OutboundWorkflowService {
    * Final step of the outbound chain: generate QR code from FIRS.
    * All prior steps (validate, sign, transmit, confirm) must already be done.
    */
-  async generateQRCode(irn: string, businessId: string) {
+  async generateQRCode(irn: string, tenat: string) {
     const firsService = new FIRSService();
-    const firsCreds = await this.tenantService.getFIRSCredentials(businessId);
+    const firsCreds = await this.tenantService.getFIRSCredentials(tenat);
 
     const encryptedData = await firsService.generateQRCodeV2(
       irn,
@@ -115,7 +115,10 @@ export class OutboundWorkflowService {
 
         while (attempts < maxAttempts) {
           try {
-            validatedInvoice = await firsService.validateInvoice(invoice.tenant_id, invoice);
+            validatedInvoice = await firsService.validateInvoice(
+              invoice.tenant_id,
+              invoice,
+            );
             break;
           } catch (error: any) {
             attempts++;
@@ -158,13 +161,17 @@ export class OutboundWorkflowService {
               ? Array.isArray(validatedInvoice.errors)
                 ? validatedInvoice.errors
                     .map((e: any) =>
-                      typeof e === "string" ? e : e?.message || JSON.stringify(e),
+                      typeof e === "string"
+                        ? e
+                        : e?.message || JSON.stringify(e),
                     )
                     .join("; ")
                 : JSON.stringify(validatedInvoice.errors)
               : "") ||
             validatedInvoice?.data?.message ||
-            (validatedInvoice?.data ? JSON.stringify(validatedInvoice.data) : "");
+            (validatedInvoice?.data
+              ? JSON.stringify(validatedInvoice.data)
+              : "");
           throw new Error(
             `Invoice validation failed${detail ? `: ${detail}` : ""}`,
           );
@@ -182,7 +189,10 @@ export class OutboundWorkflowService {
 
       // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
       if (!skipSigning && !wf.signed) {
-        const signedInvoice: any = await firsService.signInvoice(invoice.tenant_id, invoice);
+        const signedInvoice: any = await firsService.signInvoice(
+          invoice.tenant_id,
+          invoice,
+        );
 
         if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
           const detail =
@@ -191,7 +201,9 @@ export class OutboundWorkflowService {
               ? Array.isArray(signedInvoice.errors)
                 ? signedInvoice.errors
                     .map((e: any) =>
-                      typeof e === "string" ? e : e?.message || JSON.stringify(e),
+                      typeof e === "string"
+                        ? e
+                        : e?.message || JSON.stringify(e),
                     )
                     .join("; ")
                 : JSON.stringify(signedInvoice.errors)
@@ -243,16 +255,21 @@ export class OutboundWorkflowService {
           );
         }
 
-        toTransmit = !confirmedInvoice?.data?.data?.transmitted;
+        const isAlreadyTransmitted = Boolean(
+          confirmedInvoice?.data?.data?.transmitted,
+        );
+        toTransmit = !isAlreadyTransmitted;
 
-        await this.outboundRepo.update(invoice.irn, {
-          status: OutboundInvoiceStatus.TRANSMITTED,
-        });
+        if (isAlreadyTransmitted) {
+          await this.outboundRepo.update(invoice.irn, {
+            status: OutboundInvoiceStatus.TRANSMITTED,
+          });
 
-        await this.outboundRepo.updateWorkflowState(invoice.irn, {
-          transmitted: true,
-        });
-        wf.transmitted = true;
+          await this.outboundRepo.updateWorkflowState(invoice.irn, {
+            transmitted: true,
+          });
+          wf.transmitted = true;
+        }
       }
 
       // Step 4: Generate QR code
@@ -281,13 +298,18 @@ export class OutboundWorkflowService {
         });
       }
 
-      try {
-        // Step 5: Transmit
-        if (transmit && (toTransmit || !wf.transmitted)) {
+      console.log("[Job:complete-outbound] Transmition Started", { invoice });
+
+      // Step 5: Transmit
+      let transmissionFailed = false;
+      if (transmit && (toTransmit || !wf.transmitted)) {
+        try {
           const transmitRes: any = await firsService.transmitInvoice(
             invoice.tenant_id,
             invoice.irn,
           );
+
+          console.log("TRENSMITTED RES", { transmitRes });
 
           if (
             transmitRes &&
@@ -297,11 +319,14 @@ export class OutboundWorkflowService {
           ) {
             const detail =
               transmitRes?.message ||
-              (transmitRes?.errors ? JSON.stringify(transmitRes.errors) : "") ||
+              (transmitRes?.errors
+                ? Array.isArray(transmitRes.errors)
+                  ? transmitRes.errors.join("; ")
+                  : JSON.stringify(transmitRes.errors)
+                : "") ||
+              transmitRes?.data?.message ||
               "";
-            throw new Error(
-              `Transmission failed${detail ? `: ${detail}` : ""}`,
-            );
+            throw new Error(`Transmission failed${detail ? `: ${detail}` : ""}`);
           }
 
           await this.outboundRepo.update(invoice.irn, {
@@ -309,21 +334,33 @@ export class OutboundWorkflowService {
           });
 
           await this.outboundRepo.updateWorkflowState(invoice.irn, {
+            transmitted: true,
             delivered: true,
           });
+          wf.transmitted = true;
+          wf.delivered = true;
+        } catch (transmitError: any) {
+          console.error("TRANSMISSION FAILED (tolerated)", { transmitError });
+          transmissionFailed = true;
+
+          await this.outboundRepo.update(invoice.irn, {
+            status: OutboundInvoiceStatus.TRANSMISTION_FAILED,
+            metadata: {
+              ...stored?.metadata,
+              workflowState: wf,
+              transmissionError: transmitError.message || String(transmitError),
+            },
+          });
         }
-      } catch (error: any) {
-        logger.warn("[OutboundService] Transmission warning:", {
-          error: error.message,
-          irn: invoice.irn,
-        });
       }
 
-      return encryptedData;
+      return {
+        qrCode: encryptedData.qrCode,
+        data: encryptedData.data,
+        transmissionFailed,
+      };
     } catch (error: any) {
-      await this.outboundRepo.update(invoice.irn, {
-        status: OutboundInvoiceStatus.FAILED,
-      });
+      console.error("OUTBOUND WORKFLOW STEP FAILED", { error });
       throw error;
     }
   }

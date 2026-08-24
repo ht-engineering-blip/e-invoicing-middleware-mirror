@@ -3,6 +3,8 @@ import { agenda } from "../../../../@lib/queue/agenda";
 import { logger } from "../../../../@lib/logger";
 import { chainNext, chainFail } from "../chain";
 import { InvoiceWorkflowService } from "../../../invoicing/services";
+import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
+import { OutboundInvoiceStatus } from "../../models";
 
 const invoiceService = new InvoiceWorkflowService();
 
@@ -27,6 +29,17 @@ export function registerSignJob(): void {
       }
 
       logger.info("[Job:sign] Signed", { jobChainId });
+
+      const irn = context.irn ?? (result.data as any)?.irn;
+      if (irn) {
+        const outboundRepo = new OutboundInvoiceRepository();
+        await outboundRepo.update(irn, {
+          status: OutboundInvoiceStatus.SIGNED,
+        });
+        await outboundRepo.updateWorkflowState(irn, {
+          signed: true,
+        });
+      }
 
       await chainNext(job, { signedInvoice: result.data });
     } catch (err: any) {

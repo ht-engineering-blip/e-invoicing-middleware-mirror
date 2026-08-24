@@ -17,6 +17,8 @@ export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
   private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
+  private metricsCache = new Map<string, { data: any; timestamp: number }>();
+
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
       OutboundInvoiceModel,
@@ -123,7 +125,11 @@ export class OutboundInvoiceRepository {
     to?: Date;
     page?: number;
     limit?: number;
-  }): Promise<{ items: any[]; total: number }> {
+  }): Promise<{
+    items: any[];
+    total: number;
+    countsByType?: { outbound: number; inbound: number };
+  }> {
     try {
       const page = Math.max(1, params.page || 1);
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
@@ -138,7 +144,14 @@ export class OutboundInvoiceRepository {
       // 1. Build outbound match query
       const outboundMatch: any = {};
       if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
-      if (params.status?.trim()) outboundMatch.status = params.status.trim();
+      if (params.status?.trim()) {
+        const statusVal = params.status.trim().toUpperCase();
+        if (statusVal === "FAILED") {
+          outboundMatch.status = { $in: ["FAILED", "TRANSMISTION_FAILED"] };
+        } else {
+          outboundMatch.status = statusVal;
+        }
+      }
       if (params.source?.trim()) outboundMatch.source = params.source.trim();
       if (params.erpInvoiceId?.trim())
         outboundMatch.erpInvoiceId = params.erpInvoiceId.trim();
@@ -166,7 +179,9 @@ export class OutboundInvoiceRepository {
       } else if (!isAdmin && tenantId) {
         inboundMatch.tenantId = tenantId;
       }
-      if (params.status?.trim()) inboundMatch.status = params.status.trim();
+      if (params.status?.trim()) {
+        inboundMatch.status = params.status.trim().toUpperCase();
+      }
       if (params.paymentStatus?.trim()) {
         inboundMatch["payment.paymentStatus"] = params.paymentStatus.trim();
       }
@@ -325,42 +340,65 @@ export class OutboundInvoiceRepository {
       };
 
       let aggregationResult: any;
+      let outboundTotal = 0;
+      let inboundTotal = 0;
+
+      // Count operations to populate countsByType correctly
+      const [outboundCount, inboundCount] = await Promise.all([
+        this.outboundInvoiceModel.countDocuments(outboundMatch).exec(),
+        this.inboundInvoiceModel.countDocuments(inboundMatch).exec(),
+      ]);
+      outboundTotal = outboundCount || 0;
+      inboundTotal = inboundCount || 0;
 
       if (requestedType === "inbound") {
         const inboundPipeline: any[] = [
           { $match: inboundMatch },
           inboundProjectStage,
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                inboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.inboundInvoiceModel
+        const [result] = await this.inboundInvoiceModel
           .aggregate(inboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       } else if (requestedType === "outbound") {
         const outboundPipeline: any[] = [
           { $match: outboundMatch },
           outboundProjectStage,
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                outboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
+        const [result] = await this.outboundInvoiceModel
           .aggregate(outboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       } else {
+        const fetchLimit = offset + limit;
         const unifiedPipeline: any[] = [
           { $match: outboundMatch },
+          { $sort: { createdAt: -1 } },
+          { $limit: fetchLimit },
           outboundProjectStage,
           {
             $unionWith: {
@@ -368,7 +406,7 @@ export class OutboundInvoiceRepository {
               pipeline: [{ $match: inboundMatch }, inboundProjectStage],
             },
           },
-          { $sort: { createdAt: -1 } },
+          { $sort: { updatedAt: -1 } },
           {
             $facet: {
               totalCount: [{ $count: "count" }],
@@ -376,25 +414,36 @@ export class OutboundInvoiceRepository {
             },
           },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
+        const [result] = await this.outboundInvoiceModel
           .aggregate(unifiedPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       }
 
-      const total = aggregationResult?.totalCount?.[0]?.count || 0;
+      const total =
+        requestedType === "outbound"
+          ? outboundTotal
+          : requestedType === "inbound"
+            ? inboundTotal
+            : outboundTotal + inboundTotal;
+
       const items = aggregationResult?.items || [];
 
-      return { items, total };
+      return {
+        items,
+        total,
+        countsByType: {
+          outbound: outboundTotal,
+          inbound: inboundTotal,
+        },
+      };
     } catch (error) {
       console.error(
         "Error executing unified invoice aggregation stream:",
         error,
       );
-      throw new AppError(
-        500,
-        "Failed to retrieve unified invoice aggregation stream",
-      );
+      throw new AppError(500, "Failed to retrieve unified invoice stream");
     }
   }
 
@@ -439,6 +488,12 @@ export class OutboundInvoiceRepository {
         if (params.to) inboundMatch.createdAt.$lte = params.to;
       }
 
+      const cacheKey = `${tenantId || "admin"}:${businessId || ""}:${params.from?.getTime() || ""}:${params.to?.getTime() || ""}`;
+      const cached = this.metricsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < 30000) {
+        return cached.data;
+      }
+
       const [outboundCount, inboundCount] = await Promise.all([
         this.outboundInvoiceModel
           .countDocuments(outboundMatch)
@@ -450,11 +505,14 @@ export class OutboundInvoiceRepository {
           .exec(),
       ]);
 
-      return {
+      const result = {
         total: (outboundCount || 0) + (inboundCount || 0),
         outbound: outboundCount || 0,
         inbound: inboundCount || 0,
       };
+
+      this.metricsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
     } catch (error) {
       console.error("Error computing invoice metrics:", error);
       throw new AppError(500, "Failed to compute invoice metrics");
@@ -537,7 +595,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error("Error creating outbound invoice:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error.code === 11000) {
         throw new AppError(409, "Invoice with this IRN already exists");
@@ -590,8 +648,9 @@ export class OutboundInvoiceRepository {
       return doc!;
     } catch (error: any) {
       console.error("Error upserting outbound invoice:", error);
-      if (error.name === "ValidationError")
-        throw new AppError(400, "Invalid input");
+      if (error.name === "ValidationError") {
+        throw new AppError(400, error);
+      }
       throw new AppError(500, "Failed to upsert outbound invoice");
     }
   }
@@ -617,12 +676,16 @@ export class OutboundInvoiceRepository {
       const query: any = { irn };
       if (tenantId) query.tenantId = tenantId;
 
+      const updateDoc: any = { $set: updateData };
+      if (data.status === OutboundInvoiceStatus.DELIVERED) {
+        updateDoc.$unset = { lastJobError: 1 };
+      }
+
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate(
-          query,
-          { $set: updateData },
-          { returnDocument: "after", runValidators: true },
-        )
+        .findOneAndUpdate(query, updateDoc, {
+          returnDocument: "after",
+          runValidators: true,
+        })
         .exec();
 
       if (!doc) {
@@ -633,7 +696,7 @@ export class OutboundInvoiceRepository {
     } catch (error: any) {
       console.error("Error updating outbound invoice:", error);
       if (error.name === "ValidationError") {
-        throw new AppError(400, "Invalid input");
+        throw new AppError(400, error);
       }
       if (error instanceof AppError) {
         throw error;
@@ -782,12 +845,16 @@ export class OutboundInvoiceRepository {
     status: OutboundInvoiceStatus,
   ): Promise<OutboundInvoiceDocument> {
     try {
+      const updateDoc: any = { $set: { status } };
+      if (
+        status === OutboundInvoiceStatus.CREATED ||
+        status === OutboundInvoiceStatus.DELIVERED
+      ) {
+        updateDoc.$unset = { lastJobError: 1 };
+      }
+
       const doc = await this.outboundInvoiceModel
-        .findOneAndUpdate(
-          { irn },
-          { $set: { status } },
-          { returnDocument: "after" },
-        )
+        .findOneAndUpdate({ irn }, updateDoc, { returnDocument: "after" })
         .exec();
 
       if (!doc) {

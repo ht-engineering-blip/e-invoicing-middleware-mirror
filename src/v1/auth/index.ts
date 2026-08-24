@@ -69,7 +69,6 @@ const authRoutes = new Elysia()
           throw new UnauthorizedError("Invalid credentials");
         }
 
-        console.log({ tenant });
         // Check if tenant is active
         /*   if (tenant.status !== 'active') {
           throw new UnauthorizedError('Tenant account is not active');
@@ -174,7 +173,7 @@ const authRoutes = new Elysia()
    */
   .post(
     "/oauth/firs",
-    async ({ body, tenantService, firsService, set }) => {
+    async ({ body, tenantService, firsService, set, headers }) => {
       try {
         logger.info("FIRS OAuth authentication request", {
           email: body.email,
@@ -238,10 +237,32 @@ const authRoutes = new Elysia()
           tin: firsResult.tin,
         });
 
-        // Find tenant by TIN or email
-        let tenant = await tenantService
-          .getTenantByTinOrEmail(firsResult.tin)
-          .catch(() => null);
+        let tenantIdFromToken: string | undefined;
+        const authHeader = headers["authorization"];
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          try {
+            const token = authHeader.substring(7);
+            const decoded = jwt.verify(token, jwtConfig?.secret!) as any;
+            if (decoded && decoded.tenantId) {
+              tenantIdFromToken = decoded.tenantId;
+            }
+          } catch (e) {
+            // Ignore token decoding errors
+          }
+        }
+
+        // Find tenant by token, TIN, or email
+        let tenant = tenantIdFromToken
+          ? await tenantService
+              .getTenantById(tenantIdFromToken)
+              .catch(() => null)
+          : null;
+
+        if (!tenant) {
+          tenant = await tenantService
+            .getTenantByTinOrEmail(firsResult.tin)
+            .catch(() => null);
+        }
 
         if (!tenant && body.email) {
           tenant = await tenantService
@@ -253,11 +274,12 @@ const authRoutes = new Elysia()
         if (tenant) {
           try {
             // Get service id from irn template
-            let serviceId =
+            const serviceId =
               firsResult.irn_template?.split("-")[1] || "34A843BE";
             const credentials = {
               clientId: firsResult.id,
               serviceId,
+              irnTemplate: firsResult.irn_template,
             };
 
             await tenantService.updateFIRSCredentials(
@@ -280,9 +302,12 @@ const authRoutes = new Elysia()
                 );
               }
             } catch (onboardingErr) {
-              logger.warn("Failed to complete firsProvisioning onboarding step", {
-                error: onboardingErr,
-              });
+              logger.warn(
+                "Failed to complete firsProvisioning onboarding step",
+                {
+                  error: onboardingErr,
+                },
+              );
             }
 
             // Update tenant metadata with FIRS info
@@ -482,7 +507,6 @@ const protectedAuthRoutes = new Elysia()
           throw new UnauthorizedError("Not authenticated");
         }
 
-        console.log(auth);
         // Handle team member authentication
         if (auth.isTeamMember && auth.userId) {
           logger.info("Fetching team member details", {

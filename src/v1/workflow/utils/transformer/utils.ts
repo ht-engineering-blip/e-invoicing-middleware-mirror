@@ -1,4 +1,5 @@
 import { generateRandomString } from "../../../../@lib";
+import { Currency } from "../../../../@lib/adapters/firs/types";
 
 export function generateDatestamp(date: Date = new Date()): string {
   date = new Date(date);
@@ -39,7 +40,6 @@ export function sanitizeInvoiceIRNs(invoice: any): void {
 
   const isAdjustmentNote = [
     "380",
-    "381",
     "383",
     "384",
     "385",
@@ -152,6 +152,7 @@ let dynamicHsCodes: Array<{
   label?: string;
   keywords?: string[];
 }> | null = null;
+let dynamicCurrencies: Currency[] | null = null;
 
 export function setDynamicQuantityCodes(
   codes: Array<{ code: string; value?: string }>,
@@ -169,6 +170,77 @@ export function setDynamicHsCodes(
   if (Array.isArray(codes) && codes.length > 0) {
     dynamicHsCodes = codes;
   }
+}
+
+export function setDynamicCurrencies(currencies: Currency[]): void {
+  if (Array.isArray(currencies) && currencies.length > 0) {
+    dynamicCurrencies = currencies;
+  }
+}
+
+export function getDynamicCurrencies(): Currency[] | null {
+  return dynamicCurrencies;
+}
+
+/**
+ * Resolve currency code from input (can be code e.g. "USD", symbol e.g. "$", or name e.g. "US Dollar")
+ * using the dynamic FIRS currencies list from GET /api/v1/invoice/resources/currencies.
+ * Fallbacks to NGN or first available currency code.
+ */
+export function resolveCurrencyCode(
+  input?: string,
+  availableCurrencies?: Currency[] | null,
+): string {
+  const currencies =
+    availableCurrencies && availableCurrencies.length > 0
+      ? availableCurrencies
+      : dynamicCurrencies;
+
+  const defaultCurrency =
+    currencies?.find((c) => c.code && c.code.toUpperCase() === "NGN")?.code ||
+    currencies?.[0]?.code ||
+    "NGN";
+
+  if (!input || typeof input !== "string") {
+    return defaultCurrency;
+  }
+
+  const trimmed = input.trim();
+  const upper = trimmed.toUpperCase();
+
+  if (!currencies || currencies.length === 0) {
+    return upper || defaultCurrency;
+  }
+
+  // 1. Direct code match (e.g. "USD", "ngn", "EUR")
+  const matchByCode = currencies.find(
+    (c) => c.code && c.code.toUpperCase() === upper,
+  );
+  if (matchByCode) return matchByCode.code;
+
+  // 2. Match by symbol or native symbol (e.g. "$", "₦", "€", "CA$")
+  const matchBySymbol = currencies.find(
+    (c) =>
+      (c.symbol && c.symbol.trim() === trimmed) ||
+      (c.symbol_native && c.symbol_native.trim() === trimmed),
+  );
+  if (matchBySymbol) return matchBySymbol.code;
+
+  // 3. Match by name or plural name (e.g. "US Dollar", "Nigerian Naira", "euros")
+  const lower = trimmed.toLowerCase();
+  const matchByName = currencies.find(
+    (c) =>
+      (c.name && c.name.toLowerCase() === lower) ||
+      (c.name_plural && c.name_plural.toLowerCase() === lower),
+  );
+  if (matchByName) return matchByName.code;
+
+  // If input matches 3-letter currency code pattern
+  if (/^[A-Z]{3}$/.test(upper)) {
+    return upper;
+  }
+
+  return defaultCurrency;
 }
 
 /**
