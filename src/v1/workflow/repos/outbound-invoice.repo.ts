@@ -17,6 +17,8 @@ export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
   private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
+  private metricsCache = new Map<string, { data: any; timestamp: number }>();
+
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
       OutboundInvoiceModel,
@@ -357,14 +359,19 @@ export class OutboundInvoiceRepository {
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                inboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.inboundInvoiceModel
+        const [result] = await this.inboundInvoiceModel
           .aggregate(inboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       } else if (requestedType === "outbound") {
         const outboundPipeline: any[] = [
           { $match: outboundMatch },
@@ -373,17 +380,25 @@ export class OutboundInvoiceRepository {
           {
             $facet: {
               totalCount: [{ $count: "count" }],
-              items: [{ $skip: offset }, { $limit: limit }],
+              items: [
+                { $skip: offset },
+                { $limit: limit },
+                outboundProjectStage,
+              ],
             },
           },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
+        const [result] = await this.outboundInvoiceModel
           .aggregate(outboundPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       } else {
+        const fetchLimit = offset + limit;
         const unifiedPipeline: any[] = [
           { $match: outboundMatch },
+          { $sort: { createdAt: -1 } },
+          { $limit: fetchLimit },
           outboundProjectStage,
           {
             $unionWith: {
@@ -399,17 +414,19 @@ export class OutboundInvoiceRepository {
             },
           },
         ];
-        [aggregationResult] = await this.outboundInvoiceModel
+        const [result] = await this.outboundInvoiceModel
           .aggregate(unifiedPipeline)
           .option({ maxTimeMS: 25000 })
           .exec();
+        aggregationResult = result;
       }
 
-      const total = requestedType === "outbound"
-        ? outboundTotal
-        : requestedType === "inbound"
-          ? inboundTotal
-          : outboundTotal + inboundTotal;
+      const total =
+        requestedType === "outbound"
+          ? outboundTotal
+          : requestedType === "inbound"
+            ? inboundTotal
+            : outboundTotal + inboundTotal;
 
       const items = aggregationResult?.items || [];
 
@@ -422,7 +439,10 @@ export class OutboundInvoiceRepository {
         },
       };
     } catch (error) {
-      console.error("Error executing unified invoice aggregation stream:", error);
+      console.error(
+        "Error executing unified invoice aggregation stream:",
+        error,
+      );
       throw new AppError(500, "Failed to retrieve unified invoice stream");
     }
   }
@@ -468,6 +488,12 @@ export class OutboundInvoiceRepository {
         if (params.to) inboundMatch.createdAt.$lte = params.to;
       }
 
+      const cacheKey = `${tenantId || "admin"}:${businessId || ""}:${params.from?.getTime() || ""}:${params.to?.getTime() || ""}`;
+      const cached = this.metricsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < 30000) {
+        return cached.data;
+      }
+
       const [outboundCount, inboundCount] = await Promise.all([
         this.outboundInvoiceModel
           .countDocuments(outboundMatch)
@@ -479,11 +505,14 @@ export class OutboundInvoiceRepository {
           .exec(),
       ]);
 
-      return {
+      const result = {
         total: (outboundCount || 0) + (inboundCount || 0),
         outbound: outboundCount || 0,
         inbound: inboundCount || 0,
       };
+
+      this.metricsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
     } catch (error) {
       console.error("Error computing invoice metrics:", error);
       throw new AppError(500, "Failed to compute invoice metrics");
