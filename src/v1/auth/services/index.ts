@@ -5,6 +5,7 @@ import { MailContent, withTemplate } from "../../../@lib/messaging";
 import { TeamMemberRole, TenantDocument } from "../../tenants/models";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { TenantService } from "../../tenants/services/tenant.service";
+import { AuditEventSeverity, AuditEventType } from "../../audit/models";
 import { PasswordResetRepository } from "../repos/password-reset.repo";
 import { templateEngine } from "../../../templates/engine";
 
@@ -160,6 +161,25 @@ export class AuthService extends BaseService {
 
       // Send password changed notification
       await this.sendPasswordChangedEmail(tenant);
+
+      // Audit log
+      await this.createAuditLog({
+        tenantId: tenant.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: tenant.tenantId,
+        actorName: tenant.businessName,
+        resourceType: "tenant",
+        resourceId: tenant.tenantId,
+        resourceName: tenant.businessName,
+        description: `Password reset successfully for ${tenant.businessName}`,
+        metadata: {
+          action: "auth.password_reset",
+          email: record.email,
+          payload: { email: record.email },
+        },
+      });
 
       logger.info("Password reset successful", { tenantId: tenant.tenantId });
 

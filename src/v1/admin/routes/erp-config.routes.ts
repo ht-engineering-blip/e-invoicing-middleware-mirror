@@ -7,6 +7,8 @@ import { onlyAdmin } from "../../auth/utils/access-checks";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { TransformWorkflowService } from "../../workflow/services";
 import { SystemConfigService } from "../services/system-config.service";
+import { AuditService } from "../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
@@ -22,6 +24,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
   .decorate("tenantService", new TenantService())
   .decorate("transformWorkflowService", new TransformWorkflowService())
   .decorate("llmService", new LLMService())
+  .decorate("auditService", new AuditService())
   /**
    * GET /admin/config/supported-erps
    * List all supported ERP systems
@@ -98,7 +101,15 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .post(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
+    async ({
+      auth,
+      body,
+      query,
+      llmService,
+      transformWorkflowService,
+      auditService,
+      set,
+    }) => {
       try {
         onlyAdmin(auth!);
         let { erp, invoice, metadata }: any = body;
@@ -138,6 +149,25 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             mapping_rules,
           },
         );
+
+        // Audit log
+        await auditService.createAuditLog({
+          tenantId: auth?.tenantId,
+          eventType: AuditEventType.SYSTEM_WARNING,
+          severity: AuditEventSeverity.INFO,
+          actorType: "user",
+          actorId: auth?.userId || "admin",
+          actorName: auth?.email || "Admin",
+          resourceType: "erp_config",
+          resourceId: erp,
+          resourceName: erp,
+          description: `ERP dictionary configured for ${erp}`,
+          metadata: {
+            erp,
+            schema_id: savedSchema.schema_id,
+            payload: body,
+          },
+        });
 
         return {
           success: true,

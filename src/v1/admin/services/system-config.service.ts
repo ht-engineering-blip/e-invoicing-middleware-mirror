@@ -1,4 +1,4 @@
-import { generateRandomString, logger } from "../../../@lib";
+import { generateRandomString, logger, BaseService } from "../../../@lib";
 import {
   AppError,
   ConflictError,
@@ -15,13 +15,15 @@ import { FIRSService } from "../../../@lib/adapters/firs/firs.service";
 import { AuthContext } from "../../../middlewares";
 import { InvoiceSchemaDictionaryDocument } from "../../workflow/models";
 import { generateIRN } from "../../workflow/utils/transformer/utils";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
 
-export class SystemConfigService {
+export class SystemConfigService extends BaseService {
   private configRepo: SystemConfigRepository;
   private transformService: TransformWorkflowService;
   private firsService: FIRSService;
 
   constructor() {
+    super();
     this.configRepo = new SystemConfigRepository();
     this.transformService = new TransformWorkflowService();
     this.firsService = new FIRSService();
@@ -79,6 +81,24 @@ export class SystemConfigService {
           updatedBy,
         },
       );
+
+      // Audit log
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "system_config",
+        resourceId: SystemConfigKey.FIRS_DICTIONARY,
+        resourceName: "FIRS Dictionary",
+        description: `FIRS dictionary updated (v${config.version})`,
+        metadata: {
+          version: config.version,
+          payload: schema,
+        },
+      });
 
       logger.info("FIRS dictionary updated", {
         version: config.version,
@@ -164,6 +184,24 @@ export class SystemConfigService {
         },
       );
 
+      // Audit log
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpConfig.type,
+        resourceName: erpConfig.name,
+        description: `Supported ERP added: ${erpConfig.name} (${erpConfig.type})`,
+        metadata: {
+          erpType: erpConfig.type,
+          payload: erpConfig,
+        },
+      });
+
       logger.info("ERP configuration added", {
         erpType: erpConfig.type,
         updatedBy,
@@ -214,6 +252,24 @@ export class SystemConfigService {
         },
       );
 
+      // Audit log
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpType,
+        resourceName: existingERPs[index].name,
+        description: `Supported ERP updated: ${erpType}`,
+        metadata: {
+          erpType,
+          payload: updates,
+        },
+      });
+
       logger.info("ERP configuration updated", { erpType, updatedBy });
 
       return existingERPs[index];
@@ -244,6 +300,8 @@ export class SystemConfigService {
         throw new NotFoundError(`ERP type '${erpType}' not found`);
       }
 
+      const removed = existingERPs[index];
+
       // Remove from list
       existingERPs.splice(index, 1);
 
@@ -255,6 +313,24 @@ export class SystemConfigService {
           updatedBy,
         },
       );
+
+      // Audit log
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.WARNING,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpType,
+        resourceName: removed.name,
+        description: `Supported ERP removed: ${erpType}`,
+        metadata: {
+          erpType,
+          payload: { erpType },
+        },
+      });
 
       logger.info("ERP configuration removed", { erpType, updatedBy });
 

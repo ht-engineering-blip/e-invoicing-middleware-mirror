@@ -130,8 +130,10 @@ export class TenantService extends BaseService {
       resourceId: tenant.tenantId,
       resourceName: tenant.businessName,
       metadata: {
+        ...input,
         businessName: input.businessName,
         tin: input.tin,
+        payload: input,
       },
     });
 
@@ -457,8 +459,12 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
-      description: "Tenant updated",
-      metadata: updateData,
+      resourceName: tenant.businessName,
+      description: `Tenant updated: ${tenant.businessName}`,
+      metadata: {
+        ...updateData,
+        payload: updateData,
+      },
     });
 
     return updatedTenant!;
@@ -486,8 +492,11 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
-      description: "Tenant activated",
-      metadata: {},
+      resourceName: tenant.businessName,
+      description: `Tenant activated: ${tenant.businessName}`,
+      metadata: {
+        payload: { tenantId, status: "active" },
+      },
     });
 
     return updatedTenant!;
@@ -519,8 +528,12 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
+      resourceName: tenant.businessName,
       description: `Tenant suspended${reason ? `: ${reason}` : ""}`,
-      metadata: { reason },
+      metadata: {
+        reason,
+        payload: { tenantId, reason, status: "suspended" },
+      },
     });
 
     return updatedTenant!;
@@ -547,8 +560,11 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
-      description: "Tenant deleted",
-      metadata: {},
+      resourceName: tenant.businessName,
+      description: `Tenant deleted: ${tenant.businessName}`,
+      metadata: {
+        payload: { tenantId, status: "deleted" },
+      },
     });
   }
 
@@ -604,8 +620,16 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
-      description: "FIRS credentials updated",
-      metadata: {},
+      resourceName: tenant.businessName,
+      description: `FIRS credentials updated for ${tenant.businessName}`,
+      metadata: {
+        payload: {
+          certificateUpdated: !!updateData.certificate,
+          publicKeyUpdated: !!updateData.publicKey,
+          clientIdUpdated: !!updateData.clientId,
+          businessId: updateData.businessId,
+        },
+      },
     });
 
     return updatedTenant!;
@@ -642,8 +666,12 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
-      description: "Tenant business ID updated",
-      metadata: { businessId },
+      resourceName: tenant.businessName,
+      description: `Tenant business ID updated to ${businessId}`,
+      metadata: {
+        businessId,
+        payload: { businessId },
+      },
     });
 
     return updatedTenant!;
@@ -726,8 +754,15 @@ export class TenantService extends BaseService {
       actorName: actor?.name || "System",
       resourceType: "api_key",
       resourceId: apiKey._id.toString(),
+      resourceName: input.name,
       description: `API key created: ${input.name}`,
-      metadata: { name: input.name, keyPrefix },
+      metadata: {
+        name: input.name,
+        keyPrefix,
+        scopes: input.scopes,
+        expiresInDays: input.expiresInDays,
+        payload: input,
+      },
     });
 
     const apiKeyDto: ApiKeyDTO = {
@@ -796,8 +831,12 @@ export class TenantService extends BaseService {
       actorName: actor?.name || "System",
       resourceType: "api_key",
       resourceId: keyId,
+      resourceName: apiKey.name,
       description: `API key revoked${reason ? `: ${reason}` : ""}`,
-      metadata: { reason },
+      metadata: {
+        reason,
+        payload: { keyId, reason },
+      },
     });
   }
 
@@ -883,12 +922,14 @@ export class TenantService extends BaseService {
       actorName: actor?.name || "System",
       resourceType: "api_key",
       resourceId: newApiKey.keyId,
+      resourceName: newApiKey.name,
       description: `API key rotated: ${newApiKey.name} (old key: ${keyId})`,
       metadata: {
         oldKeyId: keyId,
         newKeyId: newApiKey.keyId,
         reason: options?.reason,
         emailSent: options?.sendEmail !== false,
+        payload: { keyId, ...options },
       },
     });
 
@@ -1004,8 +1045,9 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: updated.tenantId,
+      resourceName: tenant.businessName,
       description: `Onboarding step completed: ${step}`,
-      metadata: { step, action: "onboarding.step_completed" },
+      metadata: { step, action: "onboarding.step_completed", payload: { step } },
     });
 
     return updated;
@@ -1054,8 +1096,9 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
+      resourceName: tenant.businessName,
       description: "Tenant onboarding status updated",
-      metadata: { ...updateData, action: "onboarding.status_updated" },
+      metadata: { ...updateData, action: "onboarding.status_updated", payload: input },
     });
 
     return updated!;
@@ -1087,8 +1130,9 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
+      resourceName: tenant.businessName,
       description: "Tenant onboarding approved",
-      metadata: {},
+      metadata: { action: "onboarding.approved", payload: { tenantId } },
     });
   }
 
@@ -1121,8 +1165,9 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "onboarding",
       resourceId: onboarding._id.toString(),
+      resourceName: tenant.businessName,
       description: `Tenant onboarding rejected: ${reason}`,
-      metadata: { reason },
+      metadata: { reason, action: "onboarding.rejected", payload: { tenantId, reason } },
     });
   }
 
@@ -1193,6 +1238,7 @@ export class TenantService extends BaseService {
       actorName: actor?.name,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
+      resourceName: tenant.businessName,
       description: `ERP sync configuration updated: ${config.name}`,
       metadata: {
         configName: config.name,
@@ -1200,6 +1246,13 @@ export class TenantService extends BaseService {
         endpoint: config.endpoint,
         enabled: config.enabled,
         action: "tenant.erp_sync_configured",
+        payload: {
+          name: config.name,
+          method: config.method,
+          endpoint: config.endpoint,
+          enabled: config.enabled,
+          headers: config.headers,
+        },
       },
     });
 
@@ -1614,8 +1667,13 @@ export class TenantService extends BaseService {
       actorName: actor?.name || tenant.businessName,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
+      resourceName: tenant.businessName,
       description: `Tenant contact email change requested to ${normalizedNewEmail}`,
-      metadata: { previousEmail: oldEmail, newEmail: normalizedNewEmail },
+      metadata: {
+        previousEmail: oldEmail,
+        newEmail: normalizedNewEmail,
+        payload: { newEmail: normalizedNewEmail },
+      },
     });
 
     logger.info("Email change verification sent with security alert", {
@@ -1746,8 +1804,13 @@ export class TenantService extends BaseService {
       actorName: actor?.name || tenant.businessName,
       resourceType: "tenant",
       resourceId: tenant.tenantId,
+      resourceName: tenant.businessName,
       description: `Tenant contact email updated to ${newEmail} after verification`,
-      metadata: { previousEmail: oldEmail, newEmail },
+      metadata: {
+        previousEmail: oldEmail,
+        newEmail,
+        payload: { targetTenantId, newEmail },
+      },
     });
 
     logger.info(

@@ -8,6 +8,8 @@ import { TransformWorkflowService } from "../../workflow/services";
 import { LLMService } from "../../../@lib/adapters/llm/llm.service";
 import { onlyAdmin } from "../../auth/utils/access-checks";
 import { SchemaSourceType } from "../../workflow/models";
+import { AuditService } from "../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
 import {
   getFIRSDictionaryValidation,
   updateFIRSDictionaryValidation,
@@ -24,6 +26,7 @@ export const firsConfigRoutes = new Elysia({
   .decorate("tenantService", new TenantService())
   .decorate("transformWorkflowService", new TransformWorkflowService())
   .decorate("llmService", new LLMService())
+  .decorate("auditService", new AuditService())
   /**
    * GET /admin/config/firs-dictionary
    * Get current FIRS dictionary schema
@@ -72,7 +75,7 @@ export const firsConfigRoutes = new Elysia({
    */
   .put(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, auditService, set }) => {
       try {
         onlyAdmin(auth!);
         let { invoice, metadata }: any = body;
@@ -109,6 +112,24 @@ export const firsConfigRoutes = new Elysia({
             },
           },
         );
+
+        // Audit log
+        await auditService.createAuditLog({
+          tenantId: auth?.tenantId,
+          eventType: AuditEventType.SYSTEM_WARNING,
+          severity: AuditEventSeverity.INFO,
+          actorType: "user",
+          actorId: auth?.userId || "admin",
+          actorName: (auth as any)?.email || "Admin",
+          resourceType: "firs_config",
+          resourceId: savedSchema.schema_id || "firs_ubl",
+          resourceName: "FIRS UBL Dictionary",
+          description: "FIRS invoice dictionary updated",
+          metadata: {
+            schema_id: savedSchema.schema_id,
+            payload: body,
+          },
+        });
 
         return {
           success: true,
