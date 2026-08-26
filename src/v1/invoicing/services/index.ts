@@ -123,7 +123,6 @@ export class InvoiceWorkflowService {
 
       // Call FIRS validation API
       const validationResult: any = await this.firsService.validateInvoice(
-        businessId,
         targetInvoice,
       );
 
@@ -205,7 +204,6 @@ export class InvoiceWorkflowService {
       };
       // Call FIRS sign API
       const signResult: any = await this.firsService.signInvoice(
-        authContext.tenantId,
         invoiceWithCert,
       );
 
@@ -329,7 +327,6 @@ export class InvoiceWorkflowService {
 
       // Call FIRS transmit API
       const transmitResult = await this.firsService.transmitInvoice(
-        authContext.tenantId,
         irn,
       );
 
@@ -363,7 +360,6 @@ export class InvoiceWorkflowService {
     try {
       // Download invoice from FIRS
       const invoiceResponse = await this.firsService.downloadInvoice(
-        authContext.tenantId,
         irn,
       );
       const encryptedInvoice = invoiceResponse?.data;
@@ -422,7 +418,6 @@ export class InvoiceWorkflowService {
     try {
       // Call FIRS acknowledge API
       const ackResult = await this.firsService.acknowledgeInvoiceReceipt(
-        businessId,
         irn,
       );
 
@@ -530,7 +525,6 @@ export class InvoiceWorkflowService {
     try {
       // Call FIRS VAT post-payment API
       const reportResult: any = await this.firsService.reportVATPostPayment(
-        reportData.integrator_service_id || reportData.agent_tin,
         reportData,
       );
 
@@ -565,7 +559,6 @@ export class InvoiceWorkflowService {
       // Search for invoice on FIRS
       const searchResult = await this.firsService.searchInvoice(
         businessId,
-        businessId,
         irn,
       );
 
@@ -584,7 +577,6 @@ export class InvoiceWorkflowService {
 
       // Confirm signed invoice status
       const confirmResult: any = await this.firsService.confirmSignedInvoice(
-        businessId,
         irn,
       );
 

@@ -47,7 +47,7 @@ export class TransformWorkflowService {
    * @param sourceType - The source ERP type for schema-based transformation (optional)
    */
   transformInvoice = async (
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {
@@ -86,7 +86,7 @@ export class TransformWorkflowService {
    * @param sourceType - The source ERP type for schema-based transformation (optional)
    */
   transformInvoiceV2 = async (
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {

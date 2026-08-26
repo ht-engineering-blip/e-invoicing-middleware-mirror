@@ -68,7 +68,7 @@ export class FIRSInvoiceTransformerV2 {
    * @param sourceType - The source ERP type (e.g., SAP, ORACLE, ZOHO) for schema-based transformation
    */
   async transformAndValidate(
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<TransformationResult | undefined> {
@@ -106,8 +106,6 @@ export class FIRSInvoiceTransformerV2 {
         FIRSInvoiceSchema,
       );
 
-      console.log("Transforming invoice data...");
-
       if (!result.success) {
         console.error(result.error);
         return {
@@ -136,7 +134,7 @@ export class FIRSInvoiceTransformerV2 {
     ----------------------------------------------------- */
 
   async transformInvoice(
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
@@ -147,6 +145,7 @@ export class FIRSInvoiceTransformerV2 {
       const firsService = new FIRSService();
       let taxCategories: TaxCategory[] = [];
       let invoiceTypes: InvoiceType[] = [];
+      let currencies: Currency[] = [];
       try {
         const [
           taxCatRes,
@@ -163,6 +162,7 @@ export class FIRSInvoiceTransformerV2 {
         ]);
         taxCategories = taxCatRes || [];
         invoiceTypes = invoiceTypeRes || [];
+        currencies = currenciesRes || [];
         if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
         if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
         if (currenciesRes) setDynamicCurrencies(currenciesRes);
@@ -171,34 +171,36 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       const mapped = this.deterministicTransform(invoice, mappingRules);
-      //logger.info("Mapped", mapped)
+
       const base = { ...invoice, ...mapped };
-      // logger.info("base", base)
+
       const resolved = this.ensureRequiredFields(base, firsSchema);
-      // logger.info("resolved", resolved)
 
       // Set expected identity fields securely
-      const refence = invoice.invoice_reference;
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-
-      const invoiceRef = refence || generateInvoiceRef();
+      const invoiceRef =
+        (typeof invoice.invoice_reference === "string" &&
+          invoice.invoice_reference) ||
+        generateInvoiceRef();
+      const issueDate =
+        typeof invoice.issue_date === "string" && invoice.issue_date
+          ? new Date(invoice.issue_date)
+          : undefined;
 
       const computedIrn = generateIRN(
         invoiceRef,
         authContext?.serviceId,
-        invoice.date || invoice.issue_date || invoice.issueDate
-          ? new Date(invoice.date || invoice.issue_date || invoice.issueDate)
-          : undefined,
+        issueDate,
       );
-      const expectedIrn = invoice.irn || computedIrn;
+      const expectedIrn =
+        typeof invoice.irn === "string" && invoice.irn
+          ? invoice.irn
+          : computedIrn;
 
-      if (expectedBusinessId) {
-        resolved.business_id = expectedBusinessId;
-      }
-      if (expectedIrn) {
-        resolved.irn = expectedIrn;
-      }
+      if (expectedBusinessId) resolved.business_id = expectedBusinessId;
+      if (expectedIrn) resolved.irn = expectedIrn;
+
       if (expectedSupplierTIN) {
         if (!resolved.accounting_supplier_party) {
           resolved.accounting_supplier_party = {};
@@ -207,9 +209,8 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       const missing = this.findMissingFields(resolved, firsSchema);
-      //  logger.info("missing", missing)
+
       let completed = resolved;
-      //  logger.info("completed", completed)
       if (missing.length > 0) {
         const prompt = this.buildSchemaAwarePrompt(
           resolved,
@@ -220,13 +221,10 @@ export class FIRSInvoiceTransformerV2 {
           taxCategories,
           invoiceTypes,
         );
-        //logger.info("prompt", prompt)
-        const response = await this.callLLM(prompt);
-        //  logger.info("response", response)
-        const parsed = this.safeParseLLMJSON(response);
-        //  logger.info("parsed", parsed)
 
-        // Warn if LLM modified identity fields — force-overwrite below will correct them
+        const response = await this.callLLM(prompt);
+        const parsed = this.safeParseLLMJSON(response);
+
         if (
           parsed.business_id !== undefined &&
           expectedBusinessId &&
@@ -484,7 +482,10 @@ export class FIRSInvoiceTransformerV2 {
      RULE MAPPING ENGINE
     ----------------------------------------------------- */
 
-  private deterministicTransform(invoice: any, mappingRules: any[]) {
+  private deterministicTransform(
+    invoice: TransformInvoiceInput,
+    mappingRules: any[],
+  ) {
     // Flatten the entire invoice (arrays included) so every leaf value
     // is reachable by its dot-notation path e.g. "items.0.description"
     const flat = this.flattenObject(invoice);
@@ -582,7 +583,7 @@ export class FIRSInvoiceTransformerV2 {
     ----------------------------------------------------- */
 
   private buildSchemaAwarePrompt(
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
@@ -611,7 +612,7 @@ export class FIRSInvoiceTransformerV2 {
     let irn = generateIRN(
       invoiceRef,
       authContext?.serviceId,
-      invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+      invoice.issue_date ? new Date(invoice.issue_date) : undefined,
     );
 
     // Build source schema section
@@ -676,7 +677,7 @@ ${JSON.stringify(missingFields)}
 ## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
 - business_id: Use "${authContext?.businessId || "{{TEST_BUSINESS_ID}}"}"
 - irn: Generate unique reference if not provided, use ${invoice.irn ?? irn} as default
-- irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
+- irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.issue_date ? new Date(invoice.issue_date) : new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
 - invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice request, "380" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
 - billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.

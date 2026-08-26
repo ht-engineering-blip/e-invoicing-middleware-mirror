@@ -137,6 +137,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
           tenantId,
           body.newEmail,
           getActor(auth),
+          body.currentPassword,
         );
 
         return ResponseBuilder.success(

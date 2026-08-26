@@ -353,10 +353,7 @@ export class SystemConfigService {
   }> {
     try {
       // Validate using FIRS service
-      const result: any = await this.firsService.validateInvoice(
-        invoice.tenant_id,
-        invoice,
-      );
+      const result: any = await this.firsService.validateInvoice(invoice);
 
       const isValid = result?.data?.ok === true;
 

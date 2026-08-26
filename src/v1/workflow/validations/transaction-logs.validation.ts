@@ -61,10 +61,12 @@ export const updatePaymentStatusValidation = {
 export const retryInvoiceFromStepValidation = {
   params: t.Object({ irn: t.String() }),
   body: t.Object({
-    fromStep: t.String({
-      description:
-        'Action name to resume from (e.g. "validate", "sign", "transmit")',
-    }),
+    fromStep: t.Optional(
+      t.String({
+        description:
+          'Action name to resume from (e.g. "validate", "sign", "transmit")',
+      }),
+    ),
   }),
   detail: {
     tags: ["Transaction Logs"],
