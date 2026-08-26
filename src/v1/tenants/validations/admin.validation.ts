@@ -37,7 +37,7 @@ export const listTenantsValidation = {
 export const getTenantAnalyticsValidation = {
   detail: {
     tags: ["Admin - Tenants"],
-    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get tenant analytics summary",
     description: "Retrieve counts for total, active, invited, and suspended tenants",
   },
@@ -48,7 +48,7 @@ export const getTenantByIdValidation = {
 
   detail: {
     tags: ["Admin - Tenants", "Tenant"],
-    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get tenant by ID",
     description: "Retrieve detailed information about a specific tenant",
   },
@@ -70,7 +70,7 @@ export const getKeyConfigValidation = {
 
   detail: {
     tags: ["Onboarding", "Tenant"],
-    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get tenant key configuration",
     description:
       "Retrieve invoice ID key and ID mapping configurations for a specific tenant. Filter by keyType (standard, credit_note, debit_note, payment) or fetch all.",
@@ -110,7 +110,7 @@ export const updateKeyConfigValidation = {
 
   detail: {
     tags: ["Onboarding", "Tenant"],
-    security: [{ adminKey: [] }, { bearerToken: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Update tenant key configuration",
     description:
       "Update ID and reference ID key mappings by keyType (standard, credit_note, debit_note, payment) or explicit eventType.",

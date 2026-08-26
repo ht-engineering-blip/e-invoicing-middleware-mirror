@@ -130,7 +130,7 @@ export const listAuditLogsValidation = {
   query: listAuditLogsQueryValidator,
   detail: {
     tags: ["Audit"],
-    security: [{ adminKey: [] }, { bearerAuth: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "List Audit Logs",
     description: "Retrieve a paginated list of audit trail events with multi-dimensional filtering (by tenant, actor, event type, resource, or date range).",
   },
@@ -140,7 +140,7 @@ export const getAuditStatisticsValidation = {
   query: auditStatisticsQueryValidator,
   detail: {
     tags: ["Audit"],
-    security: [{ adminKey: [] }, { bearerAuth: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get Audit Statistics",
     description: "Calculate aggregated audit log statistics grouped by event type, severity, day, or actor type across a specified date range.",
   },
@@ -149,7 +149,7 @@ export const getAuditStatisticsValidation = {
 export const verifyAuditIntegrityValidation = {
   detail: {
     tags: ["Audit"],
-    security: [{ adminKey: [] }, { bearerAuth: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Verify Audit Integrity",
     description: "Verify the cryptographic hash chain and HMAC signatures of audit log entries to guarantee tamper-evident non-repudiation.",
   },
@@ -159,7 +159,7 @@ export const getAuditLogByIdValidation = {
   params: eventIdParamValidator,
   detail: {
     tags: ["Audit"],
-    security: [{ adminKey: [] }, { bearerAuth: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get Audit Log by Event ID",
     description: "Retrieve complete event details, actor info, changes, and payload metadata for a specific audit log event ID.",
   },
@@ -169,7 +169,7 @@ export const getResourceAuditTrailValidation = {
   params: resourceParamValidator,
   detail: {
     tags: ["Audit"],
-    security: [{ adminKey: [] }, { bearerAuth: [] }] as any,
+    security: [{ adminKey: [] as string[] }],
     summary: "Get Resource Audit Trail",
     description: "Retrieve the complete chronological lifecycle history and mutation audit records for a given resource type and ID.",
   },

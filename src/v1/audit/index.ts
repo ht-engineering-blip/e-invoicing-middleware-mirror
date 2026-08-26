@@ -4,6 +4,7 @@ import { requireAuth } from "../../middlewares/auth";
 import { onlyAdmin } from "../auth/utils/access-checks";
 import { AuditService } from "./services/audit.service";
 import { ResponseBuilder } from "../../@lib";
+import { AuditEventType } from "./models/audit-log.model";
 import {
   listAuditLogsValidation,
   getAuditStatisticsValidation,
@@ -29,7 +30,7 @@ export const auditRoutes = new Elysia({
       const result = await auditService.listAuditLogs({
         tenantId: query.tenantId,
         actorId: query.actorId,
-        eventType: query.eventType as any,
+        eventType: query.eventType as AuditEventType | undefined,
         resourceType: query.resourceType,
         resourceId: query.resourceId,
         startDate: query.startDate ? new Date(query.startDate) : undefined,
@@ -62,7 +63,7 @@ export const auditRoutes = new Elysia({
           : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         endDate: query.endDate ? new Date(query.endDate) : new Date(),
         tenantId: query.tenantId,
-        groupBy: query.groupBy as any,
+        groupBy: query.groupBy,
       });
 
       return ResponseBuilder.success(
