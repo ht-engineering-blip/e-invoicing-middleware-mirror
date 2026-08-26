@@ -57,11 +57,7 @@ const VALID_EVENT_IDS = INVOICE_EVENT_TYPES.map((e) => e.id) as string[];
  */
 /*   prefix: '/admin', */
 
-const adminTenantRoutes = new Elysia({
-  detail: {
-    hide: appConfig?.env === "production",
-  },
-})
+const adminTenantRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
   .decorate("authService", new AuthService())

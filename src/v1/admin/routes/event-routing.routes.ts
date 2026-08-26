@@ -4,6 +4,8 @@ import { EventRoutingRepository } from "../repos/event-routing.repo";
 import { INVOICE_EVENT_TYPES, WORKFLOW_ACTIONS } from "./reference.routes";
 import { onlyAdmin } from "../../auth/utils/access-checks";
 import { ResponseBuilder } from "../../../@lib";
+import { AuditService } from "../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
 import {
   getEventRoutingValidation,
   addEventRouteValidation,
@@ -27,6 +29,7 @@ export const eventRoutingRoutes = new Elysia({
   prefix: "/tenants/:tenantId/event-routing",
 })
   .use(requireAdmin)
+  .decorate("auditService", new AuditService())
 
   /**
    * GET /admin/tenants/:tenantId/event-routing
@@ -60,7 +63,7 @@ export const eventRoutingRoutes = new Elysia({
           },
           actions: actionsMeta,
           enabled: route.enabled,
-          description: route.description ?? null,
+          description: route.description,
         };
       });
 
@@ -75,18 +78,18 @@ export const eventRoutingRoutes = new Elysia({
 
   /**
    * POST /admin/tenants/:tenantId/event-routing/routes
-   * Add a new route to the tenant's event routing config.
+   * Add a single route to the tenant's config.
    */
   .post(
     "/routes",
-    async ({ auth, params, body, set }) => {
+    async ({ auth, params, body, auditService, set }) => {
       onlyAdmin(auth!, "Admin access required");
 
       // Validate event id
       if (!VALID_EVENT_IDS.includes(body.event)) {
         set.status = 400;
         return ResponseBuilder.error(
-          `Unknown event '${body.event}'. Check GET /admin/config/reference/events for valid ids.`,
+          `Unknown event '${body.event}'. Check GET /admin/config/reference/invoice-event-types for valid ids.`,
           400,
         );
       }
@@ -112,6 +115,26 @@ export const eventRoutingRoutes = new Elysia({
 
       const added = config.routes[config.routes.length - 1];
 
+      // Audit log
+      await auditService.createAuditLog({
+        tenantId: params.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: (auth as any)?.userId || "admin",
+        actorName: (auth as any)?.email || "Admin",
+        resourceType: "event_routing",
+        resourceId: added.routeId,
+        resourceName: `Event Route: ${body.event}`,
+        description: `Event route added for ${body.event}`,
+        metadata: {
+          routeId: added.routeId,
+          event: body.event,
+          actions: body.actions,
+          payload: body,
+        },
+      });
+
       return ResponseBuilder.success(
         added,
         undefined,
@@ -127,7 +150,7 @@ export const eventRoutingRoutes = new Elysia({
    */
   .patch(
     "/routes/:routeId",
-    async ({ auth, params, body, set }) => {
+    async ({ auth, params, body, auditService, set }) => {
       onlyAdmin(auth!, "Admin access required");
 
       if (body.event && !VALID_EVENT_IDS.includes(body.event)) {
@@ -168,6 +191,24 @@ export const eventRoutingRoutes = new Elysia({
 
       const updated = config.routes.find((r) => r.routeId === params.routeId);
 
+      // Audit log
+      await auditService.createAuditLog({
+        tenantId: params.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: (auth as any)?.userId || "admin",
+        actorName: (auth as any)?.email || "Admin",
+        resourceType: "event_routing",
+        resourceId: params.routeId,
+        resourceName: `Event Route: ${params.routeId}`,
+        description: `Event route updated: ${params.routeId}`,
+        metadata: {
+          routeId: params.routeId,
+          payload: body,
+        },
+      });
+
       return ResponseBuilder.success(updated, undefined, "Route updated");
     },
     updateEventRouteValidation,
@@ -179,7 +220,7 @@ export const eventRoutingRoutes = new Elysia({
    */
   .delete(
     "/routes/:routeId",
-    async ({ auth, params, set }) => {
+    async ({ auth, params, auditService, set }) => {
       onlyAdmin(auth!, "Admin access required");
 
       const config = await eventRoutingRepo.removeRoute(
@@ -191,6 +232,24 @@ export const eventRoutingRoutes = new Elysia({
         set.status = 404;
         return ResponseBuilder.error("Route not found", 404);
       }
+
+      // Audit log
+      await auditService.createAuditLog({
+        tenantId: params.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.WARNING,
+        actorType: "user",
+        actorId: (auth as any)?.userId || "admin",
+        actorName: (auth as any)?.email || "Admin",
+        resourceType: "event_routing",
+        resourceId: params.routeId,
+        resourceName: `Event Route: ${params.routeId}`,
+        description: `Event route removed: ${params.routeId}`,
+        metadata: {
+          routeId: params.routeId,
+          payload: { tenantId: params.tenantId, routeId: params.routeId },
+        },
+      });
 
       return ResponseBuilder.success(undefined, undefined, "Route removed");
     },
@@ -204,7 +263,7 @@ export const eventRoutingRoutes = new Elysia({
    */
   .put(
     "/",
-    async ({ auth, params, body, set }) => {
+    async ({ auth, params, body, auditService, set }) => {
       onlyAdmin(auth!, "Admin access required");
 
       // Validate all routes
@@ -237,6 +296,24 @@ export const eventRoutingRoutes = new Elysia({
         })),
       );
 
+      // Audit log
+      await auditService.createAuditLog({
+        tenantId: params.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: (auth as any)?.userId || "admin",
+        actorName: (auth as any)?.email || "Admin",
+        resourceType: "event_routing",
+        resourceId: params.tenantId,
+        resourceName: `Event Routing for ${params.tenantId}`,
+        description: `Event routing config replaced with ${config.routes.length} routes`,
+        metadata: {
+          routesCount: config.routes.length,
+          payload: body,
+        },
+      });
+
       return ResponseBuilder.success(
         {
           tenantId: params.tenantId,
@@ -256,9 +333,27 @@ export const eventRoutingRoutes = new Elysia({
    */
   .delete(
     "/",
-    async ({ auth, params }) => {
+    async ({ auth, params, auditService }) => {
       onlyAdmin(auth!, "Admin access required");
       await eventRoutingRepo.delete(params.tenantId);
+
+      // Audit log
+      await auditService.createAuditLog({
+        tenantId: params.tenantId,
+        eventType: AuditEventType.TENANT_UPDATED,
+        severity: AuditEventSeverity.WARNING,
+        actorType: "user",
+        actorId: (auth as any)?.userId || "admin",
+        actorName: (auth as any)?.email || "Admin",
+        resourceType: "event_routing",
+        resourceId: params.tenantId,
+        resourceName: `Event Routing for ${params.tenantId}`,
+        description: `Event routing config cleared for ${params.tenantId}`,
+        metadata: {
+          payload: { tenantId: params.tenantId },
+        },
+      });
+
       return ResponseBuilder.success(
         undefined,
         undefined,
