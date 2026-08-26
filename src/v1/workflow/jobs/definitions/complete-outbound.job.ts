@@ -6,14 +6,10 @@ import { OutboundWorkflowService } from "../../services";
 import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
-import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
-import { Currency } from "../../../../@lib/adapters/firs/types";
-import { resolveCurrencyCode } from "../../utils/transformer/utils";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
 const outboundRepo = new OutboundInvoiceRepository();
-const firsService = new FIRSService();
 
 export function registerCompleteOutboundJob(): void {
   agenda.define(
@@ -55,31 +51,6 @@ export function registerCompleteOutboundJob(): void {
           irn = irn ?? transformed.irn;
           if (irn) transformed.irn = irn;
 
-          // Step 2.5: Resolve currencies and apply fallback checks
-          let currencies: Currency[] = [];
-          try {
-            currencies = await firsService.getResource<Currency>("currencies");
-          } catch {
-            // fallback gracefully
-          }
-
-          const fallbackCurrency = resolveCurrencyCode(
-            transformed.document_currency_code || transformed.tax_currency_code,
-            currencies,
-          );
-
-          transformed.tax_currency_code = transformed.tax_currency_code
-            ? resolveCurrencyCode(transformed.tax_currency_code, currencies)
-            : fallbackCurrency;
-
-          transformed.document_currency_code =
-            transformed.document_currency_code
-              ? resolveCurrencyCode(
-                  transformed.document_currency_code,
-                  currencies,
-                )
-              : fallbackCurrency;
-
           // Step 3: Persist invoice record
           if (irn) {
             const source = context.source as OutboundInvoiceSource;
@@ -96,7 +67,9 @@ export function registerCompleteOutboundJob(): void {
             transformed.tenant_id = tenantId;
           }
 
-          console.log("TRANSFORM PAYLOAD DATA", { transformed });
+          console.log("TRANSFORM PAYLOAD DATA", {
+            JSON: JSON.stringify(transformed, undefined, 2),
+          });
 
           // Step 4: validate → sign (if needed) → confirm → QR → transmit
           const result = await outboundService.handleOutboundWorkflow(
@@ -122,11 +95,18 @@ export function registerCompleteOutboundJob(): void {
             );
           }
 
-          if (context.transmissionFailed) transmissionFailed = true;
-
-          const result = await outboundService.generateQRCode(irn, tenantId);
-          qrCode = result.qrCode;
-          firsSignedData = result.data;
+          try {
+            const result = await outboundService.generateQRCode(irn, tenantId);
+            qrCode = result?.qrCode;
+            firsSignedData = result?.data;
+          } catch (qrErr: any) {
+            logger.warn(
+              "[Job:complete-outbound] QR generation warning (tolerated):",
+              {
+                error: qrErr.message,
+              },
+            );
+          }
         }
 
         let finalStatus = OutboundInvoiceStatus.DELIVERED;

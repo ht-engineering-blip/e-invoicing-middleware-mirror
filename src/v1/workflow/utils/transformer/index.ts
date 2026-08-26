@@ -330,7 +330,7 @@ export class FIRSInvoiceTransformer {
    * @param sourceType - The source ERP type (e.g., SAP, ORACLE, ZOHO) for schema-based transformation
    */
   async transformAndValidate(
-    invoiceData: any,
+    invoiceData: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<TransformationResult | undefined> {
@@ -340,20 +340,18 @@ export class FIRSInvoiceTransformer {
       const expectedSupplierTIN = authContext?.businessTIN;
       const todayStr = new Date().toISOString().slice(0, 10);
       const invoiceRef =
-        invoiceData.invoice_reference ||
+        (typeof invoiceData.invoice_reference === "string" &&
+          invoiceData.invoice_reference) ||
         `INV${todayStr.replace(/-/g, "")}${Math.floor(Math.random() * 1000)
           .toString()
           .padStart(3, "0")}`;
+      const issueDate = invoiceData.issue_date
+        ? new Date(invoiceData.issue_date)
+        : undefined;
       const computedIrn = generateIRN(
         invoiceRef,
         authContext?.serviceId,
-        invoiceData.date || invoiceData.issue_date || invoiceData.issueDate
-          ? new Date(
-              invoiceData.date ||
-                invoiceData.issue_date ||
-                invoiceData.issueDate,
-            )
-          : undefined,
+        issueDate,
       );
       const expectedIrn = invoiceData.irn || computedIrn;
 

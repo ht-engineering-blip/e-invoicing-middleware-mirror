@@ -183,61 +183,73 @@ export class OutboundWorkflowService {
       }
 
       // Step 3: Confirm
-      let toTransmit = false;
+      let toTransmit = true;
       if (!wf.transmitted) {
-        const confirmedInvoice = await firsService.confirmSignedInvoice(
-          invoice.irn,
-        );
+        try {
+          const confirmedInvoice = await firsService.confirmSignedInvoice(
+            invoice.irn,
+          );
 
-        const confirmCode = confirmedInvoice?.data?.code;
+          const confirmCode = confirmedInvoice?.data?.code;
 
-        if (confirmCode && confirmCode !== 200) {
-          const { message } = this.getFIRSError(confirmedInvoice);
-          throw new Error(`Invoice confirmation failed: ${message}`);
-        }
+          if (confirmCode && confirmCode !== 200) {
+            const { message } = this.getFIRSError(confirmedInvoice);
+            console.warn(
+              `[OutboundService] Confirmation check warning: ${message}`,
+            );
+          }
 
-        const isAlreadyTransmitted = Boolean(
-          confirmedInvoice?.data?.data?.transmitted,
-        );
+          const isAlreadyTransmitted = Boolean(
+            confirmedInvoice?.data?.data?.transmitted,
+          );
 
-        toTransmit = !isAlreadyTransmitted;
+          toTransmit = !isAlreadyTransmitted;
 
-        if (isAlreadyTransmitted) {
-          await this.outboundRepo.update(invoice.irn, {
-            status: OutboundInvoiceStatus.TRANSMITTED,
-          });
+          if (isAlreadyTransmitted) {
+            await this.outboundRepo.update(invoice.irn, {
+              status: OutboundInvoiceStatus.TRANSMITTED,
+            });
 
-          await this.outboundRepo.updateWorkflowState(invoice.irn, {
-            transmitted: true,
-          });
-          wf.transmitted = true;
+            await this.outboundRepo.updateWorkflowState(invoice.irn, {
+              transmitted: true,
+            });
+            wf.transmitted = true;
+          }
+        } catch (confirmError: any) {
+          console.warn(
+            "[OutboundService] Confirmation check failed (tolerated):",
+            confirmError?.message,
+          );
+          toTransmit = true;
         }
       }
 
       // Step 4: Generate QR code
-      const firsCredentials = await this.tenantService.getFIRSCredentials(
-        invoice?.tenant_id,
-      );
-
-      const encryptedData = await firsService.generateQRCodeV2(
-        invoice.irn,
-        firsCredentials.certificate,
-        firsCredentials.publicKey,
-      );
-
-      if (!encryptedData?.qrCode && !encryptedData?.data) {
-        throw new Error(
-          "QR code generation failed: FIRS encryption returned empty QR code and data",
+      let encryptedData: { qrCode: string; data: string } | undefined;
+      try {
+        const firsCredentials = await this.tenantService.getFIRSCredentials(
+          invoice?.tenant_id,
         );
-      }
 
-      // Update stored invoice if exists
-      const existingInvoice = await this.outboundRepo.findByIrn(invoice.irn);
+        encryptedData = await firsService.generateQRCodeV2(
+          invoice.irn,
+          firsCredentials.certificate,
+          firsCredentials.publicKey,
+        );
 
-      if (existingInvoice) {
-        await this.outboundRepo.update(invoice.irn, {
-          qrCode: encryptedData.qrCode,
-        });
+        if (encryptedData?.qrCode) {
+          const existingInvoice = await this.outboundRepo.findByIrn(invoice.irn);
+          if (existingInvoice) {
+            await this.outboundRepo.update(invoice.irn, {
+              qrCode: encryptedData.qrCode,
+            });
+          }
+        }
+      } catch (qrError: any) {
+        console.warn(
+          "[OutboundService] QR generation warning (tolerated):",
+          qrError?.message,
+        );
       }
 
       console.log("[Job:complete-outbound] Transmition Started", { invoice });
@@ -290,8 +302,8 @@ export class OutboundWorkflowService {
       }
 
       return {
-        qrCode: encryptedData.qrCode,
-        data: encryptedData.data,
+        qrCode: encryptedData?.qrCode || stored?.qrCode,
+        data: encryptedData?.data || stored?.metadata?.firsSignedData,
         transmissionFailed,
       };
     } catch (error: any) {

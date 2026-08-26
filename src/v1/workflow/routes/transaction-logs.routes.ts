@@ -13,7 +13,7 @@ import {
   OutboundPaymentStatus,
 } from "../models/outbound-invoice.model";
 import { scheduleJobChain } from "../jobs/orchestrator";
-import { ACTION_TO_JOB } from "../jobs/types";
+import { ACTION_TO_JOB, WorkflowAction, DEFAULT_OUTBOUND_CHAIN } from "../jobs/types";
 import {
   listOutboundInvoicesValidation,
   getOutboundInvoiceValidation,
@@ -455,16 +455,16 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         }
 
         const workflowState = invoice.workflowState;
-        let startAction = body?.fromStep;
+        let startAction: string | undefined = body?.fromStep;
         if (!startAction) {
           if (!workflowState?.validated) {
-            startAction = "validate";
+            startAction = WorkflowAction.VALIDATE;
           } else if (!workflowState?.signed) {
-            startAction = "sign";
+            startAction = WorkflowAction.SIGN;
           } else if (!workflowState?.transmitted) {
-            startAction = "transmit";
+            startAction = WorkflowAction.TRANSMIT;
           } else {
-            startAction = "complete_outbound";
+            startAction = WorkflowAction.COMPLETE_OUTBOUND;
           }
         }
 
@@ -477,17 +477,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         }
 
         // Default chain from the requested step onward
-        const defaultChain = [
-          "transform",
-          "validate",
-          "sign",
-          "generate_irn",
-          "transmit",
-          "confirm_invoice_status",
-          "complete_outbound",
-        ];
+        const defaultChain = DEFAULT_OUTBOUND_CHAIN;
 
-        const startIndex = defaultChain.indexOf(startAction);
+        const startIndex = defaultChain.indexOf(startAction as WorkflowAction);
         const actions =
           startIndex >= 0 ? defaultChain.slice(startIndex) : [startAction];
 
@@ -569,30 +561,38 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return ResponseBuilder.error("Invoice not found", 404);
         }
 
-        // Check if invoice is in failed or transmission-failed state
+        const retriableStatuses = [
+          OutboundInvoiceStatus.FAILED,
+          OutboundInvoiceStatus.TRANSMISTION_FAILED,
+          OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.VALIDATED,
+          OutboundInvoiceStatus.SIGNED,
+        ];
+
         if (
-          invoice.status !== OutboundInvoiceStatus.FAILED &&
-          invoice.status !== OutboundInvoiceStatus.TRANSMISTION_FAILED
+          !retriableStatuses.includes(invoice.status) &&
+          invoice.workflowState?.transmitted &&
+          invoice.workflowState?.delivered
         ) {
           set.status = 400;
           return ResponseBuilder.error(
-            "Only failed or transmission-failed invoices can be resent",
+            "Only incomplete or failed invoices can be resent",
             400,
           );
         }
 
         // Determine the failure point and restart from there
         const workflowState = invoice.workflowState;
-        let restartFrom = "validate";
+        let restartFrom: WorkflowAction = WorkflowAction.VALIDATE;
 
         if (!workflowState?.validated) {
-          restartFrom = "validate";
+          restartFrom = WorkflowAction.VALIDATE;
         } else if (!workflowState?.signed) {
-          restartFrom = "sign";
+          restartFrom = WorkflowAction.SIGN;
         } else if (!workflowState?.transmitted) {
-          restartFrom = "transmit";
+          restartFrom = WorkflowAction.TRANSMIT;
         } else {
-          restartFrom = "complete_outbound";
+          restartFrom = WorkflowAction.COMPLETE_OUTBOUND;
         }
 
         // Update status to allow retry
@@ -612,8 +612,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           }
         }
 
-        // Trigger workflow
+        // Trigger workflow with full transformed invoice payload
+        const baseInvoice = invoice.metadata?.transformedInvoice || {};
         const data = {
+          ...baseInvoice,
           irn: params.irn,
           tenant_id: auth!.tenantId || invoice.tenantId,
           business_id: business_id!,
