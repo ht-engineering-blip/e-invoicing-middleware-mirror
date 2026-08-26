@@ -28,7 +28,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .get(
     "/",
-    async ({ transformWorkflowService }): Promise<any> => {
+    async ({ transformWorkflowService, set }): Promise<any> => {
       try {
         const erps = await transformWorkflowService.getSupportedERPTypes();
 
@@ -38,6 +38,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           count: erps.length,
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch supported ERPs", {
           error: error.message,
         });
@@ -57,13 +58,14 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .get(
     "/:erpType",
-    async ({ params, transformWorkflowService }) => {
+    async ({ params, transformWorkflowService, set }) => {
       try {
         const erp = await transformWorkflowService.getInvoiceSchema(
           params.erpType,
         );
 
         if (!erp) {
+          set.status = 404;
           return {
             success: false,
             error: `ERP type '${params.erpType}' not found`,
@@ -76,6 +78,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           data: erp,
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch ERP configuration", {
           error: error.message,
         });
@@ -95,7 +98,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .post(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!);
         let { erp, invoice, metadata }: any = body;
@@ -147,6 +150,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,

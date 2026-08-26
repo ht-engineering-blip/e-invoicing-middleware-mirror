@@ -31,7 +31,7 @@ const authOnboardingRoutes = new Elysia()
    */
   .put(
     "/:tenantId/firs-credentials",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         // Map validator fields to service input
         const credentials = {
@@ -93,6 +93,7 @@ const authOnboardingRoutes = new Elysia()
           throw new UnauthorizedError("Tenant not found");
         }
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,
@@ -152,7 +153,7 @@ const authOnboardingRoutes = new Elysia()
           data: { onboarding, progress: onboardingProgress },
         };
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,

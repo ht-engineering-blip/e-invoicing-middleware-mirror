@@ -29,6 +29,9 @@ export class TenantRepository {
     if (where.tin?._eq) query.tin = where.tin._eq;
     if (where.status?._eq) query.status = where.status._eq;
     if (where.contactEmail?._eq) query.contactEmail = where.contactEmail._eq;
+    if (where.erpSystem?._eq) query["config.erpSystem"] = where.erpSystem._eq;
+    if (where["config.erpSystem"]?._eq)
+      query["config.erpSystem"] = where["config.erpSystem"]._eq;
 
     // Case-insensitive exact match (anchored regex, ^value$)
     if (where.contactEmail?._iexact)
@@ -40,6 +43,7 @@ export class TenantRepository {
     // IN conditions
     if (where.status?._in) query.status = { $in: where.status._in };
     if (where.tenantId?._in) query.tenantId = { $in: where.tenantId._in };
+    if (where.erpSystem?._in) query["config.erpSystem"] = { $in: where.erpSystem._in };
 
     // Search conditions
     if (where.search) {

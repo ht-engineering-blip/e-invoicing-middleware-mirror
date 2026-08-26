@@ -18,7 +18,7 @@ export const webhookEventRoutes = new Elysia({ prefix: "/webhook/events" })
    */
   .get(
     "/",
-    async ({ query, auth, webhookEventRepo }) => {
+    async ({ query, auth, webhookEventRepo, set }) => {
       try {
         const page = Math.max(1, parseInt(query.page || "1"));
         const limit = Math.min(parseInt(query.limit || "20"), 100);
@@ -105,6 +105,7 @@ export const webhookEventRoutes = new Elysia({ prefix: "/webhook/events" })
 
         return ResponseBuilder.paginate(formatted, total, page, limit);
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(
           error.message || "Failed to fetch webhook events",
           error.statusCode || 500,
@@ -120,7 +121,7 @@ export const webhookEventRoutes = new Elysia({ prefix: "/webhook/events" })
    */
   .get(
     "/:eventId",
-    async ({ params, auth, webhookEventRepo }) => {
+    async ({ params, auth, webhookEventRepo, set }) => {
       try {
         const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
         const ev = await webhookEventRepo.findByEventId(
@@ -129,6 +130,7 @@ export const webhookEventRoutes = new Elysia({ prefix: "/webhook/events" })
         );
 
         if (!ev) {
+          set.status = 404;
           return ResponseBuilder.error("Webhook event not found", 404);
         }
 
@@ -155,6 +157,7 @@ export const webhookEventRoutes = new Elysia({ prefix: "/webhook/events" })
           updatedAt: ev.updatedAt,
         });
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(
           error.message || "Failed to fetch webhook event",
           error.statusCode || 500,

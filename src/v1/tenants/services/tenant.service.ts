@@ -243,8 +243,8 @@ export class TenantService extends BaseService {
     const limit = filters?.limit || 20;
 
     const query: any = {};
-    if (filters?.status) query.status._eq = filters.status;
-    if (filters?.erpSystem) query.erpSystem._eq = filters.erpSystem;
+    if (filters?.status) query.status = { _eq: filters.status };
+    if (filters?.erpSystem) query.erpSystem = { _eq: filters.erpSystem };
     if (filters?.search) query.search = filters.search;
 
     let tenants = await this.tenantRepo.findMany(query, undefined, limit, skip);
@@ -255,10 +255,8 @@ export class TenantService extends BaseService {
       const tenantsWithOnboarding = await Promise.all(
         tenants.map(async (tenant) => {
           try {
-            const rawTenant =
-              typeof tenant.toObject === "function"
-                ? tenant.toObject()
-                : tenant;
+            const type = typeof tenant.toObject === "function";
+            const rawTenant = type ? tenant.toObject() : tenant;
             const onboarding = await this.onboardingRepo.findByTenantId(
               tenant.tenantId,
             );

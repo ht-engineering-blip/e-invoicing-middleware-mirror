@@ -98,7 +98,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401;
+        set.status = error.statusCode || 401;
         logger.error("Login failed", {
           email: body.email,
           error: error.message,
@@ -152,7 +152,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400;
+        set.status = error.statusCode || 400;
         logger.error("Team member login failed", {
           email: body.email,
           error: error.message,
@@ -160,7 +160,7 @@ const authRoutes = new Elysia()
         return {
           success: false,
           error: error.message || "Login failed",
-          statusCode: 400,
+          statusCode: error.statusCode || 400,
         };
       }
     },
@@ -215,7 +215,7 @@ const authRoutes = new Elysia()
               );
             }
           } catch (firsError: any) {
-            set.status = 401;
+            set.status = firsError.statusCode || 401;
             const status =
               firsError.statusCode ||
               firsError.response?.status ||
@@ -372,7 +372,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("FIRS OAuth failed", { error: error.message });
         return {
           success: false,
@@ -401,7 +401,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Password reset request failed", {
           email: body.email,
           error: error.message,
@@ -436,7 +436,7 @@ const authRoutes = new Elysia()
           message: result.message,
         };
       } catch (error: any) {
-        set.status = 400;
+        set.status = error.statusCode || 400;
         logger.error("Password reset failed", { error: error.message });
         return {
           success: false,
@@ -475,7 +475,7 @@ const authRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 400;
+        set.status = error.statusCode || 400;
         return {
           success: false,
           error: error.message || "Failed to validate token",
@@ -608,7 +608,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch user details", {
           tenantId: auth?.tenantId,
           userId: auth?.userId,
@@ -697,11 +697,11 @@ const protectedAuthRoutes = new Elysia()
           );
         }
       } catch (error: any) {
-        set.status = 401;
+        set.status = error.statusCode || 400;
         return {
           success: false,
-          error: error.message || "Token refresh failed",
-          statusCode: error.statusCode || 401,
+          error: error.message || "Failed to set password",
+          statusCode: error.statusCode || 400,
         };
       }
     },
@@ -749,7 +749,7 @@ const protectedAuthRoutes = new Elysia()
           },
         };
       } catch (error: any) {
-        set.status = 401;
+        set.status = error.statusCode || 401;
         return {
           success: false,
           error: error.message || "Token refresh failed",

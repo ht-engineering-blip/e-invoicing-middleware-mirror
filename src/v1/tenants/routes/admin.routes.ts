@@ -101,6 +101,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant created successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -113,7 +114,7 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/analytics",
-    async ({ auth, tenantService }) => {
+    async ({ auth, tenantService, set }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const analytics = await tenantService.getTenantAnalytics();
@@ -123,6 +124,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant analytics retrieved successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -135,7 +137,7 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/",
-    async ({ auth, query, tenantService }) => {
+    async ({ auth, query, tenantService, set }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const { page, limit, onboarding, status, search } = query;
@@ -160,6 +162,7 @@ const adminTenantRoutes = new Elysia({
           limitNum,
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -172,13 +175,14 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/:tenantId",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, tenantService, set }) => {
       try {
         // Verify the user has access to this tenant
         onlySelf(auth!, params.tenantId);
         const tenant = await tenantService.getTenantById(params.tenantId, true);
         return ResponseBuilder.success(tenant);
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -191,7 +195,7 @@ const adminTenantRoutes = new Elysia({
    */
   .patch(
     "/:tenantId",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         // Verify access
         onlyTenantAdmin(auth!, params.tenantId);
@@ -206,6 +210,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -218,7 +223,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/activate",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, tenantService, set }) => {
       try {
         // Verify access
         onlyAdmin(
@@ -236,6 +241,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant activated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -248,7 +254,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/suspend",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, tenantService, set }) => {
       try {
         // Verify access
         onlyAdmin(
@@ -267,6 +273,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant suspended successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -279,7 +286,7 @@ const adminTenantRoutes = new Elysia({
    */
   .delete(
     "/:tenantId",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, tenantService, set }) => {
       try {
         // Verify access
         onlyAdmin(
@@ -294,6 +301,7 @@ const adminTenantRoutes = new Elysia({
           "Tenant deleted successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -305,7 +313,7 @@ const adminTenantRoutes = new Elysia({
    */
   .patch(
     "/:tenantId/onboarding",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const onboarding = await tenantService.updateOnboarding(
@@ -319,6 +327,7 @@ const adminTenantRoutes = new Elysia({
           "Onboarding status updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -334,7 +343,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/api-keys",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const result = await tenantService.createApiKey(
@@ -351,6 +360,7 @@ const adminTenantRoutes = new Elysia({
           "API key created successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -363,12 +373,13 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/:tenantId/api-keys",
-    async ({ auth, params, tenantService }) => {
+    async ({ auth, params, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const apiKeys = await tenantService.listApiKeys(params.tenantId);
         return ResponseBuilder.success(apiKeys);
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -381,7 +392,7 @@ const adminTenantRoutes = new Elysia({
    */
   .delete(
     "/:tenantId/api-keys/:keyId",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         console.log({ params });
         onlyTenantAdmin(auth!, params.tenantId);
@@ -397,6 +408,7 @@ const adminTenantRoutes = new Elysia({
           "API key revoked successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -409,7 +421,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/api-keys/:keyId/rotate",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const result = await tenantService.rotateApiKey(
@@ -432,6 +444,7 @@ const adminTenantRoutes = new Elysia({
           "API key rotated successfully. New key sent via email.",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -444,7 +457,7 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/api-keys",
-    async ({ auth, query, tenantService }) => {
+    async ({ auth, query, tenantService, set }) => {
       try {
         // Verify admin access
         onlyAdmin(auth!, "Forbidden: Admin access required");
@@ -467,6 +480,7 @@ const adminTenantRoutes = new Elysia({
           limit,
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -481,7 +495,7 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/erp-configs",
-    async ({ auth, query, tenantService }) => {
+    async ({ auth, query, tenantService, set }) => {
       try {
         // Verify admin access
         onlyAdmin(auth!, "Forbidden: Admin access required");
@@ -505,6 +519,7 @@ const adminTenantRoutes = new Elysia({
           limit,
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -517,7 +532,7 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/erp-sync",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const _updatedTenant = await tenantService.configureERPSync(
@@ -564,6 +579,7 @@ const adminTenantRoutes = new Elysia({
           "ERP sync configuration updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -576,11 +592,12 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/id-key-map",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
         if (!isValidErpEventType(body.eventType)) {
+          set.status = 400;
           return ResponseBuilder.error(
             `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
             400,
@@ -589,6 +606,7 @@ const adminTenantRoutes = new Elysia({
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
+          set.status = 404;
           return ResponseBuilder.error("Tenant not found", 404);
         }
         const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
@@ -623,6 +641,7 @@ const adminTenantRoutes = new Elysia({
           "idKeyMap updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -635,11 +654,12 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/reference-id-key-map",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
         if (!isValidErpEventType(body.eventType)) {
+          set.status = 400;
           return ResponseBuilder.error(
             `Unknown event '${body.eventType}'. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
             400,
@@ -648,6 +668,7 @@ const adminTenantRoutes = new Elysia({
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
+          set.status = 404;
           return ResponseBuilder.error("Tenant not found", 404);
         }
         const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
@@ -681,6 +702,7 @@ const adminTenantRoutes = new Elysia({
           "referenceIdKeyMap updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -693,13 +715,14 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/:tenantId/key-config",
-    async ({ auth, params, query, tenantService }) => {
+    async ({ auth, params, query, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
 
         if (!tenant) {
+          set.status = 404;
           return ResponseBuilder.error("Tenant not found", 404);
         }
 
@@ -709,6 +732,7 @@ const adminTenantRoutes = new Elysia({
           const matchedDef = findKeyTypeDefinition(requestedKeyType);
 
           if (!matchedDef) {
+            set.status = 400;
             return ResponseBuilder.error(
               `Invalid keyType '${requestedKeyType}'. Must be one of: ${KEY_CONFIG_REGISTRY.map((d) => d.keyType).join(", ")}`,
               400,
@@ -752,6 +776,7 @@ const adminTenantRoutes = new Elysia({
           ),
         });
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -764,12 +789,13 @@ const adminTenantRoutes = new Elysia({
    */
   .put(
     "/:tenantId/key-config",
-    async ({ auth, params, body, tenantService }) => {
+    async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
+          set.status = 404;
           return ResponseBuilder.error("Tenant not found", 404);
         }
         const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
@@ -804,6 +830,7 @@ const adminTenantRoutes = new Elysia({
             referenceIdKeyMap[safeKey] = body.referenceIdKey;
           }
         } else {
+          set.status = 400;
           return ResponseBuilder.error(
             `Invalid keyType or eventType. Must be one of: ${VALID_ERP_EVENT_TYPES.join(", ")}`,
             400,
@@ -835,6 +862,7 @@ const adminTenantRoutes = new Elysia({
           "Key configuration updated successfully",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -847,11 +875,12 @@ const adminTenantRoutes = new Elysia({
    */
   .get(
     "/:tenantId/erp-sync",
-    async ({ auth, params, query, tenantService }) => {
+    async ({ auth, params, query, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
         const config = await tenantService.getERPSyncConfig(params.tenantId);
         if (!config) {
+          set.status = 404;
           return ResponseBuilder.error("ERP sync not configured", 404);
         }
         const sanitizedConfig = { ...config };
@@ -878,6 +907,7 @@ const adminTenantRoutes = new Elysia({
 
         return ResponseBuilder.success(sanitizedConfig);
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -890,7 +920,7 @@ const adminTenantRoutes = new Elysia({
    */
   .post(
     "/:tenantId/resend-token",
-    async ({ params, auth, tenantService, authService }) => {
+    async ({ params, auth, tenantService, authService, set }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
 
@@ -900,12 +930,14 @@ const adminTenantRoutes = new Elysia({
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         if (!tenant) {
+          set.status = 404;
           return ResponseBuilder.error("Tenant not found", 404);
         }
         const tenantObj = typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
 
         // Check if already activated
         if (tenantObj.password || tenantObj.metadata?.activationCompleted) {
+          set.status = 400;
           return ResponseBuilder.error(
             "Account has already been activated",
             400,
@@ -963,6 +995,7 @@ const adminTenantRoutes = new Elysia({
           "Activation email resent successfully by admin",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Admin failed to resend activation email", {
           error: error.message,
         });
