@@ -30,7 +30,7 @@ export const firsConfigRoutes = new Elysia({
    */
   .get(
     "/",
-    async ({ configService, transformWorkflowService }) => {
+    async ({ configService, transformWorkflowService, set }) => {
       try {
         const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(
           SchemaSourceType.FIRS_UBL,
@@ -52,6 +52,7 @@ export const firsConfigRoutes = new Elysia({
           data: firsSchemaDoc,
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch FIRS dictionary", {
           error: error.message,
         });
@@ -71,7 +72,7 @@ export const firsConfigRoutes = new Elysia({
    */
   .put(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({ auth, body, query, llmService, transformWorkflowService, set }) => {
       try {
         onlyAdmin(auth!);
         let { invoice, metadata }: any = body;
@@ -120,6 +121,7 @@ export const firsConfigRoutes = new Elysia({
           },
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,

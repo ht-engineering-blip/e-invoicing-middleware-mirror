@@ -36,8 +36,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch invoice types resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve invoice types", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve invoice types", error.statusCode || 500);
       }
     },
   )
@@ -56,8 +56,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch payment means resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve payment means codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve payment means codes", error.statusCode || 500);
       }
     },
     listPaymentMeansValidation,
@@ -77,8 +77,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch tax categories resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve tax categories", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve tax categories", error.statusCode || 500);
       }
     },
     listTaxCategoriesValidation,
@@ -98,8 +98,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch currencies resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve currency codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve currency codes", error.statusCode || 500);
       }
     },
     listCurrenciesValidation,
@@ -119,8 +119,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch invoice quantity codes resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve quantity unit codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve quantity unit codes", error.statusCode || 500);
       }
     },
     listQuantityCodesValidation,
@@ -140,8 +140,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch HS codes resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve HS classification codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve HS classification codes", error.statusCode || 500);
       }
     },
     listHsCodesValidation,
@@ -161,8 +161,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch services codes resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve ISIC service codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve ISIC service codes", error.statusCode || 500);
       }
     },
     listServicesCodesValidation,
@@ -182,8 +182,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch LGAs resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve Nigeria Local Government Areas", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve Nigeria Local Government Areas", error.statusCode || 500);
       }
     },
     listLgasValidation,
@@ -203,8 +203,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch states resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve Nigeria states", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve Nigeria states", error.statusCode || 500);
       }
     },
     listStatesValidation,
@@ -224,8 +224,8 @@ const resourcesRoutes = new Elysia({ prefix: "/invoice/resources" })
         logger.error("Failed to fetch countries resource", {
           error: error.message,
         });
-        set.status = 500;
-        return ResponseBuilder.error("Failed to retrieve ISO country codes", 500);
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error("Failed to retrieve ISO country codes", error.statusCode || 500);
       }
     },
     listCountriesValidation,
