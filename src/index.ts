@@ -63,7 +63,20 @@ const openapiPlugin = docsConfig.enabled
   : new Elysia();
 
 const app = new Elysia()
-  .use(cors())
+  .use(
+    cors({
+      origin: true,
+      credentials: true,
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "x-api-key",
+        "x-admin-key",
+        "x-docs-password",
+      ],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    }),
+  )
   .use(mongoPlugin)
   .use(dtsPlugin)
   .use(docsAuthMiddleware)
@@ -181,11 +194,15 @@ const app = new Elysia()
     // Default error handler
     const errorObj = error as any;
     logger.error(`[Unhandled Error - ${code}]:`, error);
-    set.status = errorObj.statusCode || errorObj.status || 500;
+    const status = errorObj.statusCode || errorObj.status || 500;
+    set.status = status;
     return {
       success: false,
       error: errorObj.message || "An error occurred",
-      statusCode: set.status || 500,
+      message: errorObj.message || "An error occurred",
+      code: errorObj.code || code || "INTERNAL_SERVER_ERROR",
+      statusCode: status,
+      ...(errorObj.details ? { details: errorObj.details } : {}),
     };
   });
 
