@@ -87,39 +87,42 @@ export const authSessionRoutes = new Elysia()
         delete showMeta.activationTokenId;
         delete showMeta.activationTokenExpiresAt;
 
+        const tenantData = {
+          id: tenant.tenantId,
+          businessName: tenant.businessName,
+          tin: tenant.tin,
+          contactEmail: tenant.contactEmail,
+          contactPhone: tenant.contactPhone,
+          erpSystem: tenant.config?.erpSystem,
+          status: tenant.status,
+          createdAt: tenant.createdAt,
+          config: {
+            firs: {
+              serviceId: tenant.config?.firsCredentials?.serviceId,
+              clientId: "[REDACTED]",
+              publicKey: "[REDACTED]",
+            },
+            features: tenant.config?.features,
+            limits: tenant.config?.limits,
+            webhookUrl: tenant.config?.webhookUrl,
+            webhookEnabled: tenant.config?.webhookEnabled,
+            invoiceIdKey: tenant.config?.invoiceIdKey,
+          },
+          onboarding: onboarding
+            ? {
+                status: onboarding.status,
+                progress: onboardingProgress,
+                steps: onboarding.steps,
+                approvedAt: onboarding.approvedAt,
+              }
+            : null,
+          metadata: showMeta,
+        };
+
         return ResponseBuilder.success({
           type: "tenant",
-          tenant: {
-            id: tenant.tenantId,
-            businessName: tenant.businessName,
-            tin: tenant.tin,
-            contactEmail: tenant.contactEmail,
-            contactPhone: tenant.contactPhone,
-            erpSystem: tenant.config?.erpSystem,
-            status: tenant.status,
-            createdAt: tenant.createdAt,
-            config: {
-              firs: {
-                serviceId: tenant.config?.firsCredentials?.serviceId,
-                clientId: "[REDACTED]",
-                publicKey: "[REDACTED]",
-              },
-              features: tenant.config?.features,
-              limits: tenant.config?.limits,
-              webhookUrl: tenant.config?.webhookUrl,
-              webhookEnabled: tenant.config?.webhookEnabled,
-              invoiceIdKey: tenant.config?.invoiceIdKey,
-            },
-            onboarding: onboarding
-              ? {
-                  status: onboarding.status,
-                  progress: onboardingProgress,
-                  steps: onboarding.steps,
-                  approvedAt: onboarding.approvedAt,
-                }
-              : null,
-            metadata: showMeta,
-          },
+          ...tenantData,
+          tenant: tenantData,
         });
       } catch (error: any) {
         set.status = error.statusCode || 500;
