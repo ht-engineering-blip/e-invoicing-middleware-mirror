@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import mongoose from "mongoose";
 import { requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder } from "../../../@lib";
 import { agenda } from "../../../@lib/queue/agenda";
@@ -200,8 +201,6 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           tenantId,
         );
 
-        console.log({ result });
-
         if (!result) {
           set.status = 404;
           return ResponseBuilder.error("Invoice not found", 404);
@@ -209,15 +208,26 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         const { invoice, webhookEvents } = result;
 
-        // Fetch all Agenda jobs referenced across all webhook events
+        // Fetch all Agenda jobs referenced across all webhook events using fast lean projection
         const allJobIds = webhookEvents.flatMap((ev: any) => ev.jobIds ?? []);
         const agendaJobsById = new Map<string, any>();
         if (allJobIds.length > 0) {
           try {
-            const { jobs } = await agenda.db.queryJobs({ ids: allJobIds });
-            for (const job of jobs) {
-              const id = job._id?.toString();
-              if (id) agendaJobsById.set(id, job);
+            const objectIds = allJobIds
+              .filter((id: string) => typeof id === "string" && id.length === 24)
+              .map((id: string) => new mongoose.Types.ObjectId(id));
+
+            if (objectIds.length > 0) {
+              const col = (agenda.db as any)?.collection;
+              if (col) {
+                const rawJobs = await col
+                  .find({ _id: { $in: objectIds } })
+                  .toArray();
+                for (const job of rawJobs) {
+                  const id = job._id?.toString();
+                  if (id) agendaJobsById.set(id, job);
+                }
+              }
             }
           } catch (e: any) {
             logger.warn("Failed to fetch agenda jobs for invoice detail", {
@@ -234,13 +244,22 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
               if (!job) return null;
               const data = (job.data ?? {}) as any;
               const action = data.actions?.[data.stepIndex] ?? job.name;
+              const status =
+                job.state ||
+                (job.failedAt
+                  ? "failed"
+                  : job.lastFinishedAt
+                    ? "completed"
+                    : job.lockedAt
+                      ? "running"
+                      : "queued");
               return {
                 agendaJobId: id,
                 jobName: job.name,
                 action,
                 stepIndex: data.stepIndex ?? null,
                 jobChainId: data.jobChainId ?? null,
-                status: job.state,
+                status,
                 scheduledAt: job.nextRunAt ?? null,
                 startedAt: job.lastRunAt ?? null,
                 finishedAt: job.lastFinishedAt ?? null,

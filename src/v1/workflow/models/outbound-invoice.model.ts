@@ -212,6 +212,7 @@ const OutboundInvoiceSchema = new Schema<OutboundInvoiceDocument>(
 
 // Compound Indexes for performance
 OutboundInvoiceSchema.index({ tenantId: 1, status: 1 });
+OutboundInvoiceSchema.index({ tenantId: 1, irn: 1 });
 OutboundInvoiceSchema.index({ tenantId: 1, createdAt: -1 });
 OutboundInvoiceSchema.index({ businessId: 1, createdAt: -1 });
 OutboundInvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 });

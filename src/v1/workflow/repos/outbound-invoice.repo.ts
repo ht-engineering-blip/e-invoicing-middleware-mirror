@@ -7,7 +7,10 @@ import {
   OutboundPaymentStatus,
   IOutboundPaymentDetails,
 } from "../models/outbound-invoice.model";
-import { InboundInvoiceDocument, InboundInvoiceModel } from "../models/inbound-invoice.model";
+import {
+  InboundInvoiceDocument,
+  InboundInvoiceModel,
+} from "../models/inbound-invoice.model";
 import { WebhookEventModel } from "../../webhook/models/webhook-event.model";
 import { TTLCache } from "../../shared/utils";
 
@@ -491,9 +494,7 @@ export class OutboundInvoiceRepository {
 
       const cacheKey = `${tenantId || "admin"}:${businessId || ""}:${params.from?.getTime() || ""}:${params.to?.getTime() || ""}`;
       const cached = this.metricsCache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
+      if (cached) return cached;
 
       const [outboundCount, inboundCount] = await Promise.all([
         this.outboundInvoiceModel
@@ -1077,7 +1078,10 @@ export class OutboundInvoiceRepository {
     try {
       const query: any = { irn };
       if (tenantId) query.tenantId = tenantId;
-      const invoice = await this.outboundInvoiceModel.findOne(query).exec();
+      const invoice = await this.outboundInvoiceModel
+        .findOne(query)
+        .lean<OutboundInvoiceDocument>()
+        .exec();
       if (!invoice) return null;
 
       const eventIds: string[] = invoice.webhookEvents ?? [];
@@ -1087,10 +1091,11 @@ export class OutboundInvoiceRepository {
           eventId: { $in: eventIds },
         })
           .sort({ createdAt: 1 })
+          .lean()
           .exec();
       }
 
-      return { invoice, webhookEvents };
+      return { invoice: invoice, webhookEvents };
     } catch (error) {
       console.error("Error fetching invoice with webhook events:", error);
       throw new AppError(500, "Failed to fetch invoice details");
