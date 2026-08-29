@@ -1,10 +1,10 @@
-import { getNestedValue, logger } from "../../../@lib";
+import { getNestedValue } from "../../../@lib";
 import { FIRSService } from "../../../@lib/adapters/firs/firs.service";
 import { Currency } from "../../../@lib/adapters/firs/types";
 import { AuthContext } from "../../../middlewares";
 import { OutboundInvoiceDocument } from "../models";
 import { OutboundInvoiceRepository } from "../repos/outbound-invoice.repo";
-import { OutboundWorkflowService, TransformWorkflowService } from "../services";
+import { TransformWorkflowService } from "../services";
 import { resolveCurrencyCode } from "./transformer/utils";
 
 export interface BillingReferenceItem {
@@ -219,13 +219,17 @@ export async function resolveOriginalInvoices(
     }
 
     originalInvoices.push(originalInvoice);
-    const originalTransformed = originalInvoice.metadata?.transformedInvoice as CreditNotePayload | undefined;
+    const originalTransformed = originalInvoice.metadata?.transformedInvoice as
+      | CreditNotePayload
+      | undefined;
 
     let issueDate = "";
     if (originalTransformed?.issue_date) {
       issueDate = originalTransformed.issue_date;
     } else if (originalInvoice.createdAt) {
-      issueDate = new Date(originalInvoice.createdAt).toISOString().slice(0, 10);
+      issueDate = new Date(originalInvoice.createdAt)
+        .toISOString()
+        .slice(0, 10);
     } else {
       issueDate = new Date().toISOString().slice(0, 10);
     }
@@ -262,7 +266,8 @@ export async function composeCreditNotePayload(params: {
 
   const payloadData = payload.data as Record<string, unknown> | undefined;
   const fallbackOriginalInvoice = resolvedOriginals.originalInvoices[0];
-  const fallbackOriginalTransformed = fallbackOriginalInvoice?.metadata?.transformedInvoice as CreditNotePayload | undefined;
+  const fallbackOriginalTransformed = fallbackOriginalInvoice?.metadata
+    ?.transformedInvoice as CreditNotePayload | undefined;
 
   let rawLines: unknown = undefined;
   if (payloadData?.invoice_line) {
@@ -303,14 +308,22 @@ export async function composeCreditNotePayload(params: {
   creditNotePayload.billing_reference = resolvedOriginals.billingReferences;
 
   if (fallbackOriginalTransformed?.accounting_supplier_party) {
-    if (!creditNotePayload.accounting_supplier_party || !creditNotePayload.accounting_supplier_party.tin) {
-      creditNotePayload.accounting_supplier_party = fallbackOriginalTransformed.accounting_supplier_party;
+    if (
+      !creditNotePayload.accounting_supplier_party ||
+      !creditNotePayload.accounting_supplier_party.tin
+    ) {
+      creditNotePayload.accounting_supplier_party =
+        fallbackOriginalTransformed.accounting_supplier_party;
     }
   }
 
   if (fallbackOriginalTransformed?.accounting_customer_party) {
-    if (!creditNotePayload.accounting_customer_party || !creditNotePayload.accounting_customer_party.tin) {
-      creditNotePayload.accounting_customer_party = fallbackOriginalTransformed.accounting_customer_party;
+    if (
+      !creditNotePayload.accounting_customer_party ||
+      !creditNotePayload.accounting_customer_party.tin
+    ) {
+      creditNotePayload.accounting_customer_party =
+        fallbackOriginalTransformed.accounting_customer_party;
     }
   }
 
@@ -350,19 +363,27 @@ export async function composeCreditNotePayload(params: {
   const fallbackCurrency = resolveCurrencyCode(inputCurrency, currencies);
 
   if (creditNotePayload.tax_currency_code) {
-    creditNotePayload.tax_currency_code = resolveCurrencyCode(creditNotePayload.tax_currency_code, currencies);
+    creditNotePayload.tax_currency_code = resolveCurrencyCode(
+      creditNotePayload.tax_currency_code,
+      currencies,
+    );
   } else {
     creditNotePayload.tax_currency_code = fallbackCurrency;
   }
 
   if (creditNotePayload.document_currency_code) {
-    creditNotePayload.document_currency_code = resolveCurrencyCode(creditNotePayload.document_currency_code, currencies);
+    creditNotePayload.document_currency_code = resolveCurrencyCode(
+      creditNotePayload.document_currency_code,
+      currencies,
+    );
   } else {
     creditNotePayload.document_currency_code = fallbackCurrency;
   }
 
   if (resolvedOriginals.creditNoteId) {
-    creditNotePayload.invoice_reference = String(resolvedOriginals.creditNoteId);
+    creditNotePayload.invoice_reference = String(
+      resolvedOriginals.creditNoteId,
+    );
   }
 
   creditNotePayload.tenant_id = tenantId;

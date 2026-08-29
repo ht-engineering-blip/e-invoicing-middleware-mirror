@@ -1,5 +1,6 @@
 import { aiConfig } from "../../../../@config";
 import { AuthContext } from "../../../../middlewares";
+import { AppError, logger, ValidationError } from "../../../../@lib";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import {
   ISchemaField,
@@ -12,7 +13,12 @@ import {
   InvoiceSchemaDictionaryRepository,
   UpdateSchemaDictionaryInput,
 } from "../../repos/invoice-schema-dictionary.repo";
-import { FIRSInvoiceTransformer } from "../../utils/transformer";
+import {
+  FIRSInvoiceTransformer,
+  type TransformationResult,
+  type FIRSInvoice,
+  type TransformInvoiceInput,
+} from "../../utils/transformer";
 import { FIRSInvoiceTransformerV2 } from "../../utils/transformer/v2";
 import { TTLCache } from "../../../shared/utils";
 
@@ -56,13 +62,86 @@ export class TransformWorkflowService {
   }
 
   /**
+   * Extracts and normalizes errors from a TransformationResult
+   */
+  private extractTransformationErrors(
+    result: TransformationResult | null | undefined,
+  ): string[] {
+    if (!result) {
+      return ["Transformation result is empty"];
+    }
+
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      const sanitizedErrors: string[] = [];
+      for (const err of result.errors) {
+        if (typeof err === "string" && err.trim() !== "") {
+          sanitizedErrors.push(err.trim());
+        } else if (err !== null && err !== undefined) {
+          sanitizedErrors.push(JSON.stringify(err));
+        }
+      }
+      if (sanitizedErrors.length > 0) {
+        return sanitizedErrors;
+      }
+    }
+
+    if (
+      result.validationErrors &&
+      Array.isArray(result.validationErrors.issues)
+    ) {
+      const zodErrors: string[] = [];
+      for (const issue of result.validationErrors.issues) {
+        const path = issue.path.join(".");
+        if (path && path.trim() !== "") {
+          zodErrors.push(`${path}: ${issue.message}`);
+        } else {
+          zodErrors.push(issue.message);
+        }
+      }
+      if (zodErrors.length > 0) {
+        return zodErrors;
+      }
+    }
+
+    return ["Transformation failed"];
+  }
+
+  /**
+   * Logs and throws a standardized AppError for transformation failures
+   */
+  private handleTransformationFailure(
+    serviceLabel: string,
+    result: TransformationResult | null | undefined,
+  ): never {
+    const errors = this.extractTransformationErrors(result);
+    const primaryErrorMessage = errors[0] || "Transformation failed";
+
+    logger.error(`[TransformService] ${serviceLabel} failed`, {
+      primaryError: primaryErrorMessage,
+      errorCount: errors.length,
+      errors,
+    });
+
+    const errorDetails = errors.map((errMessage) => ({
+      message: errMessage,
+    }));
+
+    throw new AppError(
+      400,
+      primaryErrorMessage,
+      "TRANSFORMATION_ERROR",
+      errorDetails,
+    );
+  }
+
+  /**
    * Transform invoice from source ERP format to FIRS UBL format
    */
   transformInvoice = async (
     invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
-  ): Promise<any> => {
+  ): Promise<FIRSInvoice & Record<string, unknown>> => {
     const transformer = new FIRSInvoiceTransformer(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -76,11 +155,10 @@ export class TransformWorkflowService {
       sourceType,
     );
 
-    if (result?.success) {
-      return result.data;
+    if (result && result.success && result.data) {
+      return result.data as FIRSInvoice & Record<string, unknown>;
     } else {
-      console.error("Errors:", result?.errors);
-      throw result?.errors;
+      this.handleTransformationFailure("V1 Transformation", result);
     }
   };
 
@@ -91,7 +169,7 @@ export class TransformWorkflowService {
     invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
-  ): Promise<any> => {
+  ): Promise<FIRSInvoice & Record<string, unknown>> => {
     const transformer = new FIRSInvoiceTransformerV2(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -105,11 +183,10 @@ export class TransformWorkflowService {
       sourceType,
     );
 
-    if (result?.success) {
-      return result.data;
+    if (result && result.success && result.data) {
+      return result.data as FIRSInvoice & Record<string, unknown>;
     } else {
-      console.error("Errors:", result?.errors);
-      throw result?.errors;
+      this.handleTransformationFailure("V2 Transformation", result);
     }
   };
 

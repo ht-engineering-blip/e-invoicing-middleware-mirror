@@ -72,8 +72,12 @@ export function registerCompleteOutboundJob(): void {
           });
 
           // Step 4: validate → sign (if needed) → confirm → QR → transmit
+          const securePayload: SecureInvoice = {
+            ...transformed,
+            tenant_id: tenantId,
+          };
           const result = await outboundService.handleOutboundWorkflow(
-            transformed,
+            securePayload,
             true,
           );
           qrCode = result.qrCode as string;

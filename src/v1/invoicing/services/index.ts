@@ -73,13 +73,13 @@ export class InvoiceWorkflowService {
       );
 
       if (transformedPayload.irn) {
-        const createPayload: OutboundInvoiceDocument = {
+        const createPayload: Partial<OutboundInvoiceDocument> = {
           ...transformedPayload,
           tenantId: authContext?.tenantId,
           erpSystem: authContext?.tenantERP,
           createdBy: authContext?.tenantId,
         };
-        await this.outboundRepo.create(createPayload);
+        await this.outboundRepo.create(createPayload as OutboundInvoiceDocument);
         await this.outboundRepo.updateWorkflowState(invoice.irn, {
           transformed: true,
         });

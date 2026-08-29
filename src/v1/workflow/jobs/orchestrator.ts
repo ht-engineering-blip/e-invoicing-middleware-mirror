@@ -50,7 +50,7 @@ export async function scheduleJobChain(
   }
   const authContext: JobChainData["authContext"] = {
     tenantId,
-    businessId: decryptedClientID,
+    businessId: decryptedClientID || tenant?.businessId,
     businessTIN: tenant?.tin,
     serviceId: tenant?.config?.firsCredentials?.serviceId,
     tenantERP: tenant?.config?.erpSystem,

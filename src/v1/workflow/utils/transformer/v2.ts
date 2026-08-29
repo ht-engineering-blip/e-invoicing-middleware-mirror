@@ -1,35 +1,35 @@
 import { z } from "zod";
-import { AuthContext } from "../../../../middlewares";
-import { ISchemaField, SchemaSourceType } from "../../models";
-import { TransformWorkflowService } from "../../services";
+import { aiConfig } from "../../../../@config";
 import {
   FIRSInvoiceSchema,
   TransformationResult,
   TransformInvoiceInput,
 } from ".";
 import { InternalServerError, logger } from "../../../../@lib";
+import { AuthContext } from "../../../../middlewares";
+import { ISchemaField, SchemaSourceType } from "../../models";
+import { TransformWorkflowService } from "../../services";
 import {
-  generateDatestamp,
+  generateInvoiceRef,
   generateIRN,
   sanitizeInvoiceIRNs,
-  setDynamicQuantityCodes,
-  setDynamicHsCodes,
   setDynamicCurrencies,
-  generateInvoiceRef,
+  setDynamicHsCodes,
+  setDynamicQuantityCodes,
 } from "./utils";
 
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
+import {
+  Currency,
+  HsCode,
+  InvoiceType,
+  QuantityCode,
+  TaxCategory,
+} from "../../../../@lib/adapters/firs/types";
 import {
   generateTransformPrompt,
   SYSTEM_PROMPT_V2,
 } from "../../../../@lib/adapters/llm/prompts";
-import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
-import {
-  TaxCategory,
-  InvoiceType,
-  QuantityCode,
-  HsCode,
-  Currency,
-} from "../../../../@lib/adapters/firs/types";
 
 export interface MappingRuleItem {
   source: string;
@@ -200,9 +200,11 @@ export class FIRSInvoiceTransformerV2 {
           ? new Date(invoice.issue_date)
           : undefined;
 
+      const effectiveServiceId =
+        authContext?.serviceId || authContext?.businessId?.slice(0, 8);
       const computedIrn = generateIRN(
         invoiceRef,
-        authContext?.businessId?.slice(0, 8),
+        effectiveServiceId,
         issueDate,
       );
 
@@ -229,6 +231,17 @@ export class FIRSInvoiceTransformerV2 {
 
       let completed = resolved;
       if (missing.length > 0) {
+        if (
+          !aiConfig?.enabled ||
+          (this.provider === "openai" && !aiConfig?.openaiEnabled)
+        ) {
+          return {
+            success: false,
+            error: `OpenAI / AI transformation service is disabled by configuration (OPENAI_ENABLED=false). Missing required fields: ${missing.join(", ")}`,
+            originalInvoice: invoice,
+          };
+        }
+
         const prompt = this.buildSchemaAwarePrompt(
           resolved,
           authContext,
@@ -296,6 +309,13 @@ export class FIRSInvoiceTransformerV2 {
           (completed.accounting_supplier_party as Record<string, unknown>).tin =
             expectedSupplierTIN;
         }
+      }
+
+      if (!completed.issue_date) {
+        completed.issue_date = new Date().toISOString().slice(0, 10);
+      }
+      if (!completed.issue_time) {
+        completed.issue_time = new Date().toTimeString().slice(0, 8);
       }
 
       const validation = this.validateWithZod(completed, firsZodSchema);
@@ -373,6 +393,7 @@ export class FIRSInvoiceTransformerV2 {
     path: string,
     value: unknown,
   ): void {
+    if (!path || typeof path !== "string") return;
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -417,6 +438,7 @@ export class FIRSInvoiceTransformerV2 {
   }
 
   private getDeepValue(obj: unknown, path: string): unknown {
+    if (!path || typeof path !== "string") return undefined;
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -488,10 +510,13 @@ export class FIRSInvoiceTransformerV2 {
 
       if (!fieldRequired) continue;
 
-      const existing = this.getDeepValue(data, field.field_path);
+      const path = (field.field_path || "").trim();
+      if (!path) continue;
+
+      const existing = this.getDeepValue(data, path);
 
       if (existing === undefined && field.default_value !== undefined) {
-        this.setDeepValue(data, field.field_path, field.default_value);
+        this.setDeepValue(data, path, field.default_value);
       }
     }
 
@@ -518,10 +543,13 @@ export class FIRSInvoiceTransformerV2 {
 
       if (!fieldRequired) continue;
 
-      const value = this.getDeepValue(data, field.field_path);
+      const path = (field.field_path || "").trim();
+      if (!path) continue;
+
+      const value = this.getDeepValue(data, path);
 
       if (this.isValMissing(value)) {
-        missing.push(field.field_path);
+        missing.push(path);
       }
     }
 
@@ -555,6 +583,14 @@ ${missingFields.join(", ")}
   }
 
   private async callLLM(prompt: string): Promise<string> {
+    if (
+      !aiConfig?.enabled ||
+      (this.provider === "openai" && !aiConfig?.openaiEnabled)
+    ) {
+      throw new InternalServerError(
+        "OpenAI / AI transformation service is currently disabled by environment configuration (OPENAI_ENABLED=false)",
+      );
+    }
     if (this.provider === "gemini") {
       return this.callGemini(prompt);
     }

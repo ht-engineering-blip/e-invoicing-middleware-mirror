@@ -52,11 +52,18 @@ export function normalizeInvoicePayload(
     businessId = rawInvoice.business_id.trim();
   }
 
-  // 3. Resolve IRN
+  // 3. Resolve Effective Service ID and IRN
+  let effectiveServiceId: string | undefined = undefined;
+  if (authContext && authContext.serviceId) {
+    effectiveServiceId = authContext.serviceId;
+  } else if (authContext && authContext.businessId) {
+    effectiveServiceId = authContext.businessId.slice(0, 8);
+  }
+
   let irn = "";
   if (typeof rawInvoice.irn === "string" && rawInvoice.irn.trim() !== "") {
     irn = rawInvoice.irn.trim();
-  } else if (authContext && authContext.businessId) {
+  } else if (effectiveServiceId) {
     let invoiceReference = "";
     if (
       typeof rawInvoice.invoice_reference === "string" &&
@@ -72,10 +79,7 @@ export function normalizeInvoicePayload(
       invoiceReference = generateInvoiceRef();
     }
 
-    const generated = generateIRN(
-      invoiceReference,
-      authContext.businessId.slice(0, 8),
-    );
+    const generated = generateIRN(invoiceReference, effectiveServiceId);
 
     if (generated) {
       irn = generated;
