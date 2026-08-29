@@ -46,7 +46,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: "/transform" })
 
         return ResponseBuilder.success(transformedPayload);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -114,7 +114,7 @@ transformInvoiceRoutes
           status: savedSchema.status,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -179,7 +179,7 @@ transformInvoiceRoutes
           status: savedSchema.status,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },

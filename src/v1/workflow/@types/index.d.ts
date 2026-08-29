@@ -1,6 +1,8 @@
 interface OkayResponse {
   code: number;
-  data: { ok: boolean; errors?: string[] };
+  message?: string;
+  errors?: string[] | string;
+  data: { ok: boolean; message?: string; errors?: string[] };
 }
 
 interface ConfirmResponse {
@@ -44,6 +46,7 @@ interface SecureInvoice {
   tenant_id: string;
   business_id: string;
   irn: string;
+  invoice_line?: InvoiceLineInput[];
   [key: string]: unknown;
 }
 
@@ -100,6 +103,7 @@ interface PriceInput {
 interface InvoiceLineInput {
   hsn_code?: string;
   product_category?: string;
+  service_category?: string;
   discount_rate?: number;
   discount_amount?: number;
   fee_rate?: number;
@@ -119,23 +123,119 @@ interface LegalMonetaryTotal {
   [key: string]: unknown;
 }
 
-interface StandardInvoicePayload {
-  business_id: string;
+interface BillingReferenceInput {
   irn: string;
-  accounting_supplier_party: PartyInput;
-  issue_date: string;
-  due_date?: string;
-  invoice_type_code: string;
-  invoice_kind: string;
-  payment_status?: string;
-  document_currency_code: string;
-  tax_currency_code?: string;
-  accounting_customer_party: PartyInput;
-  legal_monetary_total: LegalMonetaryTotal;
-  tax_total: TaxTotalInput[];
-  invoice_line: InvoiceLineInput[];
+  issue_date?: string;
   [key: string]: unknown;
 }
+
+interface DocumentReferenceInput {
+  irn: string;
+  issue_date?: string;
+  [key: string]: unknown;
+}
+
+interface StandardInvoicePayload {
+  business_id?: string;
+  irn?: string;
+  accounting_supplier_party?: PartyInput;
+  accounting_customer_party?: PartyInput;
+  issue_date?: string;
+  due_date?: string;
+  invoice_type_code?: string;
+  invoice_kind?: string;
+  payment_status?: string;
+  document_currency_code?: string;
+  tax_currency_code?: string;
+  legal_monetary_total?: LegalMonetaryTotal;
+  tax_total?: TaxTotalInput[];
+  invoice_line?: InvoiceLineInput[];
+  invoice_reference?: string;
+  sourceType?: string;
+  tenant_id?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
+interface CreditNotePayload {
+  business_id?: string;
+  irn?: string;
+  accounting_supplier_party?: PartyInput;
+  accounting_customer_party?: PartyInput;
+  issue_date?: string;
+  due_date?: string;
+  invoice_type_code?: "380" | "393" | "395" | string;
+  invoice_kind?: string;
+  payment_status?: string;
+  document_currency_code?: string;
+  tax_currency_code?: string;
+  billing_reference?: BillingReferenceInput[];
+  legal_monetary_total?: LegalMonetaryTotal;
+  tax_total?: TaxTotalInput[];
+  invoice_line?: InvoiceLineInput[];
+  invoice_reference?: string;
+  sourceType?: string;
+  tenant_id?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
+interface DebitNotePayload {
+  business_id?: string;
+  irn?: string;
+  accounting_supplier_party?: PartyInput;
+  accounting_customer_party?: PartyInput;
+  issue_date?: string;
+  due_date?: string;
+  invoice_type_code?: "383" | "384" | string;
+  invoice_kind?: string;
+  payment_status?: string;
+  document_currency_code?: string;
+  tax_currency_code?: string;
+  billing_reference?: BillingReferenceInput[];
+  legal_monetary_total?: LegalMonetaryTotal;
+  tax_total?: TaxTotalInput[];
+  invoice_line?: InvoiceLineInput[];
+  invoice_reference?: string;
+  sourceType?: string;
+  tenant_id?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
+interface InvoicePayload {
+  business_id?: string;
+  irn?: string;
+  accounting_supplier_party?: PartyInput;
+  accounting_customer_party?: PartyInput;
+  issue_date?: string;
+  due_date?: string;
+  invoice_type_code?: string;
+  invoice_kind?: string;
+  payment_status?: string;
+  document_currency_code?: string;
+  tax_currency_code?: string;
+  billing_reference?: BillingReferenceInput[];
+  dispatch_document_reference?: DocumentReferenceInput;
+  receipt_document_reference?: DocumentReferenceInput;
+  originator_document_reference?: DocumentReferenceInput;
+  contract_document_reference?: DocumentReferenceInput;
+  legal_monetary_total?: LegalMonetaryTotal;
+  tax_total?: TaxTotalInput[];
+  invoice_line?: InvoiceLineInput[];
+  invoice_reference?: string;
+  sourceType?: string;
+  tenant_id?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
+type TransformInvoiceInput =
+  | InvoicePayload
+  | StandardInvoicePayload
+  | CreditNotePayload
+  | DebitNotePayload
+  | NRSVerifiedInvoicePayload;
 
 interface NRSPostalAddress {
   state?: string;

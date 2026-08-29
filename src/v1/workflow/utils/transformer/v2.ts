@@ -2,27 +2,25 @@ import { z } from "zod";
 import { AuthContext } from "../../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../models";
 import { TransformWorkflowService } from "../../services";
-import { FIRSInvoiceSchema, TransformationResult } from ".";
+import {
+  FIRSInvoiceSchema,
+  TransformationResult,
+  TransformInvoiceInput,
+} from ".";
 import { InternalServerError, logger } from "../../../../@lib";
 import {
   generateDatestamp,
   generateIRN,
   sanitizeInvoiceIRNs,
-  sanitizeHsnCode,
-  sanitizePriceUnit,
   setDynamicQuantityCodes,
   setDynamicHsCodes,
   setDynamicCurrencies,
-  resolveCurrencyCode,
   generateInvoiceRef,
 } from "./utils";
 
-import { FIRS_INVOICE_METADATA } from "../defaults";
 import {
-  formatSchemaFields,
   generateTransformPrompt,
-  getOptionalFields,
-  getRequiredFields,
+  SYSTEM_PROMPT_V2,
 } from "../../../../@lib/adapters/llm/prompts";
 import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import {
@@ -32,7 +30,13 @@ import {
   HsCode,
   Currency,
 } from "../../../../@lib/adapters/firs/types";
-import { SAMPLE_INVOICE_BODY } from "../../../invoicing/examples/invoices.examples";
+
+export interface MappingRuleItem {
+  source: string;
+  target: string;
+  transform?: string;
+  [key: string]: unknown;
+}
 
 /* -----------------------------------------------------
  CLASS
@@ -63,41 +67,39 @@ export class FIRSInvoiceTransformerV2 {
 
   /**
    * Transformation and validation method
-   * @param invoiceData - The raw invoice data to transform
+   * @param invoice - The raw invoice data to transform
    * @param authContext - Authentication context with tenant/business info
    * @param sourceType - The source ERP type (e.g., SAP, ORACLE, ZOHO) for schema-based transformation
    */
   async transformAndValidate(
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<TransformationResult | undefined> {
     const transformService = new TransformWorkflowService();
 
     let sourceSchema: ISchemaField[] = [];
-    let mappingRules: Array<Record<string, any>> = [];
+    let mappingRules: MappingRuleItem[] = [];
     let firsSchema: ISchemaField[] = [];
 
     try {
-      // Fetch source ERP schema if source type is provided
       if (sourceType) {
         const sourceSchemaDoc =
           await transformService.getInvoiceSchema(sourceType);
         if (sourceSchemaDoc) {
           sourceSchema = sourceSchemaDoc.fields;
-          mappingRules = sourceSchemaDoc.mapping_rules || [];
+          mappingRules = (sourceSchemaDoc.mapping_rules ||
+            []) as MappingRuleItem[];
         }
       }
 
-      // Fetch FIRS UBL schema
       const firsSchemaDoc = await transformService.getInvoiceSchema(
         SchemaSourceType.FIRS_UBL,
       );
 
       if (firsSchemaDoc) firsSchema = firsSchemaDoc.fields;
 
-      // Transform using LLM with schema-based prompts
-      let result = await this.transformInvoice(
+      const result = await this.transformInvoice(
         invoice,
         authContext!,
         sourceSchema,
@@ -106,25 +108,33 @@ export class FIRSInvoiceTransformerV2 {
         FIRSInvoiceSchema,
       );
 
-      console.log("Transforming invoice data...");
-
       if (!result.success) {
         console.error(result.error);
         return {
           success: false,
           errors: Array.isArray(result.error)
-            ? result.error
+            ? (result.error as string[])
             : [String(result.error)],
         };
       }
 
-      const transformedData = result.data;
+      const transformedData = result.data as Record<string, unknown>;
       sanitizeInvoiceIRNs(transformedData);
+
+      const validated = this.validateWithZod(
+        transformedData,
+        FIRSInvoiceSchema,
+      );
+
+      if (!validated.valid) {
+        console.warn("Validation failed post-transformation");
+      }
+
       return {
         success: true,
-        data: transformedData,
+        data: transformedData as any,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       throw new InternalServerError(
         `Transformation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -136,17 +146,21 @@ export class FIRSInvoiceTransformerV2 {
     ----------------------------------------------------- */
 
   async transformInvoice(
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
-    mappingRules: any[],
+    mappingRules: MappingRuleItem[],
     firsZodSchema: z.ZodSchema,
-  ) {
+  ): Promise<
+    | { success: true; data: Record<string, unknown> }
+    | { success: false; error: unknown; originalInvoice: TransformInvoiceInput }
+  > {
     try {
       const firsService = new FIRSService();
       let taxCategories: TaxCategory[] = [];
       let invoiceTypes: InvoiceType[] = [];
+      let currencies: Currency[] = [];
       try {
         const [
           taxCatRes,
@@ -163,6 +177,7 @@ export class FIRSInvoiceTransformerV2 {
         ]);
         taxCategories = taxCatRes || [];
         invoiceTypes = invoiceTypeRes || [];
+        currencies = currenciesRes || [];
         if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
         if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
         if (currenciesRes) setDynamicCurrencies(currenciesRes);
@@ -171,45 +186,48 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       const mapped = this.deterministicTransform(invoice, mappingRules);
-      //logger.info("Mapped", mapped)
-      const base = { ...invoice, ...mapped };
-      // logger.info("base", base)
+      const base: Record<string, unknown> = { ...invoice, ...mapped };
       const resolved = this.ensureRequiredFields(base, firsSchema);
-      // logger.info("resolved", resolved)
 
-      // Set expected identity fields securely
-      const refence = invoice.invoice_reference;
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-
-      const invoiceRef = refence || generateInvoiceRef();
+      const invoiceRef =
+        (typeof invoice.invoice_reference === "string" &&
+          invoice.invoice_reference) ||
+        generateInvoiceRef();
+      const issueDate =
+        typeof invoice.issue_date === "string" && invoice.issue_date
+          ? new Date(invoice.issue_date)
+          : undefined;
 
       const computedIrn = generateIRN(
         invoiceRef,
-        authContext?.serviceId,
-        invoice.date || invoice.issue_date || invoice.issueDate
-          ? new Date(invoice.date || invoice.issue_date || invoice.issueDate)
-          : undefined,
+        authContext?.businessId?.slice(0, 8),
+        issueDate,
       );
-      const expectedIrn = invoice.irn || computedIrn;
 
-      if (expectedBusinessId) {
-        resolved.business_id = expectedBusinessId;
-      }
-      if (expectedIrn) {
-        resolved.irn = expectedIrn;
-      }
+      const expectedIrn =
+        typeof invoice.irn === "string" && invoice.irn
+          ? invoice.irn
+          : computedIrn;
+
+      if (expectedBusinessId) resolved.business_id = expectedBusinessId;
+      if (expectedIrn) resolved.irn = expectedIrn;
+
       if (expectedSupplierTIN) {
-        if (!resolved.accounting_supplier_party) {
+        if (
+          !resolved.accounting_supplier_party ||
+          typeof resolved.accounting_supplier_party !== "object"
+        ) {
           resolved.accounting_supplier_party = {};
         }
-        resolved.accounting_supplier_party.tin = expectedSupplierTIN;
+        (resolved.accounting_supplier_party as Record<string, unknown>).tin =
+          expectedSupplierTIN;
       }
 
       const missing = this.findMissingFields(resolved, firsSchema);
-      //  logger.info("missing", missing)
+
       let completed = resolved;
-      //  logger.info("completed", completed)
       if (missing.length > 0) {
         const prompt = this.buildSchemaAwarePrompt(
           resolved,
@@ -220,13 +238,13 @@ export class FIRSInvoiceTransformerV2 {
           taxCategories,
           invoiceTypes,
         );
-        //logger.info("prompt", prompt)
-        const response = await this.callLLM(prompt);
-        //  logger.info("response", response)
-        const parsed = this.safeParseLLMJSON(response);
-        //  logger.info("parsed", parsed)
 
-        // Warn if LLM modified identity fields — force-overwrite below will correct them
+        const response = await this.callLLM(prompt);
+        const parsed = this.safeParseLLMJSON(response) as Record<
+          string,
+          unknown
+        >;
+
         if (
           parsed.business_id !== undefined &&
           expectedBusinessId &&
@@ -245,7 +263,11 @@ export class FIRSInvoiceTransformerV2 {
             `[TransformerV2] LLM changed irn from "${expectedIrn}" to "${parsed.irn}" — will be overwritten`,
           );
         }
-        const parsedSupplierTIN = parsed.accounting_supplier_party?.tin;
+
+        const parsedSupplier = parsed.accounting_supplier_party as
+          | Record<string, unknown>
+          | undefined;
+        const parsedSupplierTIN = parsedSupplier?.tin;
         if (
           parsedSupplierTIN !== undefined &&
           expectedSupplierTIN &&
@@ -258,7 +280,6 @@ export class FIRSInvoiceTransformerV2 {
 
         completed = { ...resolved, ...parsed };
 
-        // Force-overwrite identity fields post-merge to prevent bypass
         if (expectedBusinessId) {
           completed.business_id = expectedBusinessId;
         }
@@ -266,35 +287,21 @@ export class FIRSInvoiceTransformerV2 {
           completed.irn = expectedIrn;
         }
         if (expectedSupplierTIN) {
-          if (!completed.accounting_supplier_party) {
+          if (
+            !completed.accounting_supplier_party ||
+            typeof completed.accounting_supplier_party !== "object"
+          ) {
             completed.accounting_supplier_party = {};
           }
-          completed.accounting_supplier_party.tin = expectedSupplierTIN;
-        }
-
-        logger.info("completed", completed);
-      }
-
-      // Deterministic HSN code and price_unit sanitization
-      if (Array.isArray(completed.invoice_line)) {
-        for (const line of completed.invoice_line) {
-          if (line.hsn_code !== undefined && line.hsn_code !== null) {
-            const sanitized = sanitizeHsnCode(line.hsn_code);
-            if (sanitized !== undefined) {
-              line.hsn_code = sanitized;
-            }
-          }
-          if (line.price && line.price.price_unit !== undefined) {
-            line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
-          }
+          (completed.accounting_supplier_party as Record<string, unknown>).tin =
+            expectedSupplierTIN;
         }
       }
 
       const validation = this.validateWithZod(completed, firsZodSchema);
-      logger.info("validation", validation);
 
       if (!validation.valid) {
-        completed = await this.repairJSON(
+        const repaired = await this.repairJSON(
           completed,
           validation.errors,
           authContext,
@@ -302,51 +309,30 @@ export class FIRSInvoiceTransformerV2 {
           taxCategories,
           invoiceTypes,
         );
-        // Deterministic HSN code and price_unit sanitization post-repair
-        if (Array.isArray(completed.invoice_line)) {
-          for (const line of completed.invoice_line) {
-            if (line.hsn_code !== undefined && line.hsn_code !== null) {
-              const sanitized = sanitizeHsnCode(line.hsn_code);
-              if (sanitized !== undefined) {
-                line.hsn_code = sanitized;
-              }
-            }
-            if (line.price && line.price.price_unit !== undefined) {
-              line.price.price_unit = sanitizePriceUnit(line.price.price_unit);
-            }
-          }
+
+        const recheck = this.validateWithZod(repaired, firsZodSchema);
+
+        if (!recheck.valid) {
+          return {
+            success: false,
+            error: recheck.errors,
+            originalInvoice: invoice,
+          };
         }
-      }
 
-      // Resolve currency codes using the dynamic currencies list
-      const resolvedCurr = resolveCurrencyCode(
-        completed.document_currency_code || completed.tax_currency_code,
-      );
-      if (!completed.tax_currency_code) {
-        completed.tax_currency_code = resolvedCurr;
-      } else {
-        completed.tax_currency_code = resolveCurrencyCode(
-          completed.tax_currency_code,
-        );
+        completed = repaired;
       }
-      if (!completed.document_currency_code) {
-        completed.document_currency_code = resolvedCurr;
-      } else {
-        completed.document_currency_code = resolveCurrencyCode(
-          completed.document_currency_code,
-        );
-      }
-
-      logger.info("final", completed);
 
       return {
         success: true,
         data: completed,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown transform error";
       return {
         success: false,
-        error: err.message,
+        error: errorMessage,
         originalInvoice: invoice,
       };
     }
@@ -356,24 +342,19 @@ export class FIRSInvoiceTransformerV2 {
      OBJECT UTILITIES
     ----------------------------------------------------- */
 
-  /**
-   * Flatten a nested object (including arrays) into dot-notation keys.
-   * Arrays are keyed by numeric index: "items.0.description", "items.1.description"
-   * This ensures deterministicTransform can always locate any value in the source.
-   */
   private flattenObject(
-    obj: any,
+    obj: unknown,
     prefix = "",
-    res: Record<string, any> = {},
-  ): Record<string, any> {
+    res: Record<string, unknown> = {},
+  ): Record<string, unknown> {
     if (obj == null || typeof obj !== "object") {
       if (prefix) res[prefix] = obj;
       return res;
     }
 
-    const entries: [string, any][] = Array.isArray(obj)
+    const entries: [string, unknown][] = Array.isArray(obj)
       ? obj.map((v, i) => [String(i), v])
-      : Object.entries(obj);
+      : Object.entries(obj as Record<string, unknown>);
 
     for (const [key, val] of entries) {
       const prop = prefix ? `${prefix}.${key}` : key;
@@ -387,20 +368,17 @@ export class FIRSInvoiceTransformerV2 {
     return res;
   }
 
-  /**
-   * Set a value anywhere in a nested object/array using a dot-notation path.
-   * Bracket notation is normalised: "items[0].name" → "items.0.name"
-   * Numeric segments auto-create arrays; string segments auto-create objects.
-   * "[*]" sets the value on every element of the target array.
-   */
-  private setDeepValue(obj: any, path: string, value: any): void {
-    // Normalise bracket notation to dot-notation
+  private setDeepValue(
+    obj: Record<string, unknown>,
+    path: string,
+    value: unknown,
+  ): void {
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
       .filter(Boolean);
 
-    let current = obj;
+    let current: any = obj;
 
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
@@ -411,11 +389,9 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       if (current[key] == null || typeof current[key] !== "object") {
-        // Create array if next key is numeric, otherwise create object
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
 
-      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
 
@@ -430,9 +406,8 @@ export class FIRSInvoiceTransformerV2 {
     }
 
     if (last === "*") {
-      // Wildcard: apply value to every element of the current array
       if (Array.isArray(current)) {
-        current.forEach((_: any, i: number) => {
+        current.forEach((_: unknown, i: number) => {
           current[i] = value;
         });
       }
@@ -441,73 +416,52 @@ export class FIRSInvoiceTransformerV2 {
     }
   }
 
-  /**
-   * Get a value from anywhere in a nested object/array using a dot-notation path.
-   * Bracket notation is normalised: "items[0].name" → "items.0.name"
-   * "[*]" collects the value from every element of the array at that position.
-   */
-  private getDeepValue(obj: any, path: string): any {
+  private getDeepValue(obj: unknown, path: string): unknown {
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
       .filter(Boolean);
+
     return this._traverseDeep(obj, keys);
   }
 
-  private _traverseDeep(current: any, keys: string[]): any {
-    if (keys.length === 0) return current;
-    if (current == null) return undefined;
+  private _traverseDeep(current: unknown, keys: string[]): unknown {
+    if (current == null || keys.length === 0) return current;
 
-    const [head, ...rest] = keys;
+    const [key, ...rest] = keys;
 
-    if (
-      head === "__proto__" ||
-      head === "constructor" ||
-      head === "prototype"
-    ) {
-      throw new Error("Prototype pollution attempt detected");
-    }
-
-    if (head === "*") {
+    if (key === "*") {
       if (!Array.isArray(current)) return undefined;
       const results = current
-        .map((item: any) => this._traverseDeep(item, rest))
-        .filter((v: any) => v !== undefined);
-      if (results.length === 0) return undefined;
-      return results.length === 1 ? results[0] : results;
+        .map((item: unknown) => this._traverseDeep(item, rest))
+        .filter((v: unknown) => v !== undefined);
+      return results.length === 0 ? undefined : results;
     }
 
-    return this._traverseDeep(current[head], rest);
+    const next = (current as Record<string, unknown>)?.[key];
+    return this._traverseDeep(next, rest);
   }
 
-  /* -----------------------------------------------------
-     RULE MAPPING ENGINE
-    ----------------------------------------------------- */
+  private deterministicTransform(
+    invoice: Record<string, unknown>,
+    mappingRules: MappingRuleItem[],
+  ): Record<string, unknown> {
+    if (!mappingRules?.length) return {};
 
-  private deterministicTransform(invoice: any, mappingRules: any[]) {
-    // Flatten the entire invoice (arrays included) so every leaf value
-    // is reachable by its dot-notation path e.g. "items.0.description"
     const flat = this.flattenObject(invoice);
+    const result: Record<string, unknown> = {};
 
-    const result: Record<string, any> = {};
+    for (const rule of mappingRules) {
+      const normalised = rule.source
+        .replace(/\[(\d+|\*)\]/g, ".$1")
+        .replace(/^\./, "");
 
-    for (const rule of mappingRules || []) {
-      if (!rule.source || !rule.target) continue;
+      let value: unknown = flat[normalised] ?? flat[rule.source];
 
-      // Normalise the source path to dot-notation for flat-map lookup
-      const normalised = rule.source.replace(/\[(\d+|\*)\]/g, ".$1");
-
-      // 1. Exact match in the flat map (fastest, handles simple paths)
-      let value: any = flat[normalised] ?? flat[rule.source];
-
-      // 2. Fallback: traverse the original invoice (handles [*] wildcards
-      //    and any path format the flat key normalisation may have missed)
       if (value === undefined) {
         value = this.getDeepValue(invoice, rule.source);
       }
 
-      // 3. If a wildcard returned an array but the target is a scalar,
-      //    take the first element
       if (
         Array.isArray(value) &&
         !rule.target.includes("[*]") &&
@@ -524,15 +478,13 @@ export class FIRSInvoiceTransformerV2 {
     return result;
   }
 
-  /* -----------------------------------------------------
-     REQUIRED FIELD RESOLUTION
-    ----------------------------------------------------- */
-
-  private ensureRequiredFields(data: any, schema: ISchemaField[]) {
+  private ensureRequiredFields(
+    data: Record<string, unknown>,
+    schema: ISchemaField[],
+  ): Record<string, unknown> {
     for (const field of schema) {
-      console.log({ field });
-      let fieldRequired =
-        field.is_required || field.validation_rules!.indexOf("required") > -1;
+      const fieldRequired =
+        field.is_required || field.validation_rules?.indexOf("required") !== -1;
 
       if (!fieldRequired) continue;
 
@@ -546,11 +498,7 @@ export class FIRSInvoiceTransformerV2 {
     return data;
   }
 
-  /* -----------------------------------------------------
-     MISSING FIELD DETECTION
-    ----------------------------------------------------- */
-
-  private isValMissing(val: any): boolean {
+  private isValMissing(val: unknown): boolean {
     if (val === undefined || val === null || val === "") return true;
     if (Array.isArray(val)) {
       return val.length === 0 || val.some((v) => this.isValMissing(v));
@@ -558,12 +506,15 @@ export class FIRSInvoiceTransformerV2 {
     return false;
   }
 
-  private findMissingFields(data: any, schema: ISchemaField[]) {
+  private findMissingFields(
+    data: Record<string, unknown>,
+    schema: ISchemaField[],
+  ): string[] {
     const missing: string[] = [];
 
     for (const field of schema) {
-      let fieldRequired =
-        field.is_required || field.validation_rules!.indexOf("required") > -1;
+      const fieldRequired =
+        field.is_required || field.validation_rules?.indexOf("required") !== -1;
 
       if (!fieldRequired) continue;
 
@@ -577,236 +528,114 @@ export class FIRSInvoiceTransformerV2 {
     return missing;
   }
 
-  /* -----------------------------------------------------
-     SCHEMA AWARE PROMPT BUILDER
-    ----------------------------------------------------- */
-
   private buildSchemaAwarePrompt(
-    invoice: any,
+    invoice: Record<string, unknown>,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
     firsSchema: ISchemaField[],
     missingFields: string[],
-    taxCategories: TaxCategory[],
-    invoiceTypes: InvoiceType[],
-  ) {
-    const requiredFields = firsSchema
-      .filter(
-        (f) => f.is_required || f.validation_rules!.indexOf("required") > -1,
-      )
-      .map((f) => ({
-        path: f.field_path,
-        type: f.data_type,
-        enum: f.enum_values,
-        example: f.example_value,
-        description: f.description,
-      }));
+    taxCategories?: TaxCategory[],
+    invoiceTypes?: InvoiceType[],
+  ): string {
+    const metaContext = `
+Missing Fields Detected in Incoming Data:
+${missingFields.join(", ")}
+`;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const invoiceRef = `INV${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(
-      Math.random() * 1000,
-    )
-      .toString()
-      .padStart(3, "0")}`;
-    let irn = generateIRN(
-      invoiceRef,
-      authContext?.serviceId,
-      invoice.issueDate ? new Date(invoice.issueDate) : undefined,
+    return SYSTEM_PROMPT_V2(
+      invoice,
+      taxCategories || [],
+      invoiceTypes || [],
+      authContext,
+      sourceSchema,
+      firsSchema,
+      undefined,
+      metaContext,
     );
-
-    // Build source schema section
-    let sourceSchemaSection = "";
-    if (sourceSchema && sourceSchema.length > 0) {
-      const sourceRequired = getRequiredFields(sourceSchema);
-      const sourceOptional = getOptionalFields(sourceSchema);
-      sourceSchemaSection = `
-## SOURCE ERP SCHEMA FIELDS:
-${formatSchemaFields(sourceSchema, "Source ERP")}
-
-Source Required Fields: ${sourceRequired.join(", ") || "None specified"}
-Source Optional Fields: ${sourceOptional.join(", ") || "None specified"}
-`;
-    }
-
-    // Build FIRS schema section
-    let firsSchemaSection = "";
-    if (firsSchema && firsSchema.length > 0) {
-      const firsRequired = getRequiredFields(firsSchema);
-      const firsOptional = getOptionalFields(firsSchema);
-      firsSchemaSection = `
-## TARGET FIRS UBL SCHEMA FIELDS:
-${formatSchemaFields(firsSchema, "FIRS UBL")}
-
-FIRS Required Fields: ${firsRequired.join(", ") || "None specified"}
-FIRS Optional Fields: ${firsOptional.join(", ") || "None specified"}
-`;
-    }
-    let businessContext = `
-            ## BUSINESS CONTEXT:
-            - Business ID: ${authContext.businessId || "{{TEST_BUSINESS_ID}}"}
-            - Tenant ID: ${authContext.tenantId || "N/A"}
-            - Tenant Business Name: ${authContext.businessName}
-            - Tenant Business TIN: ${authContext.businessTIN}
-            - Service ID: ${authContext?.serviceId}
-            - Default IRN: ${invoice.irn ?? irn}
-            `;
-    const isDev =
-      process.env.NODE_ENV === "development" ||
-      process.env.NODE_ENV !== "production";
-
-    const tinFormatInstruction = isDev
-      ? `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. For accounting_customer_party.tin, a valid Nigerian TIN must be numeric (e.g., "61392352-1056" or 10-14 digits). If the source data does not provide a valid numeric TIN or provides an internal customer/party code (e.g. "AVONHEALTHCARE", "CUST01", "00000000-0000"), you MUST use the supplier TIN "${authContext?.businessTIN || "61392352-1056"}" for accounting_customer_party.tin.`
-      : `TIN format: accounting_supplier_party.tin should use "${authContext?.businessTIN || ""}" if not provided. TIN format for accounting_customer_party.tin should be preserved from source.`;
-
-    return `
-You are an expert data transformation AI specializing in Nigerian FIRS (Federal Inland Revenue Service) e-invoicing compliance. Transform the provided invoice data into the exact FIRS UBL schema format.
-
-${businessContext}
-${sourceSchemaSection}
-${firsSchemaSection}
-
---------------------------------
-
-MISSING FIELDS
-${JSON.stringify(missingFields)}
-
---------------------------------
-# FIRS INVOICE TRANSFORMATION RULES
-
-## MANDATORY FIELDS (MUST BE PRESENT) do not change the field names:
-- business_id: Use "${authContext?.businessId || "{{TEST_BUSINESS_ID}}"}"
-- irn: Generate unique reference if not provided, use ${invoice.irn ?? irn} as default
-- irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
-- issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice request, "380" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
-- document_currency_code: REQUIRED, default to "NGN"
-- accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
-- accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
-- tax_total: REQUIRED - must include tax_amount and tax_subtotal array
-- legal_monetary_total: REQUIRED with line_extension_amount, tax_exclusive_amount, tax_inclusive_amount, payable_amount
-- invoice_line: REQUIRED array with at least one item
-
-Ensure all keys above are not changed
-
-## TAX TOTAL REQUIREMENTS (CRITICAL):
-- tax_total MUST be present as an array with at least one object
-- Each tax_total object must contain:
-  * tax_amount: total tax amount for this tax type
-  * tax_subtotal: array of tax breakdowns with taxable_amount, tax_amount, tax_category (id, percent)
-
-## VALID TAX CATEGORIES:
-${JSON.stringify(taxCategories, null, 2)}
-
-## VALID INVOICE TYPES:
-${JSON.stringify(invoiceTypes, null, 2)}
-
-## DATE/TIME FORMATTING RULES:
-1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")
-2. NEVER leave date fields empty or as empty strings
-3. For missing dates in document references, use the main invoice's issue_date
-4. Times must be in HH:MM:SS format
-
-## AUTO-POPULATION RULES:
-1. payment_status: default to "PENDING" if missing
-2. document_currency_code: default to "NGN" if missing
-3. tax_currency_code: default to "NGN" if missing
-4. postal_zone: use "100001" if missing
-5. telephone: ensure it starts with "+" (country code)
-6. invoice_kind: default to "B2B" if missing
-
-## PARTY INFORMATION RULES (STRICT NESTING REQUIRED):
-- accounting_supplier_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
-- accounting_customer_party: MANDATORY (party_name, tin, email, telephone, business_description, postal_address)
-- All supplier information MUST be nested EXCLUSIVELY inside the accounting_supplier_party object.
-- All customer/buyer information MUST be nested EXCLUSIVELY inside the accounting_customer_party object.
-- NEVER output unnested or flat duplicate properties at the root level of the JSON (such as supplier_party_name, customer_party_name, supplier_tin, customer_tin, supplier_email, customer_email, legal_monetary_total_payable_amount, invoice_line_hsn_code, etc.). Keep the top level clean and structured.
-- All party objects require: party_name, tin, email, postal_address
-- Telephone must start with "+" if provided
-- ${tinFormatInstruction}
-
-## FIELD METADATA REQUIREMENTS:
-${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
---------------------------------
-
-## INVOICE LINE ITEM RULES:
-Each invoice_line must contain:
-- hsn_code: product/service classification code. MUST NOT be empty. If it is missing or empty in the input data, you must deduce the correct HSN code from the item name or description (e.g., if the item is "phone", deduce the HSN code for mobile phones). If it does not contain a decimal point, format it to end with ".00" (e.g., "90983" becomes "90983.00"). Ensure each distinct type of product or service in the invoice line items has a unique and appropriate HSN code assigned (do not reuse the same HSN code for different products or services).
-- product_category: category name
-- invoiced_quantity: quantity (number)
-- line_extension_amount: line total before tax
-- item: object with name, description
-- price: object with price_amount (number), base_quantity (number, usually 1), price_unit (UN/ECE unit code — NOT a currency; use H87=piece, XBG=bag, KGM=kg, LTR=litre, TNE=tonne, XBX=box, XCT=carton; default H87 if unsure — NEVER use "NGN", "USD" or similar currency codes)
-
-## IMPORTANT INSTRUCTIONS:
-1. Return ONLY valid JSON in the exact FIRS schema format
-2. Do not include any explanation, comments, or additional text
-3. Map the input data intelligently to the appropriate FIRS fields
-4. Use reasonable defaults for missing mandatory fields
-5. Ensure all amounts and calculations are accurate numbers
-6. For arrays, include only if data is available
-7. TAX_TOTAL IS MANDATORY - include it even if tax is zero
-8. All enum fields should use valid FIRS codes only
-9. Do not include escape sequences (\\n, \\t, \\r, etc.)
-10. Ensure email, phone, postal codes are valid per FIRS rules
-11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
-12. invoice_unique_number should be "irn" in the final result
-13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
-14. Map ERP standard invoice_type_code 381 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note (380).
-15. Extract nexted keys in payload to match the valid FIRS schema
-16. optional fields should not be included if not provided by invoice input! [allowance_charge]
-17. Descriptions and should have default values derived from product
- 
-FIRS SCHEMA EXAMPLE (Use this only as an example for a valid invoice payload):
-${SAMPLE_INVOICE_BODY}
-
-## INPUT INVOICE DATA TO TRANSFORM:
-${JSON.stringify(invoice, null, 2)}
- 
-Transform the input data to match the FIRS UBL schema exactly. Return only valid JSON.
-
-Complete the missing fields also generate emails here missing currency should default to NGN when missing.
-`;
   }
 
-  /* -----------------------------------------------------
-     LLM CALL
-    ----------------------------------------------------- */
+  private async callLLM(prompt: string): Promise<string> {
+    if (this.provider === "gemini") {
+      return this.callGemini(prompt);
+    }
+    return this.callOpenAI(prompt);
+  }
 
-  private async callLLM(prompt: string) {
+  private async callGemini(prompt: string): Promise<string> {
+    const model = this.model || "gemini-2.0-flash";
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+        },
+      }),
+    });
+
+    const json = (await response.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+
+    const candidates = json?.candidates as
+      | Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      | undefined;
+    const text = candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!response.ok || !text) {
+      const errorMsg =
+        (json?.error as { message?: string } | undefined)?.message ||
+        `Gemini API failed with status ${response.status}`;
+      logger.error("[TransformerV2] Gemini call failed", {
+        status: response.status,
+        model,
+        error: json?.error || json,
+      });
+      throw new Error(`Gemini LLM error (${response.status}): ${errorMsg}`);
+    }
+
+    return text;
+  }
+
+  private async callOpenAI(prompt: string): Promise<string> {
     const response = await fetch(this.apiEndpoint, {
       method: "POST",
-
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
       },
-
       body: JSON.stringify({
         model: this.model,
-        temperature: 0,
-        max_tokens: 4000,
+        temperature: 0.1,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "You are a strict JSON generator.",
+            content: "You are an expert FIRS e-invoicing data transformer.",
           },
-          {
-            role: "user",
-            content: prompt,
-          },
+          { role: "user", content: prompt },
         ],
       }),
     });
 
-    const json: any = await response.json().catch(() => null);
+    const json = (await response.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    const choices = json?.choices as
+      | Array<{ message?: { content?: string } }>
+      | undefined;
+    const content = choices?.[0]?.message?.content;
 
-    if (!response.ok || !json?.choices?.[0]?.message?.content) {
+    if (!response.ok || !content) {
       const errorMsg =
-        json?.error?.message ||
-        json?.message ||
-        `OpenAI API request failed with status ${response.status} (${response.statusText})`;
+        (json?.error as { message?: string } | undefined)?.message ||
+        `OpenAI request failed with status ${response.status}`;
       logger.error("[TransformerV2] OpenAI call failed", {
         status: response.status,
         endpoint: this.apiEndpoint,
@@ -816,27 +645,24 @@ Complete the missing fields also generate emails here missing currency should de
       throw new Error(`OpenAI LLM error (${response.status}): ${errorMsg}`);
     }
 
-    return json.choices[0].message.content;
+    return content;
   }
 
-  /* -----------------------------------------------------
-     JSON PARSER
-    ----------------------------------------------------- */
-
-  private safeParseLLMJSON(text: string) {
+  private safeParseLLMJSON(text: string): Record<string, unknown> {
     const cleaned = text
       .replace(/```json/g, "")
       .replace(/```/g, "")
       .trim();
 
-    return JSON.parse(cleaned);
+    return JSON.parse(cleaned) as Record<string, unknown>;
   }
 
-  /* -----------------------------------------------------
-     ZOD VALIDATION
-    ----------------------------------------------------- */
-
-  private validateWithZod(data: any, schema: z.ZodSchema) {
+  private validateWithZod(
+    data: unknown,
+    schema: z.ZodSchema,
+  ):
+    | { valid: true; data: unknown; errors?: undefined }
+    | { valid: false; data?: undefined; errors: unknown } {
     const result = schema.safeParse(data);
 
     if (result.success) {
@@ -852,28 +678,22 @@ Complete the missing fields also generate emails here missing currency should de
     };
   }
 
-  /* -----------------------------------------------------
-     REPAIR ENGINE
-    ----------------------------------------------------- */
-
   private async repairJSON(
-    json: any,
-    errors: any,
+    json: Record<string, unknown>,
+    errors: unknown,
     authContext: AuthContext,
     sourceSchema: ISchemaField[],
     taxCategories: TaxCategory[],
     invoiceTypes: InvoiceType[],
-  ) {
+  ): Promise<Record<string, unknown>> {
     const expectedBusinessId = authContext?.businessId || json.business_id;
-    const expectedSupplierTIN =
-      authContext?.businessTIN || json.accounting_supplier_party?.tin;
+    const supplierParty = json.accounting_supplier_party as
+      | Record<string, unknown>
+      | undefined;
+    const expectedSupplierTIN = authContext?.businessTIN || supplierParty?.tin;
     const expectedIrn = json.irn;
 
-    const metaContext: string = `
-                Initial Validation Errors:
-                ${JSON.stringify(errors)} 
-
-`;
+    const metaContext = `\nInitial Validation Errors:\n${JSON.stringify(errors)}\n\n`;
 
     const systemPrompt = await generateTransformPrompt(
       json,
@@ -901,7 +721,6 @@ Return valid, corrected JSON only following all system prompt rules.
 
     const parsed = this.safeParseLLMJSON(response);
 
-    // Validate that LLM did not modify identity fields during repair
     if (
       parsed.business_id !== undefined &&
       expectedBusinessId &&
@@ -916,7 +735,10 @@ Return valid, corrected JSON only following all system prompt rules.
         "LLM in repair attempted to modify the irn identity field",
       );
     }
-    const parsedSupplierTIN = parsed.accounting_supplier_party?.tin;
+    const parsedSupplier = parsed.accounting_supplier_party as
+      | Record<string, unknown>
+      | undefined;
+    const parsedSupplierTIN = parsedSupplier?.tin;
     if (
       parsedSupplierTIN !== undefined &&
       expectedSupplierTIN &&
@@ -929,7 +751,6 @@ Return valid, corrected JSON only following all system prompt rules.
 
     const repaired = { ...json, ...parsed };
 
-    // Force-overwrite identity fields post-merge to prevent bypass
     if (expectedBusinessId) {
       repaired.business_id = expectedBusinessId;
     }
@@ -937,10 +758,14 @@ Return valid, corrected JSON only following all system prompt rules.
       repaired.irn = expectedIrn;
     }
     if (expectedSupplierTIN) {
-      if (!repaired.accounting_supplier_party) {
+      if (
+        !repaired.accounting_supplier_party ||
+        typeof repaired.accounting_supplier_party !== "object"
+      ) {
         repaired.accounting_supplier_party = {};
       }
-      repaired.accounting_supplier_party.tin = expectedSupplierTIN;
+      (repaired.accounting_supplier_party as Record<string, unknown>).tin =
+        expectedSupplierTIN;
     }
 
     return repaired;

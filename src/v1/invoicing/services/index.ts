@@ -1,9 +1,9 @@
 /**
  * Invoice Workflow Service
- * Handles individual invoice operations for the e-invoicing workflow
+ * Orchestrates individual invoice operations for the e-invoicing workflow
+ * using reusable, modular workflow step functions.
  */
 
-import { firsConfig } from "../../../@config";
 import {
   FIRSService,
   VATPostPaymentReportData,
@@ -11,18 +11,23 @@ import {
 import { TenantService } from "../../tenants/services/tenant.service";
 import { OutboundInvoiceRepository } from "../../workflow/repos/outbound-invoice.repo";
 import { InboundInvoiceRepository } from "../../workflow/repos/inbound-invoice.repo";
-import {
-  OutboundInvoiceStatus,
-  type OutboundInvoiceDocument,
-} from "../../workflow/models/outbound-invoice.model";
-import { AppError, NotFoundError, ValidationError } from "../../../@lib";
+import { type OutboundInvoiceDocument } from "../../workflow/models/outbound-invoice.model";
+import { AppError } from "../../../@lib";
 import { TransformWorkflowService } from "../../workflow/services/workflows/transform.service";
-import { InboundInvoiceStatus } from "../../workflow/models";
 import { AuthContext } from "../../../middlewares";
+import { extractFIRSError } from "../../shared/utils";
+import {
+  executeValidateInvoiceStep,
+  executeSignInvoiceStep,
+  executeGenerateQRStep,
+  executeTransmitInvoiceStep,
+  executeDecryptInvoiceStep,
+  executeUpdateInvoiceStatusStep,
+  executeReportVATStep,
+  executeConfirmStatusStep,
+  type InvoicePaymentStatusType,
+} from "./steps";
 
-/**
- * Invoice Workflow Service
- */
 export class InvoiceWorkflowService {
   private firsService: FIRSService;
   private tenantService: TenantService;
@@ -30,51 +35,32 @@ export class InvoiceWorkflowService {
   private inboundRepo: InboundInvoiceRepository;
   private transformService: TransformWorkflowService;
 
-  constructor() {
-    this.firsService = new FIRSService();
-    this.tenantService = new TenantService();
-    this.outboundRepo = new OutboundInvoiceRepository();
-    this.inboundRepo = new InboundInvoiceRepository();
-    this.transformService = new TransformWorkflowService();
+  constructor(dependencies?: {
+    firsService?: FIRSService;
+    tenantService?: TenantService;
+    outboundRepo?: OutboundInvoiceRepository;
+    inboundRepo?: InboundInvoiceRepository;
+    transformService?: TransformWorkflowService;
+  }) {
+    this.firsService = dependencies?.firsService ?? new FIRSService();
+    this.tenantService = dependencies?.tenantService ?? new TenantService();
+    this.outboundRepo =
+      dependencies?.outboundRepo ?? new OutboundInvoiceRepository();
+    this.inboundRepo =
+      dependencies?.inboundRepo ?? new InboundInvoiceRepository();
+    this.transformService =
+      dependencies?.transformService ?? new TransformWorkflowService();
   }
 
   /**
    * Format FIRS error for consistent error handling
    */
-  private getFIRSError(error: any) {
-    const data =
-      error?.response?.data ||
-      error?.data ||
-      error?.errors?.response ||
-      error?.errors;
-    const message =
-      data?.error?.public_message ||
-      data?.error?.message ||
-      data?.public_message ||
-      data?.message ||
-      (Array.isArray(data?.errors)
-        ? data.errors
-            .map((e: any) =>
-              typeof e === "string" ? e : e?.message || JSON.stringify(e),
-            )
-            .join("; ")
-        : data?.errors
-          ? JSON.stringify(data.errors)
-          : "") ||
-      error?.message ||
-      "An error occurred, please try again.";
-    const code =
-      error?.response?.status ||
-      data?.code ||
-      error?.statusCode ||
-      error?.errors?.code ||
-      500;
-    return { message, code };
+  getFIRSError(error: any) {
+    return extractFIRSError(error);
   }
 
   /**
-   * Transform Invoice
-   * Transforms invoice data to FIRS UBL format
+   * Transform Invoice to FIRS UBL format
    */
   async transformInvoice(
     invoice: any,
@@ -85,9 +71,9 @@ export class InvoiceWorkflowService {
         invoice,
         authContext,
       );
-      // If we have an IRN, update the stored invoice
+
       if (transformedPayload.irn) {
-        let createPayload: OutboundInvoiceDocument = {
+        const createPayload: OutboundInvoiceDocument = {
           ...transformedPayload,
           tenantId: authContext?.tenantId,
           erpSystem: authContext?.tenantERP,
@@ -105,314 +91,73 @@ export class InvoiceWorkflowService {
         workflowState: { transformed: true },
       };
     } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
+      const { message, code } = extractFIRSError(error);
       throw new AppError(code, `Transform failed: ${message}`);
     }
   }
 
   /**
-   * Validate Invoice
-   * Validates invoice against FIRS requirements
+   * Validate Invoice against FIRS requirements
    */
   async validateInvoice(businessId: string, invoice: any): Promise<any> {
-    try {
-      const targetInvoice = invoice?.data || invoice?.invoice || invoice;
-      targetInvoice.business_id = businessId;
-
-      console.log(JSON.stringify({ invoice: targetInvoice }, undefined, 2));
-
-      // Call FIRS validation API
-      const validationResult: any = await this.firsService.validateInvoice(
-        businessId,
-        targetInvoice,
-      );
-
-      console.log({ validationResult });
-
-      if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
-        const errorList: string[] = [];
-        if (Array.isArray(validationResult?.errors)) {
-          errorList.push(
-            ...validationResult.errors.map((e: any) =>
-              typeof e === "string" ? e : e?.message || JSON.stringify(e),
-            ),
-          );
-        } else if (validationResult?.errors) {
-          errorList.push(
-            typeof validationResult.errors === "string"
-              ? validationResult.errors
-              : JSON.stringify(validationResult.errors),
-          );
-        }
-        if (validationResult?.message) {
-          errorList.push(validationResult.message);
-        }
-        if (validationResult?.data?.message) {
-          errorList.push(validationResult.data.message);
-        }
-        if (errorList.length === 0) {
-          errorList.push(
-            validationResult?.code
-              ? `FIRS validation returned status ${validationResult.code}`
-              : "Validation failed",
-          );
-        }
-
-        return {
-          success: false,
-          valid: false,
-          errors: errorList,
-          workflowState: { validated: false },
-        };
-      }
-
-      // If we have an IRN, update the stored invoice if it exists in DB
-      if (targetInvoice.irn) {
-        const existing = await this.outboundRepo.findByIrn(targetInvoice.irn);
-        if (existing) {
-          await this.outboundRepo.update(targetInvoice.irn, {
-            status: OutboundInvoiceStatus.VALIDATED,
-          });
-          await this.outboundRepo.updateWorkflowState(targetInvoice.irn, {
-            validated: true,
-          });
-        }
-      }
-
-      return {
-        success: true,
-        valid: true,
-        data: validationResult.data,
-        workflowState: { validated: true },
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Validation failed: ${message}`);
-    }
+    return executeValidateInvoiceStep({
+      businessId,
+      invoice,
+      firsService: this.firsService,
+      outboundRepo: this.outboundRepo,
+    });
   }
 
   /**
-   * Sign Invoice
-   * Signs the invoice using tenant's FIRS credentials
+   * Sign Invoice using tenant's FIRS credentials
    */
   async signInvoice(authContext: AuthContext, invoice: any): Promise<any> {
-    try {
-      const targetInvoice = invoice?.data || invoice?.invoice || invoice;
-      // Prepare invoice with certificate
-      const invoiceWithCert = {
-        ...targetInvoice,
-        business_id: authContext.businessId,
-      };
-      // Call FIRS sign API
-      const signResult: any = await this.firsService.signInvoice(
-        authContext.tenantId,
-        invoiceWithCert,
-      );
-
-      if (!signResult?.data?.ok && signResult?.code !== 200) {
-        const errorList: string[] = [];
-        if (Array.isArray(signResult?.data?.errors)) {
-          errorList.push(
-            ...signResult.data.errors.map((e: any) =>
-              typeof e === "string" ? e : e?.message || JSON.stringify(e),
-            ),
-          );
-        } else if (signResult?.data?.errors) {
-          errorList.push(
-            typeof signResult.data.errors === "string"
-              ? signResult.data.errors
-              : JSON.stringify(signResult.data.errors),
-          );
-        }
-        if (signResult?.message) {
-          errorList.push(signResult.message);
-        }
-        if (signResult?.data?.message) {
-          errorList.push(signResult.data.message);
-        }
-        if (errorList.length === 0) {
-          errorList.push(
-            signResult?.code
-              ? `FIRS signing returned status ${signResult.code}`
-              : "Signing failed",
-          );
-        }
-
-        return {
-          success: false,
-          signed: false,
-          errors: errorList,
-          workflowState: { signed: false },
-        };
-      }
-
-      console.log({ signResult });
-
-      // Update stored invoice if IRN exists and is in DB
-      if (targetInvoice.irn) {
-        const existing = await this.outboundRepo.findByIrn(targetInvoice.irn);
-        if (existing) {
-          await this.outboundRepo.update(targetInvoice.irn, {
-            status: OutboundInvoiceStatus.SIGNED,
-          });
-          await this.outboundRepo.updateWorkflowState(targetInvoice.irn, {
-            signed: true,
-          });
-        }
-      }
-
-      return {
-        success: true,
-        signed: true,
-        data: signResult.data,
-        workflowState: { signed: true },
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Signing failed: ${message}`);
-    }
+    return executeSignInvoiceStep({
+      authContext,
+      invoice,
+      firsService: this.firsService,
+      outboundRepo: this.outboundRepo,
+    });
   }
 
   /**
-   * Generate QR Code
-   * Generates QR code for the invoice using tenant's credentials
+   * Generate QR Code for invoice
    */
   async generateQR(authContext: AuthContext, irn: string): Promise<any> {
-    try {
-      const credentials = await this.tenantService.getFIRSCredentials(
-        authContext.tenantId,
-      );
-      const { certificate, publicKey } = credentials;
-
-      // Generate QR code
-      const qrResult = await this.firsService.generateQRCodeV2(
-        irn,
-        certificate,
-        publicKey,
-      );
-
-      if (!qrResult?.qrCode && !qrResult?.data) {
-        throw new AppError(500, "QR code generation failed");
-      }
-
-      // Update stored invoice if exists
-      const existingInvoice = await this.outboundRepo.findByIrn(irn);
-      if (existingInvoice) {
-        await this.outboundRepo.update(irn, {
-          qrCode: qrResult.qrCode,
-        });
-      }
-
-      return {
-        success: true,
-        irn,
-        qrCode: qrResult.qrCode,
-        encryptedData: qrResult.data,
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `QR generation failed: ${message}`);
-    }
+    return executeGenerateQRStep({
+      authContext,
+      irn,
+      firsService: this.firsService,
+      tenantService: this.tenantService,
+      outboundRepo: this.outboundRepo,
+    });
   }
 
   /**
-   * Transmit Invoice
-   * Transmits the signed invoice to FIRS
+   * Transmit signed invoice to FIRS
    */
   async transmitInvoice(authContext: AuthContext, irn: string): Promise<any> {
-    try {
-      // Verify invoice exists and is ready for transmission
-      const invoice = await this.outboundRepo.findByIrn(irn);
-      if (invoice && invoice.tenantId !== authContext.tenantId) {
-        throw new ValidationError("Invoice does not belong to this business");
-      }
-
-      // Call FIRS transmit API
-      const transmitResult = await this.firsService.transmitInvoice(
-        authContext.tenantId,
-        irn,
-      );
-
-      // Update stored invoice if exists
-      if (invoice) {
-        await this.outboundRepo.update(irn, {
-          status: OutboundInvoiceStatus.TRANSMITTED,
-          //  firsResponse: transmitResult?.data,
-        });
-        await this.outboundRepo.updateWorkflowState(irn, { transmitted: true });
-      }
-
-      return {
-        success: true,
-        irn,
-        transmitted: true,
-        data: transmitResult,
-        workflowState: { transmitted: true },
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Transmission failed: ${message}`);
-    }
+    return executeTransmitInvoiceStep({
+      authContext,
+      irn,
+      firsService: this.firsService,
+      outboundRepo: this.outboundRepo,
+    });
   }
 
   /**
-   * Decrypt Invoice (Inbound)
-   * Downloads and decrypts an inbound invoice from FIRS
+   * Download and decrypt inbound invoice from FIRS
    */
   async decryptInvoice(authContext: AuthContext, irn: string): Promise<any> {
-    try {
-      // Download invoice from FIRS
-      const invoiceResponse = await this.firsService.downloadInvoice(
-        authContext.tenantId,
-        irn,
-      );
-      const encryptedInvoice = invoiceResponse?.data;
-
-      if (
-        !encryptedInvoice ||
-        !encryptedInvoice.iv_hex ||
-        !encryptedInvoice.pub ||
-        !encryptedInvoice.data
-      ) {
-        throw new NotFoundError("Invoice not found on FIRS");
-      }
-
-      // Decrypt the invoice
-      const decryptedData = await this.firsService.decryptInvoice({
-        iv_hex: encryptedInvoice.iv_hex,
-        pub: encryptedInvoice.pub,
-        ciphertext: encryptedInvoice.data,
-        api_key: firsConfig?.appApiKey,
-      });
-
-      // Scope decryption to invoices owned by the authenticated tenant
-      if (
-        decryptedData.business_id !== authContext.businessId &&
-        decryptedData.accounting_supplier_party?.tin !==
-          authContext.businessTIN &&
-        decryptedData.accounting_customer_party?.tin !== authContext.businessTIN
-      ) {
-        throw new ValidationError("Invoice does not belong to this business");
-      }
-
-      return {
-        success: true,
-        irn,
-        decrypted: true,
-        data: decryptedData,
-      };
-    } catch (error: any) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
-        throw error;
-      }
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Decryption failed: ${message}`);
-    }
+    return executeDecryptInvoiceStep({
+      authContext,
+      irn,
+      firsService: this.firsService,
+    });
   }
 
   /**
-   * Acknowledge Invoice Receipt
-   * Acknowledges receipt of an inbound invoice
+   * Acknowledge receipt of an inbound invoice
    */
   async acknowledgeInvoiceReceipt(
     businessId: string,
@@ -420,17 +165,12 @@ export class InvoiceWorkflowService {
     message?: string,
   ): Promise<any> {
     try {
-      // Call FIRS acknowledge API
-      const ackResult = await this.firsService.acknowledgeInvoiceReceipt(
-        businessId,
-        irn,
-      );
+      const ackResult = await this.firsService.acknowledgeInvoiceReceipt(irn);
 
-      // Update inbound invoice if exists
       const inboundInvoice = await this.inboundRepo.findByIRN(irn);
       if (inboundInvoice && inboundInvoice.businessId === businessId) {
         await this.inboundRepo.update(irn, {
-          status: InboundInvoiceStatus.ACKNOWLEDGED,
+          status: "ACKNOWLEDGED" as any,
           acknowledgedAt: new Date(),
         });
       }
@@ -442,19 +182,18 @@ export class InvoiceWorkflowService {
         data: ackResult?.data,
       };
     } catch (error: any) {
-      const { message: errMsg, code } = this.getFIRSError(error);
+      const { message: errMsg, code } = extractFIRSError(error);
       throw new AppError(code, `Acknowledgement failed: ${errMsg}`);
     }
   }
 
   /**
-   * Update Invoice Status
-   * Updates the payment status of an invoice (PENDING, PAID, REJECTED)
+   * Update payment status of an invoice (PENDING, PAID, REJECTED)
    */
   async updateInvoiceStatus(
     tenantId: string,
     irn: string,
-    status: InvoicePaymentStatus,
+    status: InvoicePaymentStatusType,
     metadata?: {
       paymentDate?: Date;
       paymentAmount?: number;
@@ -462,149 +201,37 @@ export class InvoiceWorkflowService {
       rejectionReason?: string;
     },
   ): Promise<any> {
-    try {
-      // Check outbound invoice first
-      let invoice: any = await this.outboundRepo.findByIrn(irn);
-      let invoiceType = "outbound";
-
-      if (!invoice) {
-        // Check inbound invoice
-        invoice = await this.inboundRepo.findByIRN(irn);
-        invoiceType = "inbound";
-      }
-
-      if (!invoice) {
-        throw new NotFoundError("Invoice not found");
-      }
-
-      if (invoice.tenantId !== tenantId) {
-        throw new ValidationError("Invoice does not belong to this business");
-      }
-
-      const updateData: any = {
-        paymentStatus: status,
-        updatedAt: new Date(),
-      };
-
-      if (metadata?.paymentDate) updateData.paymentDate = metadata.paymentDate;
-      if (metadata?.paymentAmount) {
-        updateData.paymentAmount = metadata.paymentAmount;
-      }
-      if (metadata?.paymentReference) {
-        updateData.paymentReference = metadata.paymentReference;
-      }
-      if (metadata?.rejectionReason) {
-        updateData.rejectionReason = metadata.rejectionReason;
-      }
-
-      if (invoiceType === "outbound") {
-        await this.outboundRepo.update(irn, updateData);
-      } else {
-        await this.inboundRepo.update(invoice.irn, updateData);
-      }
-
-      return {
-        success: true,
-        irn,
-        invoiceType,
-        status,
-        updated: true,
-        metadata,
-      };
-    } catch (error: any) {
-      if (error instanceof NotFoundError || error instanceof ValidationError) {
-        throw error;
-      }
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Status update failed: ${message}`);
-    }
+    return executeUpdateInvoiceStatusStep({
+      tenantId,
+      irn,
+      status,
+      metadata,
+      outboundRepo: this.outboundRepo,
+      inboundRepo: this.inboundRepo,
+    });
   }
 
   /**
-   * Report Invoice (Post Payment)
-   * Reports invoice to FIRS for VAT post-payment reporting
-   *
-   * @param reportData - VAT post-payment report data (see VATPostPaymentReportData interface)
+   * Report invoice to FIRS for VAT post-payment reporting
    */
   async reportInvoice(reportData: VATPostPaymentReportData): Promise<any> {
-    try {
-      // Call FIRS VAT post-payment API
-      const reportResult: any = await this.firsService.reportVATPostPayment(
-        reportData.integrator_service_id || reportData.agent_tin,
-        reportData,
-      );
-
-      // Update invoice with report status
-      const invoice = await this.outboundRepo.findByIrn(reportData.irn);
-      if (invoice) {
-        await this.outboundRepo.update(reportData.irn, {
-          "metadata.vatReported": true,
-          "metadata.vatReportedAt": new Date(),
-          "metadata.vatReportResponse": reportResult?.data,
-        } as any);
-      }
-
-      return {
-        success: true,
-        irn: reportData.irn,
-        reported: true,
-        data: reportResult?.data,
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Report failed: ${message}`);
-    }
+    return executeReportVATStep({
+      reportData,
+      firsService: this.firsService,
+      outboundRepo: this.outboundRepo,
+    });
   }
 
   /**
-   * Get Invoice Status from FIRS
-   * Confirms the status of an invoice on FIRS
+   * Confirm invoice status on FIRS
    */
   async confirmInvoiceStatus(businessId: string, irn: string): Promise<any> {
-    try {
-      // Search for invoice on FIRS
-      const searchResult = await this.firsService.searchInvoice(
-        businessId,
-        businessId,
-        irn,
-      );
-
-      const result = searchResult.data;
-
-      if (!result?.data?.items || result.data.items.length === 0) {
-        return {
-          success: true,
-          irn,
-          found: false,
-          message: "Invoice not found on FIRS",
-        };
-      }
-
-      const firsInvoice = result.data.items[0];
-
-      // Confirm signed invoice status
-      const confirmResult: any = await this.firsService.confirmSignedInvoice(
-        businessId,
-        irn,
-      );
-
-      return {
-        success: true,
-        irn,
-        found: true,
-        firsStatus: {
-          paymentStatus: firsInvoice.payment_status,
-          entryStatus: firsInvoice.entry_status,
-          transmitted: confirmResult?.data?.transmitted || false,
-          delivered: confirmResult?.data?.delivered || false,
-          issueDate: firsInvoice.issue_date,
-          dueDate: firsInvoice.due_date,
-          syncDate: firsInvoice.sync_date,
-        },
-      };
-    } catch (error: any) {
-      const { message, code } = this.getFIRSError(error);
-      throw new AppError(code, `Status check failed: ${message}`);
-    }
+    return executeConfirmStatusStep({
+      businessId,
+      irn,
+      firsService: this.firsService,
+    });
   }
 }
+
+export * from "./steps";

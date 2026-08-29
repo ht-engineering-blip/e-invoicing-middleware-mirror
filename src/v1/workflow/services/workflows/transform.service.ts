@@ -14,6 +14,7 @@ import {
 } from "../../repos/invoice-schema-dictionary.repo";
 import { FIRSInvoiceTransformer } from "../../utils/transformer";
 import { FIRSInvoiceTransformerV2 } from "../../utils/transformer/v2";
+import { TTLCache } from "../../../shared/utils";
 
 /**
  * Input for upserting invoice schema
@@ -35,19 +36,30 @@ export class TransformWorkflowService {
   private tenantService: TenantService;
   private invoiceSchemaRepo: InvoiceSchemaDictionaryRepository;
 
-  constructor() {
-    this.tenantService = new TenantService();
-    this.invoiceSchemaRepo = new InvoiceSchemaDictionaryRepository();
+  // Cache schemas for 10 minutes to eliminate repetitive DB queries
+  private schemaCache = new TTLCache<
+    string,
+    InvoiceSchemaDictionaryDocument | null
+  >({
+    maxItems: 200,
+    defaultTtlMs: 600_000,
+  });
+
+  constructor(dependencies?: {
+    tenantService?: TenantService;
+    invoiceSchemaRepo?: InvoiceSchemaDictionaryRepository;
+  }) {
+    this.tenantService = dependencies?.tenantService ?? new TenantService();
+    this.invoiceSchemaRepo =
+      dependencies?.invoiceSchemaRepo ??
+      new InvoiceSchemaDictionaryRepository();
   }
 
   /**
    * Transform invoice from source ERP format to FIRS UBL format
-   * @param invoice - The raw invoice data to transform
-   * @param authContext - Authentication context with tenant/business info
-   * @param sourceType - The source ERP type for schema-based transformation (optional)
    */
   transformInvoice = async (
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {
@@ -65,28 +77,18 @@ export class TransformWorkflowService {
     );
 
     if (result?.success) {
-      // Data is valid and ready to send to FIRS
-      const parsedData = JSON.parse(JSON.stringify(result.data)); // Valid JSON
-
-      console.log({ parsedData });
-      return parsedData;
-      // Send to FIRS
-      //await transformer.sendToFIRS(result.data, 'https://firs-api.com');
+      return result.data;
     } else {
-      // Handle validation errors
       console.error("Errors:", result?.errors);
       throw result?.errors;
     }
   };
 
   /**
-   * Transform invoice from source ERP format to FIRS UBL format
-   * @param invoice - The raw invoice data to transform
-   * @param authContext - Authentication context with tenant/business info
-   * @param sourceType - The source ERP type for schema-based transformation (optional)
+   * Transform invoice from source ERP format to FIRS UBL format (V2)
    */
   transformInvoiceV2 = async (
-    invoice: any,
+    invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<any> => {
@@ -102,15 +104,10 @@ export class TransformWorkflowService {
       authContext,
       sourceType,
     );
-    console.log(JSON.stringify({ result }));
-    if (result?.success) {
-      // Data is valid and ready to send to FIRS
-      const parsedData = JSON.parse(JSON.stringify(result.data)); // Valid JSON
 
-      console.log({ parsedData });
-      return parsedData;
+    if (result?.success) {
+      return result.data;
     } else {
-      // Handle validation errors
       console.error("Errors:", result?.errors);
       throw result?.errors;
     }
@@ -118,22 +115,21 @@ export class TransformWorkflowService {
 
   /**
    * Upsert (create or update) an invoice schema dictionary
-   * If schema exists, updates it; otherwise creates a new one
    */
   upsertInvoiceSchema = async (
     sourceType: SchemaSourceType | string,
     schemaPayload: Partial<UpsertSchemaInput>,
   ): Promise<InvoiceSchemaDictionaryDocument> => {
-    // Generate schema_id if not provided
     const schemaId =
       schemaPayload.schema_id || this.generateSchemaId(sourceType);
 
-    // Check if schema already exists
+    this.schemaCache.delete(`source:${sourceType}`);
+    this.schemaCache.delete(`id:${schemaId}`);
+
     const existingSchema =
       await this.invoiceSchemaRepo.findBySchemaId(schemaId);
 
     if (existingSchema) {
-      // Update existing schema
       const updatePayload: UpdateSchemaDictionaryInput = {
         updated_by: schemaPayload.created_by || "system",
       };
@@ -151,15 +147,14 @@ export class TransformWorkflowService {
         updatePayload.mapping_rules = schemaPayload.mapping_rules;
       }
 
-      console.log({ updatePayload });
       const updated = await this.invoiceSchemaRepo.update(
         schemaId,
         updatePayload,
       );
-      console.log(`Updated schema dictionary: ${schemaId}`);
+      this.schemaCache.set(`id:${schemaId}`, updated);
+      this.schemaCache.set(`source:${sourceType}`, updated);
       return updated;
     } else {
-      // Create new schema
       const createPayload: CreateSchemaDictionaryInput = {
         schema_id: schemaId,
         name: schemaPayload.name || this.getDefaultSchemaName(sourceType),
@@ -174,7 +169,8 @@ export class TransformWorkflowService {
       };
 
       const created = await this.invoiceSchemaRepo.create(createPayload);
-      console.log(`Created schema dictionary: ${schemaId}`);
+      this.schemaCache.set(`id:${schemaId}`, created);
+      this.schemaCache.set(`source:${sourceType}`, created);
       return created;
     }
   };
@@ -193,7 +189,6 @@ export class TransformWorkflowService {
       mapping_rules?: Array<Record<string, any>>;
     },
   ): Promise<InvoiceSchemaDictionaryDocument> => {
-    // Normalize ERP type to uppercase
     let normalizedErp = erpType.toUpperCase().replace(/[-\s]/g, "_");
     const key = normalizedErp as keyof typeof SchemaSourceType;
     const sourceType = SchemaSourceType[key] || normalizedErp;
@@ -231,7 +226,7 @@ export class TransformWorkflowService {
       description: "Nigerian FIRS Universal Business Language invoice schema",
       source_type: SchemaSourceType.FIRS_UBL,
       fields,
-      status: SchemaStatus.ACTIVE, // FIRS schema should be active by default
+      status: SchemaStatus.ACTIVE,
       created_by: options?.createdBy || "system",
       metadata: {
         standard: "UBL 2.1",
@@ -242,30 +237,43 @@ export class TransformWorkflowService {
   };
 
   /**
-   * Get invoice schema by source type
+   * Get invoice schema by source type with caching
    */
   getInvoiceSchema = async (
     sourceType: SchemaSourceType | string,
   ): Promise<InvoiceSchemaDictionaryDocument | null> => {
-    // Try to find default schema for this source type
-    const s = await this.invoiceSchemaRepo.findDefaultBySourceType(sourceType);
-    if (s) return s;
+    const cacheKey = `source:${sourceType}`;
+    const cached = this.schemaCache.get(cacheKey);
+    if (cached !== undefined) return cached;
 
-    // If no default, try to find any active schema
+    const s = await this.invoiceSchemaRepo.findDefaultBySourceType(sourceType);
+    if (s) {
+      this.schemaCache.set(cacheKey, s);
+      return s;
+    }
+
     const schemas = await this.invoiceSchemaRepo.findBySourceType(
       sourceType,
       true,
     );
-    return schemas.length > 0 ? schemas[0] : null;
+    const result = schemas.length > 0 ? schemas[0] : null;
+    this.schemaCache.set(cacheKey, result);
+    return result;
   };
 
   /**
-   * Get invoice schema by schema ID
+   * Get invoice schema by schema ID with caching
    */
   getInvoiceSchemaById = async (
     schemaId: string,
   ): Promise<InvoiceSchemaDictionaryDocument | null> => {
-    return this.invoiceSchemaRepo.findBySchemaId(schemaId);
+    const cacheKey = `id:${schemaId}`;
+    const cached = this.schemaCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const schema = await this.invoiceSchemaRepo.findBySchemaId(schemaId);
+    this.schemaCache.set(cacheKey, schema);
+    return schema;
   };
 
   /**
@@ -292,12 +300,13 @@ export class TransformWorkflowService {
   };
 
   /**
-   * Activate a schema (set status to ACTIVE)
+   * Activate a schema
    */
   activateSchema = async (
     schemaId: string,
     updatedBy: string = "system",
   ): Promise<InvoiceSchemaDictionaryDocument> => {
+    this.schemaCache.clear();
     return this.invoiceSchemaRepo.setStatus(
       schemaId,
       SchemaStatus.ACTIVE,
@@ -312,6 +321,7 @@ export class TransformWorkflowService {
     schemaId: string,
     updatedBy: string = "system",
   ): Promise<InvoiceSchemaDictionaryDocument> => {
+    this.schemaCache.clear();
     return this.invoiceSchemaRepo.setAsDefault(schemaId, updatedBy);
   };
 
@@ -319,6 +329,7 @@ export class TransformWorkflowService {
    * Delete an invoice schema
    */
   deleteInvoiceSchema = async (schemaId: string): Promise<boolean> => {
+    this.schemaCache.clear();
     return this.invoiceSchemaRepo.delete(schemaId);
   };
 
@@ -345,7 +356,6 @@ export class TransformWorkflowService {
    */
   private getDefaultSchemaName(sourceType: SchemaSourceType | string): string {
     const typeStr = sourceType.toString();
-    // Convert SNAKE_CASE to Title Case
     return (
       typeStr
         .split("_")

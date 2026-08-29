@@ -6,7 +6,7 @@ export const getBusinessInfoValidation = {
   params: t.Object({
     tenantId: t.String(),
   }),
-  
+
   detail: {
     tags: ["Tenant"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -61,7 +61,7 @@ export const updateBusinessInfoValidation = {
     },
     { examples: [updateBusinessInfoExample] },
   ),
-  
+
   detail: {
     tags: ["Tenant"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
@@ -82,13 +82,19 @@ export const requestEmailChangeValidation = {
       format: "email",
       description: "New contact email address to verify and switch to",
     }),
+    currentPassword: t.Optional(
+      t.String({
+        description:
+          "Current tenant password for re-authentication challenge (required if password is set)",
+      }),
+    ),
   }),
   detail: {
     tags: ["Tenant"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "Request Email Change Verification",
     description:
-      "Send a verification link to the new email address.",
+      "Send a verification link to the new email address with security notifications sent to current address.",
   },
 };
 

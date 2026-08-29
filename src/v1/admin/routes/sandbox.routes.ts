@@ -1,48 +1,52 @@
-import { Elysia } from 'elysia';
-import { requireAdmin } from '../../../middlewares/auth';
-import { logger } from '../../../@lib';
-import { SystemConfigService } from '../services/system-config.service';
+import { Elysia } from "elysia";
+import { requireAdmin } from "../../../middlewares/auth";
+import { logger } from "../../../@lib";
+import { SystemConfigService } from "../services/system-config.service";
 import {
   testTransformValidation,
   testValidateValidation,
-  testFullValidation
-} from '../validations/sandbox.validation';
+  testFullValidation,
+} from "../validations/sandbox.validation";
 
 /**
  * Sandbox Testing Routes
  */
-export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
+export const sandboxRoutes = new Elysia({ prefix: "/sandbox" })
   .use(requireAdmin)
-  .decorate('configService', new SystemConfigService())
+  .decorate("configService", new SystemConfigService())
 
   /**
    * POST /admin/sandbox/test-transform
    * Test invoice transformation in sandbox
    */
   .post(
-    '/test-transform',
-    async ({ body, configService }) => {
+    "/test-transform",
+    async ({ body, configService, set }) => {
       try {
-        const result = await configService.testTransform(body.erpType, body.invoice);
+        const result = await configService.testTransform(
+          body.erpType,
+          body.invoice,
+        );
 
         return {
           success: result.success,
           data: {
             transformed: result.transformed,
-            original: result.original
+            original: result.original,
           },
           errors: result.errors,
         };
       } catch (error: any) {
-        logger.error('Sandbox transform test failed', { error: error.message });
+        set.status = error.statusCode || 500;
+        logger.error("Sandbox transform test failed", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Transform test failed',
+          error: error.message || "Transform test failed",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    testTransformValidation
+    testTransformValidation,
   )
 
   /**
@@ -50,8 +54,8 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
    * Test invoice validation in sandbox
    */
   .post(
-    '/test-validate',
-    async ({ body, configService }) => {
+    "/test-validate",
+    async ({ body, configService, set }) => {
       try {
         const result = await configService.testValidate(body.invoice);
 
@@ -64,15 +68,16 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
           },
         };
       } catch (error: any) {
-        logger.error('Sandbox validate test failed', { error: error.message });
+        set.status = error.statusCode || 500;
+        logger.error("Sandbox validate test failed", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Validate test failed',
+          error: error.message || "Validate test failed",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    testValidateValidation
+    testValidateValidation,
   )
 
   /**
@@ -80,10 +85,13 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
    * Test full transform and validate workflow
    */
   .post(
-    '/test-full',
-    async ({ body, configService }) => {
+    "/test-full",
+    async ({ body, configService, set }) => {
       try {
-        const result = await configService.testTransformAndValidate(body.erpType, body.invoice);
+        const result = await configService.testTransformAndValidate(
+          body.erpType,
+          body.invoice,
+        );
 
         return {
           success: result.success,
@@ -94,13 +102,14 @@ export const sandboxRoutes = new Elysia({ prefix: '/sandbox' })
           },
         };
       } catch (error: any) {
-        logger.error('Sandbox full test failed', { error: error.message });
+        set.status = error.statusCode || 500;
+        logger.error("Sandbox full test failed", { error: error.message });
         return {
           success: false,
-          error: error.message || 'Full test failed',
+          error: error.message || "Full test failed",
           statusCode: error.statusCode || 500,
         };
       }
     },
-    testFullValidation
+    testFullValidation,
   );

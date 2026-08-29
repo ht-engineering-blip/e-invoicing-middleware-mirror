@@ -148,9 +148,7 @@ export function registerProcessCreditNoteJob(): void {
             "[Job:process-credit-note] Minimal credit note payload detected — cloning original...",
             { jobChainId },
           );
-          creditNotePayload = JSON.parse(
-            JSON.stringify(fallbackOriginalTransformed),
-          );
+          creditNotePayload = structuredClone(fallbackOriginalTransformed);
         }
 
         // Dynamically set invoice_type_code from payload or default to 380

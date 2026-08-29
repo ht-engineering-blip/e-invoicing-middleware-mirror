@@ -7,6 +7,8 @@ import { onlyAdmin } from "../../auth/utils/access-checks";
 import { TenantService } from "../../tenants/services/tenant.service";
 import { TransformWorkflowService } from "../../workflow/services";
 import { SystemConfigService } from "../services/system-config.service";
+import { AuditService } from "../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
@@ -22,13 +24,14 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
   .decorate("tenantService", new TenantService())
   .decorate("transformWorkflowService", new TransformWorkflowService())
   .decorate("llmService", new LLMService())
+  .decorate("auditService", new AuditService())
   /**
    * GET /admin/config/supported-erps
    * List all supported ERP systems
    */
   .get(
     "/",
-    async ({ transformWorkflowService }): Promise<any> => {
+    async ({ transformWorkflowService, set }): Promise<any> => {
       try {
         const erps = await transformWorkflowService.getSupportedERPTypes();
 
@@ -38,6 +41,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           count: erps.length,
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch supported ERPs", {
           error: error.message,
         });
@@ -57,13 +61,14 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .get(
     "/:erpType",
-    async ({ params, transformWorkflowService }) => {
+    async ({ params, transformWorkflowService, set }) => {
       try {
         const erp = await transformWorkflowService.getInvoiceSchema(
           params.erpType,
         );
 
         if (!erp) {
+          set.status = 404;
           return {
             success: false,
             error: `ERP type '${params.erpType}' not found`,
@@ -76,6 +81,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           data: erp,
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to fetch ERP configuration", {
           error: error.message,
         });
@@ -95,7 +101,15 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .post(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService }) => {
+    async ({
+      auth,
+      body,
+      query,
+      llmService,
+      transformWorkflowService,
+      auditService,
+      set,
+    }) => {
       try {
         onlyAdmin(auth!);
         let { erp, invoice, metadata }: any = body;
@@ -136,6 +150,25 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         );
 
+        // Audit log
+        await auditService.createAuditLog({
+          tenantId: auth?.tenantId,
+          eventType: AuditEventType.SYSTEM_WARNING,
+          severity: AuditEventSeverity.INFO,
+          actorType: "user",
+          actorId: auth?.userId || "admin",
+          actorName: auth?.email || "Admin",
+          resourceType: "erp_config",
+          resourceId: erp,
+          resourceName: erp,
+          description: `ERP dictionary configured for ${erp}`,
+          metadata: {
+            erp,
+            schema_id: savedSchema.schema_id,
+            payload: body,
+          },
+        });
+
         return {
           success: true,
           data: {
@@ -147,6 +180,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         return {
           success: false,
           error: error.message,

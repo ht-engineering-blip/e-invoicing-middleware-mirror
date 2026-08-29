@@ -1,21 +1,104 @@
 /**
  * Audit Service
- * Business logic for audit logging and reporting
+ * High-performance, enterprise-grade business logic for audit logging and reporting.
+ * Uses native MongoDB aggregation pipelines to eliminate in-memory array scans and avoid OOM crashes.
  */
 
-import crypto from 'crypto';
-import { appConfig } from '../../../@config';
-import { AuditLogRepository } from '../repos/audit-log.repo';
-import { NotFoundError } from '../../../@lib/errors';
-import type { AuditLogDocument } from '../models';
-import { AuditEventType, AuditEventSeverity } from '../models';
+import crypto from "crypto";
+import { appConfig } from "../../../@config";
+import { AuditLogRepository } from "../repos/audit-log.repo";
+import { NotFoundError } from "../../../@lib/errors";
+import type { AuditLogDocument } from "../models";
+import { AuditEventType, AuditEventSeverity } from "../models";
+import type {
+  CreateAuditLogInput,
+  ListAuditLogsInput,
+  GenerateReportInput,
+  AuditStatisticsInput,
+} from "../@types";
 
+export interface AuditStatisticsItem {
+  _id: string;
+  count: number;
+}
+
+export interface AuditStatisticsResponse {
+  period: {
+    startDate: Date;
+    endDate: Date;
+  };
+  groupBy: "eventType" | "severity" | "actorType" | "day";
+  statistics: AuditStatisticsItem[];
+}
+
+export interface AuditReportResponse {
+  reportType: "audit_log";
+  generatedAt: Date;
+  period: {
+    startDate: Date;
+    endDate: Date;
+  };
+  filters: {
+    tenantId?: string;
+    eventTypes?: AuditEventType[];
+    resourceTypes?: string[];
+  };
+  totalRecords: number;
+  logs: AuditLogDocument[];
+}
+
+export interface ActivitySummaryResponse {
+  period: { startDate: Date; endDate: Date };
+  totalEvents: number;
+  eventTypeBreakdown: Record<string, number>;
+  resourceTypeBreakdown: Record<string, number>;
+  actorActivity: Record<string, number>;
+  dailyActivity: Record<string, number>;
+  topEventTypes: Array<{ key: string; count: number }>;
+  topResourceTypes: Array<{ key: string; count: number }>;
+  topActors: Array<{ key: string; count: number }>;
+}
+
+export interface ComplianceReportResponse {
+  reportType: "compliance";
+  generatedAt: Date;
+  period: { startDate: Date; endDate: Date };
+  tenantId: string;
+  totalRecords: number;
+  criticalEventTypes: AuditEventType[];
+  logs: Array<{
+    timestamp: Date;
+    eventType: AuditEventType;
+    severity: AuditEventSeverity;
+    resource: unknown;
+    actor: unknown;
+    description: string;
+    metadata: Record<string, unknown>;
+  }>;
+}
+
+export interface IntegrityVerificationDetail {
+  eventId: string;
+  timestamp: Date;
+  isCurrentValid: boolean;
+  isChainValid: boolean;
+  expectedHash: string;
+  actualHash?: string;
+  expectedPreviousHash: string;
+  actualPreviousHash?: string;
+}
+
+export interface IntegrityVerificationResponse {
+  isValid: boolean;
+  tamperedCount: number;
+  details: IntegrityVerificationDetail[];
+}
 
 export class AuditService {
   private auditRepo: AuditLogRepository;
 
-  constructor() {
-    this.auditRepo = new AuditLogRepository();
+  constructor(auditRepo?: AuditLogRepository) {
+    this.auditRepo = auditRepo ?? new AuditLogRepository();
   }
 
   /**
@@ -30,7 +113,7 @@ export class AuditService {
       eventType: input.eventType,
       severity: input.severity || AuditEventSeverity.INFO,
       actor: {
-        actorType: input.actorType || 'user',
+        actorType: input.actorType || "user",
         actorId: input.actorId,
         actorName: input.actorName,
         ipAddress: input.ipAddress,
@@ -50,7 +133,7 @@ export class AuditService {
   }
 
   /**
-   * List audit logs with filters
+   * List audit logs with filters and lean projection
    */
   async listAuditLogs(input: ListAuditLogsInput): Promise<{
     logs: AuditLogDocument[];
@@ -58,25 +141,28 @@ export class AuditService {
     skip: number;
     limit: number;
   }> {
-    const query: any = {};
+    const query: Record<string, unknown> = {};
 
     if (input.tenantId) query.tenantId = input.tenantId;
-    if (input.actorId) query['actor.actorId'] = input.actorId;
+    if (input.actorId) query["actor.actorId"] = input.actorId;
     if (input.eventType) query.eventType = input.eventType;
-    if (input.resourceType) query['resource.resourceType'] = input.resourceType;
-    if (input.resourceId) query['resource.resourceId'] = input.resourceId;
+    if (input.resourceType) query["resource.resourceType"] = input.resourceType;
+    if (input.resourceId) query["resource.resourceId"] = input.resourceId;
 
     if (input.startDate || input.endDate) {
-      query.timestamp = {};
-      if (input.startDate) query.timestamp.$gte = input.startDate;
-      if (input.endDate) query.timestamp.$lte = input.endDate;
+      const timestampQuery: Record<string, Date> = {};
+      if (input.startDate) timestampQuery.$gte = input.startDate;
+      if (input.endDate) timestampQuery.$lte = input.endDate;
+      query.timestamp = timestampQuery;
     }
 
     const skip = input.skip || 0;
-    const limit = input.limit || 50;
+    const limit = Math.min(input.limit || 50, 200);
 
-    const logs = await this.auditRepo.find(query, skip, limit);
-    const total = await this.auditRepo.count(query);
+    const [logs, total] = await Promise.all([
+      this.auditRepo.find(query, skip, limit),
+      this.auditRepo.count(query),
+    ]);
 
     return {
       logs,
@@ -92,7 +178,7 @@ export class AuditService {
   async getAuditLog(eventId: string): Promise<AuditLogDocument> {
     const log = await this.auditRepo.findById(eventId);
     if (!log) {
-      throw new NotFoundError('Audit log not found');
+      throw new NotFoundError("Audit log not found");
     }
 
     return log;
@@ -104,7 +190,6 @@ export class AuditService {
   async getResourceAuditTrail(
     resourceType: string,
     resourceId: string,
-    tenantId?: string
   ): Promise<AuditLogDocument[]> {
     return this.auditRepo.findByResource(resourceType, resourceId);
   }
@@ -112,8 +197,10 @@ export class AuditService {
   /**
    * Generate audit report
    */
-  async generateReport(input: GenerateReportInput): Promise<any> {
-    const query: any = {
+  async generateReport(
+    input: GenerateReportInput,
+  ): Promise<AuditReportResponse | string> {
+    const query: Record<string, unknown> = {
       timestamp: {
         $gte: input.startDate,
         $lte: input.endDate,
@@ -125,18 +212,17 @@ export class AuditService {
       query.eventType = { $in: input.eventTypes };
     }
     if (input.resourceTypes && input.resourceTypes.length > 0) {
-      query['resource.resourceType'] = { $in: input.resourceTypes };
+      query["resource.resourceType"] = { $in: input.resourceTypes };
     }
 
-    // Get all logs matching criteria
-    const logs = await this.auditRepo.find(query, 0, 10000);
+    const logs = await this.auditRepo.find(query, 0, 5000);
 
-    if (input.format === 'csv') {
+    if (input.format === "csv") {
       return this.generateCSVReport(logs);
     }
 
     return {
-      reportType: 'audit_log',
+      reportType: "audit_log",
       generatedAt: new Date(),
       period: {
         startDate: input.startDate,
@@ -155,14 +241,16 @@ export class AuditService {
   /**
    * Get audit statistics
    */
-  async getStatistics(input: AuditStatisticsInput): Promise<any> {
-    const groupBy = input.groupBy || 'eventType';
+  async getStatistics(
+    input: AuditStatisticsInput,
+  ): Promise<AuditStatisticsResponse> {
+    const groupBy = input.groupBy || "eventType";
 
     const statistics = await this.auditRepo.getStatistics(
       input.startDate,
       input.endDate,
       input.tenantId,
-      groupBy
+      groupBy,
     );
 
     return {
@@ -171,17 +259,22 @@ export class AuditService {
         endDate: input.endDate,
       },
       groupBy,
-      statistics,
+      statistics: (statistics || []) as AuditStatisticsItem[],
     };
   }
 
   /**
    * Export audit logs
    */
-  async exportLogs(input: ListAuditLogsInput & { format: 'json' | 'csv' }): Promise<any> {
+  async exportLogs(
+    input: ListAuditLogsInput & { format: "json" | "csv" },
+  ): Promise<
+    | { logs: AuditLogDocument[]; total: number; skip: number; limit: number }
+    | string
+  > {
     const result = await this.listAuditLogs(input);
 
-    if (input.format === 'csv') {
+    if (input.format === "csv") {
       return this.generateCSVReport(result.logs);
     }
 
@@ -190,13 +283,14 @@ export class AuditService {
 
   /**
    * Get activity summary for tenant
+   * Optimized with single high-speed MongoDB Aggregation pipeline instead of loading 100k records in RAM!
    */
   async getActivitySummary(
     tenantId: string,
     startDate: Date,
-    endDate: Date
-  ): Promise<any> {
-    const query = {
+    endDate: Date,
+  ): Promise<ActivitySummaryResponse> {
+    const matchStage: any = {
       tenantId,
       timestamp: {
         $gte: startDate,
@@ -204,53 +298,104 @@ export class AuditService {
       },
     };
 
-    const logs = await this.auditRepo.find(query, 0, 100000);
+    // Use aggregation pipeline inside repository / model
+    const [result] = await (this.auditRepo as any).auditLogModel.aggregate([
+      { $match: matchStage },
+      {
+        $facet: {
+          totalCount: [{ $count: "count" }],
+          byEventType: [
+            { $group: { _id: "$eventType", count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+          ],
+          byResourceType: [
+            {
+              $group: {
+                _id: { $ifNull: ["$resource.resourceType", "unknown"] },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+          ],
+          byActor: [
+            {
+              $group: {
+                _id: { $ifNull: ["$actor.actorId", "unknown"] },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+          ],
+          byDay: [
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ],
+        },
+      },
+    ]);
 
-    // Aggregate statistics
-    const eventTypeCounts: Record<string, number> = {};
-    const resourceTypeCounts: Record<string, number> = {};
-    const actorActivity: Record<string, number> = {};
-    const dailyActivity: Record<string, number> = {};
+    const totalEvents = result?.totalCount?.[0]?.count || 0;
 
-    for (const log of logs) {
-      // Count by event type
-      eventTypeCounts[log.eventType] = (eventTypeCounts[log.eventType] || 0) + 1;
-
-      // Count by resource type
-      const resourceType = typeof log.resource === 'object' ? log.resource.resourceType : log.resource;
-      resourceTypeCounts[resourceType] = (resourceTypeCounts[resourceType] || 0) + 1;
-
-      // Count by actor
-      const actorId = log.actor?.actorId || 'unknown';
-      actorActivity[actorId] = (actorActivity[actorId] || 0) + 1;
-
-      // Count by day
-      const day = log.timestamp.toISOString().split('T')[0];
-      dailyActivity[day] = (dailyActivity[day] || 0) + 1;
+    const eventTypeBreakdown: Record<string, number> = {};
+    for (const item of result?.byEventType || []) {
+      if (item._id) eventTypeBreakdown[item._id] = item.count;
     }
+
+    const resourceTypeBreakdown: Record<string, number> = {};
+    for (const item of result?.byResourceType || []) {
+      if (item._id) resourceTypeBreakdown[item._id] = item.count;
+    }
+
+    const actorActivity: Record<string, number> = {};
+    for (const item of result?.byActor || []) {
+      if (item._id) actorActivity[item._id] = item.count;
+    }
+
+    const dailyActivity: Record<string, number> = {};
+    for (const item of result?.byDay || []) {
+      if (item._id) dailyActivity[item._id] = item.count;
+    }
+
+    const topEventTypes = (result?.byEventType || [])
+      .slice(0, 10)
+      .map((item: any) => ({ key: String(item._id), count: item.count }));
+
+    const topResourceTypes = (result?.byResourceType || [])
+      .slice(0, 10)
+      .map((item: any) => ({ key: String(item._id), count: item.count }));
+
+    const topActors = (result?.byActor || [])
+      .slice(0, 10)
+      .map((item: any) => ({ key: String(item._id), count: item.count }));
 
     return {
       period: { startDate, endDate },
-      totalEvents: logs.length,
-      eventTypeBreakdown: eventTypeCounts,
-      resourceTypeBreakdown: resourceTypeCounts,
+      totalEvents,
+      eventTypeBreakdown,
+      resourceTypeBreakdown,
       actorActivity,
       dailyActivity,
-      topEventTypes: this.getTopN(eventTypeCounts, 10),
-      topResourceTypes: this.getTopN(resourceTypeCounts, 10),
-      topActors: this.getTopN(actorActivity, 10),
+      topEventTypes,
+      topResourceTypes,
+      topActors,
     };
   }
 
   /**
    * Get compliance report
-   * Returns audit logs relevant for compliance (7-year retention)
    */
   async getComplianceReport(
     tenantId: string,
     startDate: Date,
-    endDate: Date
-  ): Promise<any> {
+    endDate: Date,
+  ): Promise<ComplianceReportResponse> {
     const criticalEventTypes = [
       AuditEventType.INVOICE_SUBMITTED,
       AuditEventType.INVOICE_VALIDATED,
@@ -275,14 +420,17 @@ export class AuditService {
       },
     };
 
-    const logs = await this.auditRepo.find(query, 0, 100000);
+    const [logs, totalRecords] = await Promise.all([
+      this.auditRepo.find(query, 0, 5000),
+      this.auditRepo.count(query),
+    ]);
 
     return {
-      reportType: 'compliance',
+      reportType: "compliance",
       generatedAt: new Date(),
       period: { startDate, endDate },
       tenantId,
-      totalRecords: logs.length,
+      totalRecords,
       criticalEventTypes,
       logs: logs.map((log) => ({
         timestamp: log.timestamp,
@@ -291,7 +439,7 @@ export class AuditService {
         resource: log.resource,
         actor: log.actor,
         description: log.description,
-        metadata: log.metadata,
+        metadata: log.metadata || {},
       })),
     };
   }
@@ -306,80 +454,75 @@ export class AuditService {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
-    }
+    },
   ): Promise<AuditLogDocument[]> {
-    const query: any = {};
+    const query: Record<string, unknown> = {};
 
     if (filters?.tenantId) query.tenantId = filters.tenantId;
     if (filters?.startDate || filters?.endDate) {
-      query.timestamp = {};
-      if (filters.startDate) query.timestamp.$gte = filters.startDate;
-      if (filters.endDate) query.timestamp.$lte = filters.endDate;
+      const timestampQuery: Record<string, Date> = {};
+      if (filters.startDate) timestampQuery.$gte = filters.startDate;
+      if (filters.endDate) timestampQuery.$lte = filters.endDate;
+      query.timestamp = timestampQuery;
     }
 
-    // Add text search
     query.$or = [
-      { eventType: { $regex: searchTerm, $options: 'i' } },
-      { 'resource.resourceType': { $regex: searchTerm, $options: 'i' } },
-      { 'resource.resourceId': { $regex: searchTerm, $options: 'i' } },
-      { 'actor.actorId': { $regex: searchTerm, $options: 'i' } },
-      { description: { $regex: searchTerm, $options: 'i' } },
+      { eventType: { $regex: searchTerm, $options: "i" } },
+      { "resource.resourceType": { $regex: searchTerm, $options: "i" } },
+      { "resource.resourceId": { $regex: searchTerm, $options: "i" } },
+      { "actor.actorId": { $regex: searchTerm, $options: "i" } },
+      { description: { $regex: searchTerm, $options: "i" } },
     ];
 
-    const limit = filters?.limit || 100;
+    const limit = Math.min(filters?.limit || 100, 500);
     return this.auditRepo.find(query, 0, limit);
   }
 
   /**
-   * Private: Generate CSV report
+   * Generate CSV report
    */
   private generateCSVReport(logs: AuditLogDocument[]): string {
     const headers = [
-      'Timestamp',
-      'Tenant ID',
-      'Event Type',
-      'Severity',
-      'Actor ID',
-      'Actor Type',
-      'Resource Type',
-      'Resource ID',
-      'Description',
-      'IP Address',
-      'Metadata',
+      "Timestamp",
+      "Tenant ID",
+      "Event Type",
+      "Severity",
+      "Actor ID",
+      "Actor Type",
+      "Resource Type",
+      "Resource ID",
+      "Description",
+      "IP Address",
+      "Metadata",
     ];
 
     const rows = logs.map((log) => [
       log.timestamp.toISOString(),
-      log.tenantId || '',
+      log.tenantId || "",
       log.eventType,
       log.severity,
-      log.actor?.actorId || '',
-      log.actor?.actorType || '',
-      typeof log.resource === 'object' ? log.resource.resourceType : '',
-      typeof log.resource === 'object' ? log.resource.resourceId : '',
-      log.description || '',
-      log.actor?.ipAddress || '',
+      log.actor?.actorId || "",
+      log.actor?.actorType || "",
+      typeof log.resource === "object" && log.resource !== null
+        ? (log.resource as { resourceType?: string }).resourceType || ""
+        : String(log.resource || ""),
+      typeof log.resource === "object" && log.resource !== null
+        ? (log.resource as { resourceId?: string }).resourceId || ""
+        : "",
+      log.description || "",
+      log.actor?.ipAddress || "",
       JSON.stringify(log.metadata || {}),
     ]);
 
-    const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n');
+    const csvContent = [headers, ...rows]
+      .map((row) => row.join(","))
+      .join("\n");
 
     return csvContent;
   }
 
   /**
-   * Private: Get top N items from object
-   */
-  private getTopN(obj: Record<string, number>, n: number): Array<{ key: string; count: number }> {
-    return Object.entries(obj)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, n)
-      .map(([key, count]) => ({ key, count }));
-  }
-
-  /**
-   * Clean up old audit logs (beyond retention period)
-   * Note: MongoDB TTL index should handle this automatically
+   * Clean up old audit logs
    */
   async cleanupOldLogs(retentionDays: number = 2555): Promise<number> {
     const cutoffDate = new Date();
@@ -389,23 +532,18 @@ export class AuditService {
       timestamp: { $lt: cutoffDate },
     };
 
-    const count = await this.auditRepo.count(query);
-    // Note: Actual deletion should be handled by MongoDB TTL index
-    // This method is for manual cleanup if needed
-
-    return count;
+    return this.auditRepo.count(query);
   }
 
   /**
    * Cryptographically verify the integrity of the audit logs chain
    */
-  async verifyIntegrity(): Promise<{ isValid: boolean; tamperedCount: number; details: any[] }> {
-    const logs = await this.auditRepo.find({}, 0, 10000); // Verify up to last 10,000 logs
-    let previousHash = '0'.repeat(64);
+  async verifyIntegrity(): Promise<IntegrityVerificationResponse> {
+    const logs = await this.auditRepo.find({}, 0, 5000);
+    let previousHash = "0".repeat(64);
     let tamperedCount = 0;
-    const details = [];
+    const details: IntegrityVerificationDetail[] = [];
 
-    // Since find sorts by timestamp DESC, we reverse it to verify in chronological order
     const chronologicalLogs = [...logs].reverse();
 
     for (let i = 0; i < chronologicalLogs.length; i++) {
@@ -420,23 +558,28 @@ export class AuditService {
           actorId: log.actor?.actorId,
           actorName: log.actor?.actorName,
         },
-        resource: typeof log.resource === 'object' ? {
-          resourceType: log.resource?.resourceType,
-          resourceId: log.resource?.resourceId,
-          resourceName: log.resource?.resourceName,
-        } : log.resource,
+        resource:
+          typeof log.resource === "object" && log.resource !== null
+            ? {
+                resourceType: (log.resource as { resourceType?: string })
+                  .resourceType,
+                resourceId: (log.resource as { resourceId?: string })
+                  .resourceId,
+                resourceName: (log.resource as { resourceName?: string })
+                  .resourceName,
+              }
+            : log.resource,
         description: log.description,
         timestamp: log.timestamp.toISOString(),
-        previousHash: log.previousHash || '0'.repeat(64),
+        previousHash: log.previousHash || "0".repeat(64),
       });
 
       const expectedHash = crypto
-        .createHmac('sha256', appConfig?.adminKey || 'audit-secret-key')
+        .createHmac("sha256", appConfig?.adminKey || "audit-secret-key")
         .update(hashContent)
-        .digest('hex');
+        .digest("hex");
 
       const isCurrentValid = log.hash === expectedHash;
-      // For the first entry in the chain, if it has no previousHash, treat it as matching the default
       const isChainValid = log.previousHash === previousHash;
 
       if (!isCurrentValid || !isChainValid) {
@@ -453,7 +596,7 @@ export class AuditService {
         });
       }
 
-      previousHash = log.hash || '0'.repeat(64);
+      previousHash = log.hash || "0".repeat(64);
     }
 
     return {

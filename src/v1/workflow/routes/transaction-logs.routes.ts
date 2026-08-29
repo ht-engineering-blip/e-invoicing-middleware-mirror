@@ -13,7 +13,7 @@ import {
   OutboundPaymentStatus,
 } from "../models/outbound-invoice.model";
 import { scheduleJobChain } from "../jobs/orchestrator";
-import { ACTION_TO_JOB } from "../jobs/types";
+import { ACTION_TO_JOB, WorkflowAction, DEFAULT_OUTBOUND_CHAIN } from "../jobs/types";
 import {
   listOutboundInvoicesValidation,
   getOutboundInvoiceValidation,
@@ -314,7 +314,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           statusHistory,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to get outbound invoice", {
           error: error.message,
         });
@@ -400,6 +400,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           "Payment status updated",
         );
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to update payment status", {
           error: error.message,
         });
@@ -423,6 +424,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const invoice = await outboundRepo.findByIrn(params.irn);
 
         if (!invoice) {
+          set.status = 404;
           return {
             success: false,
             error: "Invoice not found",
@@ -431,19 +433,47 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         }
 
         if (invoice.tenantId !== auth!.tenantId && !auth!.isAdmin) {
+          set.status = 403;
           return { success: false, error: "Not authorized", statusCode: 403 };
         }
 
-        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+        const retriableStatuses = [
+          OutboundInvoiceStatus.FAILED,
+          OutboundInvoiceStatus.TRANSMISTION_FAILED,
+          OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.VALIDATED,
+          OutboundInvoiceStatus.SIGNED,
+        ];
+
+        if (
+          !retriableStatuses.includes(invoice.status) &&
+          invoice.workflowState?.transmitted &&
+          invoice.workflowState?.delivered
+        ) {
+          set.status = 400;
           return {
             success: false,
-            error: "Only FAILED invoices can be retried",
+            error: "Only failed or incomplete invoices can be retried",
             statusCode: 400,
           };
         }
 
-        const startAction = body.fromStep;
+        const workflowState = invoice.workflowState;
+        let startAction: string | undefined = body?.fromStep;
+        if (!startAction) {
+          if (!workflowState?.validated) {
+            startAction = WorkflowAction.VALIDATE;
+          } else if (!workflowState?.signed) {
+            startAction = WorkflowAction.SIGN;
+          } else if (!workflowState?.transmitted) {
+            startAction = WorkflowAction.TRANSMIT;
+          } else {
+            startAction = WorkflowAction.COMPLETE_OUTBOUND;
+          }
+        }
+
         if (!ACTION_TO_JOB[startAction]) {
+          set.status = 400;
           return {
             success: false,
             error: `Unknown action: ${startAction}`,
@@ -452,17 +482,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         }
 
         // Default chain from the requested step onward
-        const defaultChain = [
-          "transform",
-          "validate",
-          "sign",
-          "generate_irn",
-          "transmit",
-          "confirm_invoice_status",
-          "complete_outbound",
-        ];
+        const defaultChain = DEFAULT_OUTBOUND_CHAIN;
 
-        const startIndex = defaultChain.indexOf(startAction);
+        const startIndex = defaultChain.indexOf(startAction as WorkflowAction);
         const actions =
           startIndex >= 0 ? defaultChain.slice(startIndex) : [startAction];
 
@@ -493,10 +515,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
           eventType: "invoice.retry",
-          payload: invoice.metadata,
+          payload: invoice.metadata?.transformedInvoice || invoice.metadata,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
+          initialContext: {
+            transformedInvoice: invoice.metadata?.transformedInvoice,
+            source: invoice.source,
+          },
         });
 
         return {
@@ -505,6 +531,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
         };
       } catch (error: any) {
+        set.status = error.statusCode || 500;
         logger.error("Failed to retry invoice", { error: error.message });
         return {
           success: false,
@@ -540,25 +567,38 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return ResponseBuilder.error("Invoice not found", 404);
         }
 
-        // Check if invoice is in failed state
-        if (invoice.status !== OutboundInvoiceStatus.FAILED) {
+        const retriableStatuses = [
+          OutboundInvoiceStatus.FAILED,
+          OutboundInvoiceStatus.TRANSMISTION_FAILED,
+          OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.VALIDATED,
+          OutboundInvoiceStatus.SIGNED,
+        ];
+
+        if (
+          !retriableStatuses.includes(invoice.status) &&
+          invoice.workflowState?.transmitted &&
+          invoice.workflowState?.delivered
+        ) {
           set.status = 400;
           return ResponseBuilder.error(
-            "Only failed invoices can be resent",
+            "Only incomplete or failed invoices can be resent",
             400,
           );
         }
 
         // Determine the failure point and restart from there
         const workflowState = invoice.workflowState;
-        let restartFrom = "validate";
+        let restartFrom: WorkflowAction = WorkflowAction.VALIDATE;
 
         if (!workflowState?.validated) {
-          restartFrom = "validate";
+          restartFrom = WorkflowAction.VALIDATE;
         } else if (!workflowState?.signed) {
-          restartFrom = "sign";
+          restartFrom = WorkflowAction.SIGN;
         } else if (!workflowState?.transmitted) {
-          restartFrom = "transmit";
+          restartFrom = WorkflowAction.TRANSMIT;
+        } else {
+          restartFrom = WorkflowAction.COMPLETE_OUTBOUND;
         }
 
         // Update status to allow retry
@@ -578,8 +618,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           }
         }
 
-        // Trigger workflow
+        // Trigger workflow with full transformed invoice payload
+        const baseInvoice = invoice.metadata?.transformedInvoice || {};
         const data = {
+          ...baseInvoice,
           irn: params.irn,
           tenant_id: auth!.tenantId || invoice.tenantId,
           business_id: business_id!,
@@ -597,7 +639,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           "Invoice workflow restarted",
         );
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to resend invoice", { error: error.message });
         return ResponseBuilder.error(
           error.message || "Failed to resend invoice",
@@ -713,7 +755,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           statusHistory,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         logger.error("Failed to get inbound invoice", { error: error.message });
         return ResponseBuilder.error(
           error.message || "Failed to get inbound invoice",

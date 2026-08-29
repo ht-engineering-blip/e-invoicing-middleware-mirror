@@ -1,4 +1,4 @@
-import { generateRandomString, logger } from "../../../@lib";
+import { generateRandomString, logger, BaseService } from "../../../@lib";
 import {
   AppError,
   ConflictError,
@@ -15,43 +15,65 @@ import { FIRSService } from "../../../@lib/adapters/firs/firs.service";
 import { AuthContext } from "../../../middlewares";
 import { InvoiceSchemaDictionaryDocument } from "../../workflow/models";
 import { generateIRN } from "../../workflow/utils/transformer/utils";
+import { AuditEventType, AuditEventSeverity } from "../../audit/models";
+import { TTLCache } from "../../shared/utils";
 
-export class SystemConfigService {
+export class SystemConfigService extends BaseService {
   private configRepo: SystemConfigRepository;
   private transformService: TransformWorkflowService;
   private firsService: FIRSService;
 
-  constructor() {
-    this.configRepo = new SystemConfigRepository();
-    this.transformService = new TransformWorkflowService();
-    this.firsService = new FIRSService();
+  // TTL cache for system configs to avoid repetitive Mongo reads
+  private configCache = new TTLCache<string, any>({
+    maxItems: 50,
+    defaultTtlMs: 300_000, // 5 minutes
+  });
+
+  constructor(dependencies?: {
+    configRepo?: SystemConfigRepository;
+    transformService?: TransformWorkflowService;
+    firsService?: FIRSService;
+  }) {
+    super();
+    this.configRepo = dependencies?.configRepo ?? new SystemConfigRepository();
+    this.transformService = dependencies?.transformService ?? new TransformWorkflowService();
+    this.firsService = dependencies?.firsService ?? new FIRSService();
   }
 
   // ==================== FIRS Dictionary Management ====================
 
   /**
-   * Get FIRS Dictionary Schema
+   * Get FIRS Dictionary Schema with caching
    */
   async getFIRSDictionary(): Promise<any> {
     try {
+      const cacheKey = SystemConfigKey.FIRS_DICTIONARY;
+      const cached = this.configCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+
       const config = await this.configRepo.getByKey(
         SystemConfigKey.FIRS_DICTIONARY,
       );
 
       if (!config) {
-        return {
+        const fallback = {
           schema: null,
           version: 0,
           message: "FIRS dictionary not configured",
         };
+        this.configCache.set(cacheKey, fallback);
+        return fallback;
       }
 
-      return {
+      const result = {
         schema: config.configValue,
         version: config.version,
         updatedAt: config.updatedAt,
         updatedBy: config.updatedBy,
       };
+
+      this.configCache.set(cacheKey, result);
+      return result;
     } catch (error: any) {
       logger.error("Error fetching FIRS dictionary", { error: error.message });
       throw new AppError(500, "Failed to fetch FIRS dictionary");
@@ -66,10 +88,11 @@ export class SystemConfigService {
     updatedBy: string = "admin",
   ): Promise<any> {
     try {
-      // Validate schema structure
       if (!schema || typeof schema !== "object") {
         throw new ValidationError("Invalid schema format");
       }
+
+      this.configCache.delete(SystemConfigKey.FIRS_DICTIONARY);
 
       const config = await this.configRepo.upsert(
         SystemConfigKey.FIRS_DICTIONARY,
@@ -80,17 +103,37 @@ export class SystemConfigService {
         },
       );
 
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "system_config",
+        resourceId: SystemConfigKey.FIRS_DICTIONARY,
+        resourceName: "FIRS Dictionary",
+        description: `FIRS dictionary updated (v${config.version})`,
+        metadata: {
+          version: config.version,
+          payload: schema,
+        },
+      });
+
       logger.info("FIRS dictionary updated", {
         version: config.version,
         updatedBy,
       });
 
-      return {
+      const result = {
         success: true,
         schema: config.configValue,
         version: config.version,
         updatedAt: config.updatedAt,
       };
+
+      this.configCache.set(SystemConfigKey.FIRS_DICTIONARY, result);
+      return result;
     } catch (error: any) {
       logger.error("Error updating FIRS dictionary", { error: error.message });
       if (error instanceof ValidationError) throw error;
@@ -101,19 +144,21 @@ export class SystemConfigService {
   // ==================== ERP Configuration Management ====================
 
   /**
-   * Get all supported ERPs
+   * Get all supported ERPs with caching
    */
   async getSupportedERPs(): Promise<IERPConfiguration[]> {
     try {
+      const cacheKey = SystemConfigKey.SUPPORTED_ERPS;
+      const cached = this.configCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+
       const config = await this.configRepo.getByKey(
         SystemConfigKey.SUPPORTED_ERPS,
       );
 
-      if (!config) {
-        return [];
-      }
-
-      return config.configValue as IERPConfiguration[];
+      const result = (config?.configValue || []) as IERPConfiguration[];
+      this.configCache.set(cacheKey, result);
+      return result;
     } catch (error: any) {
       logger.error("Error fetching supported ERPs", { error: error.message });
       throw new AppError(500, "Failed to fetch supported ERPs");
@@ -128,15 +173,14 @@ export class SystemConfigService {
     updatedBy: string = "admin",
   ): Promise<IERPConfiguration> {
     try {
-      // Validate required fields
       if (!erpConfig.type || !erpConfig.name) {
         throw new ValidationError("ERP type and name are required");
       }
 
-      // Get existing ERPs
+      this.configCache.delete(SystemConfigKey.SUPPORTED_ERPS);
+
       const existingERPs = await this.getSupportedERPs();
 
-      // Check if ERP type already exists
       const exists = existingERPs.find(
         (erp) => erp.type.toLowerCase() === erpConfig.type.toLowerCase(),
       );
@@ -144,7 +188,6 @@ export class SystemConfigService {
         throw new ConflictError(`ERP type '${erpConfig.type}' already exists`);
       }
 
-      // Create new ERP entry
       const newERP: IERPConfiguration = {
         ...erpConfig,
         isActive: erpConfig.isActive ?? true,
@@ -152,7 +195,6 @@ export class SystemConfigService {
         updatedAt: new Date(),
       };
 
-      // Add to list and save
       existingERPs.push(newERP);
 
       await this.configRepo.upsert(
@@ -163,6 +205,25 @@ export class SystemConfigService {
           updatedBy,
         },
       );
+
+      this.configCache.set(SystemConfigKey.SUPPORTED_ERPS, existingERPs);
+
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpConfig.type,
+        resourceName: erpConfig.name,
+        description: `Supported ERP added: ${erpConfig.name} (${erpConfig.type})`,
+        metadata: {
+          erpType: erpConfig.type,
+          payload: erpConfig,
+        },
+      });
 
       logger.info("ERP configuration added", {
         erpType: erpConfig.type,
@@ -187,6 +248,8 @@ export class SystemConfigService {
     updatedBy: string = "admin",
   ): Promise<IERPConfiguration> {
     try {
+      this.configCache.delete(SystemConfigKey.SUPPORTED_ERPS);
+
       const existingERPs = await this.getSupportedERPs();
 
       const index = existingERPs.findIndex(
@@ -197,11 +260,10 @@ export class SystemConfigService {
         throw new NotFoundError(`ERP type '${erpType}' not found`);
       }
 
-      // Update ERP configuration
       existingERPs[index] = {
         ...existingERPs[index],
         ...updates,
-        type: existingERPs[index].type, // Don't allow type change
+        type: existingERPs[index].type,
         updatedAt: new Date(),
       };
 
@@ -213,6 +275,25 @@ export class SystemConfigService {
           updatedBy,
         },
       );
+
+      this.configCache.set(SystemConfigKey.SUPPORTED_ERPS, existingERPs);
+
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.INFO,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpType,
+        resourceName: existingERPs[index].name,
+        description: `Supported ERP updated: ${erpType}`,
+        metadata: {
+          erpType,
+          payload: updates,
+        },
+      });
 
       logger.info("ERP configuration updated", { erpType, updatedBy });
 
@@ -234,6 +315,8 @@ export class SystemConfigService {
     updatedBy: string = "admin",
   ): Promise<boolean> {
     try {
+      this.configCache.delete(SystemConfigKey.SUPPORTED_ERPS);
+
       const existingERPs = await this.getSupportedERPs();
 
       const index = existingERPs.findIndex(
@@ -244,7 +327,7 @@ export class SystemConfigService {
         throw new NotFoundError(`ERP type '${erpType}' not found`);
       }
 
-      // Remove from list
+      const removed = existingERPs[index];
       existingERPs.splice(index, 1);
 
       await this.configRepo.upsert(
@@ -255,6 +338,25 @@ export class SystemConfigService {
           updatedBy,
         },
       );
+
+      this.configCache.set(SystemConfigKey.SUPPORTED_ERPS, existingERPs);
+
+      await this.createAuditLog({
+        tenantId: "system",
+        eventType: AuditEventType.SYSTEM_WARNING,
+        severity: AuditEventSeverity.WARNING,
+        actorType: "user",
+        actorId: updatedBy,
+        actorName: updatedBy,
+        resourceType: "erp_config",
+        resourceId: erpType,
+        resourceName: removed.name,
+        description: `Supported ERP removed: ${erpType}`,
+        metadata: {
+          erpType,
+          payload: { erpType },
+        },
+      });
 
       logger.info("ERP configuration removed", { erpType, updatedBy });
 
@@ -275,10 +377,7 @@ export class SystemConfigService {
     erpType: string,
   ): Promise<Partial<InvoiceSchemaDictionaryDocument> | null> {
     try {
-      const erp = await new TransformWorkflowService().getInvoiceSchema(
-        erpType,
-      );
-
+      const erp = await this.transformService.getInvoiceSchema(erpType);
       return erp || null;
     } catch (error: any) {
       logger.error("Error fetching ERP configuration", {
@@ -303,13 +402,11 @@ export class SystemConfigService {
     errors?: string[];
   }> {
     try {
-      // Get ERP schema
       const erpConfig = await this.getERPByType(erpType);
       if (!erpConfig) {
         throw new NotFoundError(`ERP type '${erpType}' not configured`);
       }
 
-      // Create tempAuthContext
       const tempAuthContext: AuthContext = {
         tenantId: "SANDBOX",
         businessId: "a6de8bd8-43be-47b9-80a5-988ee3fb9cea",
@@ -319,7 +416,7 @@ export class SystemConfigService {
       };
       let irn = generateIRN(generateRandomString(5), tempAuthContext.serviceId);
       sampleInvoice.irn = irn;
-      // Perform transformation using the transform service
+
       const result = await this.transformService.transformInvoice(
         sampleInvoice,
         tempAuthContext,
@@ -352,12 +449,7 @@ export class SystemConfigService {
     warnings?: string[];
   }> {
     try {
-      // Validate using FIRS service
-      const result: any = await this.firsService.validateInvoice(
-        invoice.tenant_id,
-        invoice,
-      );
-
+      const result: any = await this.firsService.validateInvoice(invoice);
       const isValid = result?.data?.ok === true;
 
       return {
@@ -394,7 +486,6 @@ export class SystemConfigService {
     };
   }> {
     try {
-      // First transform
       const transformResult = await this.testTransform(erpType, sampleInvoice);
 
       if (!transformResult.success || !transformResult.transformed) {
@@ -409,7 +500,6 @@ export class SystemConfigService {
         };
       }
 
-      // Then validate
       const validateResult = await this.testValidate(
         transformResult.transformed,
       );

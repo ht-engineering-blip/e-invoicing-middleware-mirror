@@ -56,7 +56,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success({ irn, generated: true });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -94,7 +94,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -124,7 +124,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -152,7 +152,7 @@ const invoiceMgmtRoutes = new Elysia()
           workflowState: result.workflowState,
         });
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -175,7 +175,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -201,7 +201,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -227,7 +227,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -254,7 +254,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -313,7 +313,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -358,7 +358,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },
@@ -384,7 +384,7 @@ const invoiceMgmtRoutes = new Elysia()
 
         return ResponseBuilder.success(result);
       } catch (error: any) {
-        set.status = 500;
+        set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
       }
     },

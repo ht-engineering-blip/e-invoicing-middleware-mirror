@@ -155,7 +155,8 @@ export function formatJobError(error: any): string {
           .map((e: any) =>
             typeof e === "string"
               ? e
-              : e?.message || (e?.field ? `${e.field}: ${e.message}` : JSON.stringify(e)),
+              : e?.message ||
+                (e?.field ? `${e.field}: ${e.message}` : JSON.stringify(e)),
           )
           .join("; ");
         if (!parts.includes(listStr)) parts.push(listStr);
