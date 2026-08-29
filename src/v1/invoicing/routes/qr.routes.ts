@@ -1,19 +1,18 @@
-import Elysia from 'elysia';
-import { OutboundInvoiceRepository } from '../../workflow/repos/outbound-invoice.repo';
-import { ResponseBuilder } from '../../../@lib';
-import { getInvoiceQRValidation } from '../validations/qr.validation';
-
-const outboundRepo = new OutboundInvoiceRepository();
+import Elysia from "elysia";
+import { OutboundInvoiceRepository } from "../../workflow/repos/outbound-invoice.repo";
+import { ResponseBuilder } from "../../../@lib";
+import { getInvoiceQRValidation } from "../validations/qr.validation";
 
 /**
  * QR Code Routes
  */
 const qrMgmtRoutes = new Elysia({
-    prefix: '/invoice', detail: {
-        security: [{ apiKey: [] }, {bearerToken: []}],
-    }
+  prefix: "/invoice",
+  detail: {
+    security: [{ apiKey: [] }, { bearerToken: [] }],
+  },
 })
-  //.use(requireAuth)
+  .decorate("outboundRepo", new OutboundInvoiceRepository())
 
   /**
    * GET /api/v1/invoicing/:irn/qr
@@ -21,35 +20,37 @@ const qrMgmtRoutes = new Elysia({
    * Can be used directly in <img src="..."> tags.
    */
   .get(
-    '/:irn/qr',
-    async ({ params, set }) => {
+    "/:irn/qr",
+    async ({ params, set, outboundRepo }) => {
       const invoice = await outboundRepo.findByIrn(params.irn);
 
       if (!invoice) {
         set.status = 404;
-        return ResponseBuilder.error('Invoice not found', 404);
+        return ResponseBuilder.error("Invoice not found", 404);
       }
- 
 
       if (!invoice.qrCode) {
         set.status = 404;
-        return ResponseBuilder.error('QR code not yet generated for this invoice', 404);
+        return ResponseBuilder.error(
+          "QR code not yet generated for this invoice",
+          404,
+        );
       }
 
       // qrCode is stored as a data URI: "data:image/png;base64,<payload>"
-      const base64Data = invoice.qrCode.startsWith('data:')
-        ? invoice.qrCode.split(',')[1]
+      const base64Data = invoice.qrCode.startsWith("data:")
+        ? invoice.qrCode.split(",")[1]
         : invoice.qrCode;
 
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer = Buffer.from(base64Data, "base64");
 
-      set.headers['Content-Type'] = 'image/png';
-      set.headers['Content-Disposition'] = `inline; filename="${params.irn}.png"`;
-      set.headers['Cache-Control'] = 'public, max-age=86400';
+      set.headers["Content-Type"] = "image/png";
+      set.headers["Content-Disposition"] = `inline; filename="${params.irn}.png"`;
+      set.headers["Cache-Control"] = "public, max-age=86400";
 
       return imageBuffer;
     },
-    getInvoiceQRValidation
+    getInvoiceQRValidation,
   );
 
 export default qrMgmtRoutes;

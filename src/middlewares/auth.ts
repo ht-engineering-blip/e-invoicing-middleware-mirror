@@ -60,6 +60,8 @@ export interface AuthContext {
   apiKeyId?: string;
   userId?: string;
   scopes?: string[];
+  referenceIdKeyMap?: Record<string, string>;
+  idKeyMap?: Record<string, string>;
   // Team member fields
   isTeamMember?: boolean;
   teamMemberRole?: string;
