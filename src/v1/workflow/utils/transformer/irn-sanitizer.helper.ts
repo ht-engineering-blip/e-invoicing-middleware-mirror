@@ -8,7 +8,10 @@ export function generateDatestamp(date: Date = new Date()): string {
   return `${y}${m}${d}`;
 }
 
-export function generateInvoiceRef(date: Date = new Date(), ref?: string): string {
+export function generateInvoiceRef(
+  date: Date = new Date(),
+  ref?: string,
+): string {
   const randomSuffix = Math.floor(Math.random() * 1000)
     .toString()
     .padStart(3, "0");
@@ -32,7 +35,9 @@ export function sanitizeIRN(irn: string): string {
     .replace(/[^A-Z0-9-]/g, "");
 }
 
-export function sanitizeInvoiceIRNs(invoice: Record<string, unknown> | null | undefined): void {
+export function sanitizeInvoiceIRNs(
+  invoice: Record<string, unknown> | null | undefined,
+): void {
   if (!invoice || typeof invoice !== "object") {
     return;
   }
@@ -46,10 +51,16 @@ export function sanitizeInvoiceIRNs(invoice: Record<string, unknown> | null | un
   const isAdjustmentNote = adjustmentCodes.includes(invoiceTypeCode);
 
   if (isAdjustmentNote) {
-    if (!Array.isArray(invoice.billing_reference) || invoice.billing_reference.length === 0) {
+    if (
+      !Array.isArray(invoice.billing_reference) ||
+      invoice.billing_reference.length === 0
+    ) {
       const defaultRef = typeof invoice.irn === "string" ? invoice.irn : "";
       let defaultDate = "";
-      if (typeof invoice.issue_date === "string" && invoice.issue_date.trim() !== "") {
+      if (
+        typeof invoice.issue_date === "string" &&
+        invoice.issue_date.trim() !== ""
+      ) {
         defaultDate = invoice.issue_date.trim();
       } else {
         defaultDate = new Date().toISOString().split("T")[0];
@@ -63,8 +74,14 @@ export function sanitizeInvoiceIRNs(invoice: Record<string, unknown> | null | un
 
   if (Array.isArray(invoice.billing_reference)) {
     for (const ref of invoice.billing_reference) {
-      if (ref && typeof ref === "object" && typeof (ref as Record<string, unknown>).irn === "string") {
-        (ref as Record<string, unknown>).irn = sanitizeIRN((ref as Record<string, unknown>).irn as string);
+      if (
+        ref &&
+        typeof ref === "object" &&
+        typeof (ref as Record<string, unknown>).irn === "string"
+      ) {
+        (ref as Record<string, unknown>).irn = sanitizeIRN(
+          (ref as Record<string, unknown>).irn as string,
+        );
       }
     }
   }
@@ -78,15 +95,25 @@ export function sanitizeInvoiceIRNs(invoice: Record<string, unknown> | null | un
 
   for (const refKey of singleRefKeys) {
     const docRef = invoice[refKey] as Record<string, unknown> | undefined;
-    if (docRef && typeof docRef === "object" && typeof docRef.irn === "string") {
+    if (
+      docRef &&
+      typeof docRef === "object" &&
+      typeof docRef.irn === "string"
+    ) {
       docRef.irn = sanitizeIRN(docRef.irn);
     }
   }
 
   if (Array.isArray(invoice.additional_document_reference)) {
     for (const ref of invoice.additional_document_reference) {
-      if (ref && typeof ref === "object" && typeof (ref as Record<string, unknown>).irn === "string") {
-        (ref as Record<string, unknown>).irn = sanitizeIRN((ref as Record<string, unknown>).irn as string);
+      if (
+        ref &&
+        typeof ref === "object" &&
+        typeof (ref as Record<string, unknown>).irn === "string"
+      ) {
+        (ref as Record<string, unknown>).irn = sanitizeIRN(
+          (ref as Record<string, unknown>).irn as string,
+        );
       }
     }
   }

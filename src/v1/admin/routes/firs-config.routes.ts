@@ -33,7 +33,7 @@ export const firsConfigRoutes = new Elysia({
    */
   .get(
     "/",
-    async ({ configService, transformWorkflowService, set }) => {
+    async ({ transformWorkflowService, set }) => {
       try {
         const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(
           SchemaSourceType.FIRS_UBL,
@@ -75,7 +75,14 @@ export const firsConfigRoutes = new Elysia({
    */
   .put(
     "/",
-    async ({ auth, body, query, llmService, transformWorkflowService, auditService, set }) => {
+    async ({
+      auth,
+      body,
+      llmService,
+      transformWorkflowService,
+      auditService,
+      set,
+    }) => {
       try {
         onlyAdmin(auth!);
         let { invoice, metadata }: any = body;

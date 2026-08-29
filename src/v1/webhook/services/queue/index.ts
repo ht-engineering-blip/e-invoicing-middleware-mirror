@@ -1,2 +1,0 @@
-// BullMQ queue setup
-

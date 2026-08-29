@@ -3,7 +3,7 @@ import { Elysia } from "elysia";
 import { requireAuth } from "../../middlewares/auth";
 import { onlyAdmin } from "../auth/utils/access-checks";
 import { AuditService } from "./services/audit.service";
-import { ResponseBuilder } from "../../@lib";
+import { ResponseBuilder, TimeDuration, TIME_MS } from "../../@lib";
 import { AuditEventType } from "./models/audit-log.model";
 import {
   listAuditLogsValidation,
@@ -60,7 +60,7 @@ export const auditRoutes = new Elysia({
       const result = await auditService.getStatistics({
         startDate: query.startDate
           ? new Date(query.startDate)
-          : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          : new Date(Date.now() - TIME_MS.THIRTY_DAYS),
         endDate: query.endDate ? new Date(query.endDate) : new Date(),
         tenantId: query.tenantId,
         groupBy: query.groupBy,

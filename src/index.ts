@@ -15,13 +15,14 @@ if (
 }
 
 import { Elysia } from "elysia";
-import { appConfig } from "./@config";
+import { appConfig, docsConfig } from "./@config";
 import { v1Routes } from "./v1";
-import { errorHandlerMiddleware } from "./middlewares";
+import { docsAuthMiddleware, errorHandlerMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
 import { mongoPlugin, connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
+import { openapi } from "@elysiajs/openapi";
 import mongoose from "mongoose";
 
 if (!appConfig) {
@@ -41,10 +42,45 @@ connectMongo().catch((err) => {
 const dtsPlugin =
   process.env.NODE_ENV !== "production" ? dts("./src/index.ts") : new Elysia();
 
+const openapiPlugin = docsConfig.enabled
+  ? openapi({
+      path: "/openapi",
+      documentation: {
+        info: {
+          title: "E-Invoicing Middleware API",
+          version: "1.0.53",
+          description:
+            "Enterprise FIRS-Compliant E-Invoicing & ERP Orchestration Middleware",
+        },
+        tags: [
+          { name: "Invoicing", description: "FIRS Invoicing & QR Endpoints" },
+          { name: "Webhooks", description: "ERP & Inbound Webhooks" },
+          { name: "Tenants", description: "Tenant & Onboarding Operations" },
+          { name: "Admin", description: "Super Admin & Event Routing" },
+        ],
+      },
+    })
+  : new Elysia();
+
 const app = new Elysia()
-  .use(cors())
+  .use(
+    cors({
+      origin: true,
+      credentials: true,
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "x-api-key",
+        "x-admin-key",
+        "x-docs-password",
+      ],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    }),
+  )
   .use(mongoPlugin)
   .use(dtsPlugin)
+  .use(docsAuthMiddleware)
+  .use(openapiPlugin)
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get(
@@ -158,11 +194,15 @@ const app = new Elysia()
     // Default error handler
     const errorObj = error as any;
     logger.error(`[Unhandled Error - ${code}]:`, error);
-    set.status = errorObj.statusCode || errorObj.status || 500;
+    const status = errorObj.statusCode || errorObj.status || 500;
+    set.status = status;
     return {
       success: false,
       error: errorObj.message || "An error occurred",
-      statusCode: set.status || 500,
+      message: errorObj.message || "An error occurred",
+      code: errorObj.code || code || "INTERNAL_SERVER_ERROR",
+      statusCode: status,
+      ...(errorObj.details ? { details: errorObj.details } : {}),
     };
   });
 

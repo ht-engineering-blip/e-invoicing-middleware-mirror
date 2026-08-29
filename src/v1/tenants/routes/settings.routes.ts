@@ -140,11 +140,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
           body.currentPassword,
         );
 
-        return ResponseBuilder.success(
-          result,
-          undefined,
-          result.message,
-        );
+        return ResponseBuilder.success(result, undefined, result.message);
       } catch (error: any) {
         set.status = error.statusCode || 500;
         logger.error("Failed to request email change", {
@@ -181,11 +177,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
           getActor(auth),
         );
 
-        return ResponseBuilder.success(
-          result,
-          undefined,
-          result.message,
-        );
+        return ResponseBuilder.success(result, undefined, result.message);
       } catch (error: any) {
         set.status = error.statusCode || 500;
         logger.error("Failed to verify email change", {

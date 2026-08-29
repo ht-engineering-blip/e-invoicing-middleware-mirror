@@ -126,6 +126,15 @@ export class FIRSInvoiceTransformer {
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<Record<string, unknown>> {
+    if (
+      !aiConfig?.enabled ||
+      (this.provider === "openai" && !aiConfig?.openaiEnabled)
+    ) {
+      throw new InternalServerError(
+        "OpenAI / AI transformation service is currently disabled by environment configuration (OPENAI_ENABLED=false)",
+      );
+    }
+
     const prompt = await generateTransformPrompt(
       invoiceData,
       authContext,
