@@ -3,7 +3,7 @@ import { TenantRepository } from "../../repos/tenant.repo";
 import { NotFoundError } from "../../../../@lib/errors";
 import { ApiKeyStatus, type TenantDocument } from "../../models";
 import { AuditEventType, AuditEventSeverity } from "../../../audit/models";
-import { BaseService } from "../../../../@lib";
+import { BaseService, TIME_MS } from "../../../../@lib";
 
 export interface ApiKeyDTO {
   keyId: string;
@@ -46,7 +46,7 @@ export class TenantApiKeyService extends BaseService {
     const keyPrefix = plainKey.substring(0, 8);
 
     const expiresAt = input.expiresInDays
-      ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000)
+      ? new Date(Date.now() + input.expiresInDays * TIME_MS.ONE_DAY)
       : undefined;
 
     const apiKey = await this.apiKeyRepo.create({
@@ -179,8 +179,7 @@ export class TenantApiKeyService extends BaseService {
         scopes: oldApiKey.scopes,
         expiresInDays: oldApiKey.expiresAt
           ? Math.ceil(
-              (oldApiKey.expiresAt.getTime() - Date.now()) /
-                (24 * 60 * 60 * 1000),
+              (oldApiKey.expiresAt.getTime() - Date.now()) / TIME_MS.ONE_DAY,
             )
           : undefined,
       },
