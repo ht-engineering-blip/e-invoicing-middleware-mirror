@@ -3,28 +3,34 @@ import { TenantService } from "../../../tenants/services/tenant.service";
 import { OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { generateUniqueHsnCode } from "../../utils/transformer/utils";
+import { extractFIRSError, retryWithBackoff } from "../../../shared/utils";
 
 export class OutboundWorkflowService {
   private tenantService: TenantService;
-
   private outboundRepo: OutboundInvoiceRepository;
-  constructor() {
-    this.tenantService = new TenantService();
-    this.outboundRepo = new OutboundInvoiceRepository();
+  private firsService: FIRSService;
+
+  constructor(dependencies?: {
+    tenantService?: TenantService;
+    outboundRepo?: OutboundInvoiceRepository;
+    firsService?: FIRSService;
+  }) {
+    this.tenantService = dependencies?.tenantService ?? new TenantService();
+    this.outboundRepo =
+      dependencies?.outboundRepo ?? new OutboundInvoiceRepository();
+    this.firsService = dependencies?.firsService ?? new FIRSService();
   }
 
   /**
    * Final step of the outbound chain: generate QR code from FIRS.
-   * All prior steps (validate, sign, transmit, confirm) must already be done.
    */
-  async generateQRCode(irn: string, tenat: string) {
-    const firsService = new FIRSService();
-    const firsCreds = await this.tenantService.getFIRSCredentials(tenat);
+  async generateQRCode(irn: string, tenantId: string) {
+    const firsCreds = await this.tenantService.getFIRSCredentials(tenantId);
 
-    const encryptedData = await firsService.generateQRCodeV2(
+    const encryptedData = await this.firsService.generateQRCodeV2(
       irn,
-      firsCreds.certificate,
-      firsCreds.publicKey,
+      firsCreds.certificate || "",
+      firsCreds.publicKey || "",
     );
 
     if (!encryptedData?.qrCode && !encryptedData?.data) {
@@ -35,43 +41,14 @@ export class OutboundWorkflowService {
   }
 
   getFIRSError(error: any) {
-    const data =
-      error?.response?.data ||
-      error?.data ||
-      error?.errors?.response ||
-      error?.errors;
-    const message =
-      data?.error?.public_message ||
-      data?.error?.message ||
-      data?.public_message ||
-      data?.message ||
-      (Array.isArray(data?.errors)
-        ? data.errors
-            .map((e: any) =>
-              typeof e === "string" ? e : e?.message || JSON.stringify(e),
-            )
-            .join("; ")
-        : data?.errors
-          ? JSON.stringify(data.errors)
-          : "") ||
-      error?.message ||
-      "An error occurred, please try again.";
-    const code =
-      error?.response?.status ||
-      data?.code ||
-      error?.statusCode ||
-      error?.errors?.code ||
-      500;
-    return { message, code };
+    return extractFIRSError(error);
   }
 
   async handleOutboundWorkflow(
     invoice: SecureInvoice,
     transmit: boolean = false,
   ) {
-    const firsService = new FIRSService();
-
-    // Load persisted workflow state so we can resume from the last success point
+    // Load persisted workflow state
     let stored = null;
     if (invoice.irn) {
       stored = await this.outboundRepo.findByIrn(invoice.irn).catch(() => null);
@@ -85,71 +62,65 @@ export class OutboundWorkflowService {
       delivered: false,
     };
 
-    // Already fully delivered — return the stored QR code immediately
+    // Already fully delivered — return stored QR code immediately
     if (wf.delivered && stored?.qrCode) {
       return { qrCode: stored.qrCode, data: stored.metadata?.firsSignedData };
     }
 
     try {
-      // Step 0: Determine whether signing is needed.
-      // If validated or signed already, skip the FIRS search (state is known).
+      // Step 0: Check if signing is needed
       let skipSigning = wf.signed;
 
       if (!skipSigning) {
-        const searchedInvoice = await firsService.searchInvoice(
+        const searchedInvoice = await this.firsService.searchInvoice(
           invoice.business_id,
           invoice.irn,
         );
-
         skipSigning = (searchedInvoice?.data?.data?.items?.length ?? 0) > 0;
       }
 
       // Step 1: Validate
       if (!wf.validated) {
         let validatedInvoice: OkayResponse | undefined;
-        let attempts = 0;
-        const maxAttempts = 3;
 
-        while (attempts < maxAttempts) {
-          try {
-            validatedInvoice = await firsService.validateInvoice(invoice);
-            break;
-          } catch (error: any) {
-            attempts++;
-            const errorStr = String(error?.message || "").toLowerCase();
+        try {
+          validatedInvoice = await retryWithBackoff(
+            async () => this.firsService.validateInvoice(invoice),
+            {
+              maxRetries: 3,
+              initialDelayMs: 500,
+              shouldRetry: (err) => {
+                const errStr = String(err?.message || "").toLowerCase();
+                return errStr.includes("hsn");
+              },
+              onRetry: () => {
+                if (Array.isArray(invoice.invoice_line)) {
+                  const usedHsnCodes = new Set<string>();
+                  for (const line of invoice.invoice_line) {
+                    const lineDesc =
+                      line.product_category ||
+                      line.service_category ||
+                      line.item?.description ||
+                      line.item?.name;
 
-            if (errorStr.includes("hsn") && attempts < maxAttempts) {
-              console.log(
-                `[OutboundService] Caught HSN code error from FIRS. Regenerating HSN codes and retrying (Attempt ${attempts + 1}/${maxAttempts})...`,
-              );
-
-              if (Array.isArray(invoice.invoice_line)) {
-                const usedHsnCodes = new Set<string>();
-                for (const line of invoice.invoice_line) {
-                  // Use product_category or service_category or item description for smart WCO HSN lookup
-                  const lineDesc =
-                    line.product_category ||
-                    line.service_category ||
-                    line.item?.description ||
-                    line.item?.name;
-
-                  line.hsn_code = generateUniqueHsnCode(usedHsnCodes, lineDesc);
+                    line.hsn_code = generateUniqueHsnCode(
+                      usedHsnCodes,
+                      lineDesc,
+                    );
+                  }
                 }
-              }
-              // Wait 1 second before retrying
-              await new Promise((res) => setTimeout(res, 1000));
-              continue;
-            }
-            // If it's a different error or we exceeded max attempts, throw
-            throw error;
-          }
+              },
+            },
+          );
+        } catch (error: any) {
+          throw error;
         }
 
         if (
           !validatedInvoice ||
           (validatedInvoice.code !== 200 && !validatedInvoice?.data?.ok)
         ) {
-          const { message } = this.getFIRSError(validatedInvoice);
+          const { message } = extractFIRSError(validatedInvoice);
           throw new Error(`Invoice validation failed: ${message}`);
         }
 
@@ -163,12 +134,12 @@ export class OutboundWorkflowService {
         wf.validated = true;
       }
 
-      // Step 2: Sign (skip if already signed, or if FIRS already has the invoice)
+      // Step 2: Sign
       if (!skipSigning && !wf.signed) {
-        const signedInvoice = await firsService.signInvoice(invoice);
+        const signedInvoice = await this.firsService.signInvoice(invoice);
 
         if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
-          const { message } = this.getFIRSError(signedInvoice);
+          const { message } = extractFIRSError(signedInvoice);
           throw new Error(`Invoice signing failed: ${message}`);
         }
 
@@ -186,14 +157,13 @@ export class OutboundWorkflowService {
       let toTransmit = true;
       if (!wf.transmitted) {
         try {
-          const confirmedInvoice = await firsService.confirmSignedInvoice(
+          const confirmedInvoice = await this.firsService.confirmSignedInvoice(
             invoice.irn,
           );
 
           const confirmCode = confirmedInvoice?.data?.code;
-
           if (confirmCode && confirmCode !== 200) {
-            const { message } = this.getFIRSError(confirmedInvoice);
+            const { message } = extractFIRSError(confirmedInvoice);
             console.warn(
               `[OutboundService] Confirmation check warning: ${message}`,
             );
@@ -231,14 +201,16 @@ export class OutboundWorkflowService {
           invoice?.tenant_id,
         );
 
-        encryptedData = await firsService.generateQRCodeV2(
+        encryptedData = await this.firsService.generateQRCodeV2(
           invoice.irn,
-          firsCredentials.certificate,
-          firsCredentials.publicKey,
+          firsCredentials.certificate || "",
+          firsCredentials.publicKey || "",
         );
 
         if (encryptedData?.qrCode) {
-          const existingInvoice = await this.outboundRepo.findByIrn(invoice.irn);
+          const existingInvoice = await this.outboundRepo.findByIrn(
+            invoice.irn,
+          );
           if (existingInvoice) {
             await this.outboundRepo.update(invoice.irn, {
               qrCode: encryptedData.qrCode,
@@ -252,15 +224,13 @@ export class OutboundWorkflowService {
         );
       }
 
-      console.log("[Job:complete-outbound] Transmition Started", { invoice });
-
       // Step 5: Transmit
       let transmissionFailed = false;
       if (transmit && (toTransmit || !wf.transmitted)) {
         try {
-          const transmitRes = await firsService.transmitInvoice(invoice.irn);
-
-          console.log("TRENSMITTED RES", { transmitRes });
+          const transmitRes = await this.firsService.transmitInvoice(
+            invoice.irn,
+          );
 
           if (
             transmitRes &&
@@ -268,7 +238,7 @@ export class OutboundWorkflowService {
             transmitRes.code !== 200 &&
             !transmitRes?.data?.ok
           ) {
-            const { message } = this.getFIRSError(transmitRes);
+            const { message } = extractFIRSError(transmitRes);
             throw new Error(`Transmission failed: ${message}`);
           }
 

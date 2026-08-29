@@ -400,22 +400,38 @@ export class FIRSService {
     });
   }
 
+  private static resourceCache = new Map<
+    string,
+    { data: any[]; expiresAt: number }
+  >();
+
   /**
-   * Fetch a reference resource list from FIRS
+   * Fetch a reference resource list from FIRS with 1-hour in-memory cache
    * GET /api/v1/invoice/resources/:resourceName
    *
    * @param resourceName - The resource endpoint name (e.g. "payment-means", "tax-categories")
    */
   public async getResource<T>(resourceName: string): Promise<T[]> {
+    const cached = FIRSService.resourceCache.get(resourceName);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data as T[];
+    }
+
     const client = this.appClient;
     const response: any = await client.get(
       `api/v1/invoice/resources/${resourceName}`,
     );
-    // FIRSClient.get() returns the AxiosResponse (via _handleResponse interceptor)
-    // .data gives us the FIRS body { code: 200, data: [...] }
-    // .data.data gives us the actual array
     const body = response?.data ?? response;
-    return Array.isArray(body) ? body : (body?.data ?? body);
+    const data: T[] = Array.isArray(body) ? body : (body?.data ?? body);
+
+    if (Array.isArray(data) && data.length > 0) {
+      FIRSService.resourceCache.set(resourceName, {
+        data,
+        expiresAt: Date.now() + 3_600_000, // 1 hour TTL
+      });
+    }
+
+    return data;
   }
 
   // Database operations

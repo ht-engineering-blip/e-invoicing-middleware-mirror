@@ -440,6 +440,7 @@ export class TenantRepository {
               }),
             },
           },
+          { returnDocument: "after" },
         )
         .exec();
 

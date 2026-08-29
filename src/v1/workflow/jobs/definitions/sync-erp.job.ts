@@ -100,8 +100,10 @@ function applyQueryParams(
   return `${url}${sep}${qs}`;
 }
 
+const templateCache = new Map<string, HandlebarsTemplateDelegate>();
+
 /**
- * Compile and render a Handlebars bodyTemplate using the job context as the data model.
+ * Compile and render a Handlebars bodyTemplate with delegate caching
  * Returns undefined when no template is configured (e.g. GET requests).
  */
 function renderBody(
@@ -110,7 +112,13 @@ function renderBody(
 ): string | undefined {
   if (!bodyTemplate) return undefined;
   try {
-    const compiled = Handlebars.compile(bodyTemplate, { noEscape: true });
+    let compiled = templateCache.get(bodyTemplate);
+    if (!compiled) {
+      compiled = Handlebars.compile(bodyTemplate, { noEscape: true });
+      if (templateCache.size < 200) {
+        templateCache.set(bodyTemplate, compiled);
+      }
+    }
     return compiled(data);
   } catch (err: any) {
     throw new Error(`ERP sync bodyTemplate render failed: ${err.message}`);
@@ -228,7 +236,7 @@ export function registerSyncErpJob(): void {
       // Build headers
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...JSON.parse(JSON.stringify(erpSyncConfig.headers ?? {})),
+        ...(erpSyncConfig.headers ?? {}),
         ...buildAuthHeaders(erpSyncConfig.authentication),
       };
 

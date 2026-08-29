@@ -7,17 +7,18 @@ import {
   OutboundPaymentStatus,
   IOutboundPaymentDetails,
 } from "../models/outbound-invoice.model";
-import {
-  InboundInvoiceDocument,
-  InboundInvoiceModel,
-} from "../models/inbound-invoice.model";
+import { InboundInvoiceDocument, InboundInvoiceModel } from "../models/inbound-invoice.model";
 import { WebhookEventModel } from "../../webhook/models/webhook-event.model";
+import { TTLCache } from "../../shared/utils";
 
 export class OutboundInvoiceRepository {
   private outboundInvoiceModel: ModelWrapper<OutboundInvoiceDocument>;
   private inboundInvoiceModel: ModelWrapper<InboundInvoiceDocument>;
 
-  private metricsCache = new Map<string, { data: any; timestamp: number }>();
+  private metricsCache = new TTLCache<string, any>({
+    maxItems: 500,
+    defaultTtlMs: 30_000,
+  });
 
   constructor() {
     this.outboundInvoiceModel = new ModelWrapper<OutboundInvoiceDocument>(
@@ -490,8 +491,8 @@ export class OutboundInvoiceRepository {
 
       const cacheKey = `${tenantId || "admin"}:${businessId || ""}:${params.from?.getTime() || ""}:${params.to?.getTime() || ""}`;
       const cached = this.metricsCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < 30000) {
-        return cached.data;
+      if (cached) {
+        return cached;
       }
 
       const [outboundCount, inboundCount] = await Promise.all([
@@ -511,7 +512,7 @@ export class OutboundInvoiceRepository {
         inbound: inboundCount || 0,
       };
 
-      this.metricsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.metricsCache.set(cacheKey, result, 30_000);
       return result;
     } catch (error) {
       console.error("Error computing invoice metrics:", error);

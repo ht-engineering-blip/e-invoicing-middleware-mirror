@@ -259,7 +259,7 @@ describe("Real DB-Connected Onboarding Flow (Tenant & Team Member)", () => {
 
     testTenants.push(tenant.tenantId);
 
-    const newBusinessId = "new-test-business-id-uuid-9999";
+    const newBusinessId = `bus_${Date.now()}_${faker.string.alphanumeric(8)}`;
     const updatedTenant = await tenantService.updateBusinessId(
       tenant.tenantId,
       newBusinessId,
