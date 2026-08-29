@@ -4,6 +4,7 @@ import * as jwt from "jsonwebtoken";
 import { appConfig } from "../@config/app";
 import { jwtConfig } from "../@config/jwt";
 import { UnauthorizedError } from "../@lib/errors";
+import { logger } from "../@lib/logger";
 import { ApiKeyRepository } from "../v1/tenants/repos/api-key.repo";
 import { TenantRepository } from "../v1/tenants/repos/tenant.repo";
 import { TeamMemberRepository } from "../v1/tenants/repos/team-member.repo";
@@ -503,12 +504,16 @@ export const requireAuth = (instance: Elysia) =>
               scopes: decoded.scopes || [],
             },
           };
-        } catch (error) {
+        } catch (error: any) {
           if (
             error instanceof jwt.JsonWebTokenError ||
             error instanceof jwt.TokenExpiredError
           ) {
-            throw new UnauthorizedError("Invalid or expired token");
+            logger.warn("[Auth] JWT verification failed", {
+              reason: error.message,
+              name: error.name,
+            });
+            throw new UnauthorizedError(`Invalid or expired token: ${error.message}`);
           }
           throw error;
         }
