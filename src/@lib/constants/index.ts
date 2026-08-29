@@ -2,6 +2,8 @@ export default {
   queries: {},
 };
 
+export * from "./time.constants";
+
 export enum WorkflowEventType {
   STEP_COMPLETED = "WORKFLOW_STEP_COMPLETED",
   COMPLETED = "WORKFLOW_COMPLETED",

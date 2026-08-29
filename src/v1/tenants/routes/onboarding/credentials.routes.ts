@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { firsConfig, appConfig } from "../../../../@config";
-import { logger, ResponseBuilder } from "../../../../@lib";
+import { logger, ResponseBuilder, TIME_MS } from "../../../../@lib";
 import { MailContent, withTemplate } from "../../../../@lib/messaging";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { onlySelf } from "../../../auth/utils/access-checks";
@@ -177,7 +177,7 @@ export const onboardingCredentialsRoutes = new Elysia()
 
         const activationTokenId = crypto.randomUUID();
         const activationTokenExpiresAt = new Date(
-          Date.now() + 12 * 60 * 60 * 1000,
+          Date.now() + TIME_MS.TWELVE_HOURS,
         );
 
         const metadata = {
