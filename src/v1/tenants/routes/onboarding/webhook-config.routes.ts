@@ -6,7 +6,6 @@ import { logger, ResponseBuilder } from "../../../../@lib";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { onlySelf } from "../../../auth/utils/access-checks";
 import { TenantService } from "../../services/tenant.service";
-import { WebhookService } from "../../../webhook/services/webhook.service";
 import { signWebhookPayload } from "../../../webhook";
 import {
   generateWebhookValidation,
@@ -17,7 +16,6 @@ import {
 export const onboardingWebhookRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
-  .decorate("webhookService", new WebhookService())
 
   /**
    * POST /tenants/:tenantId/webhook/generate
@@ -25,7 +23,7 @@ export const onboardingWebhookRoutes = new Elysia()
    */
   .post(
     "/:tenantId/webhook/generate",
-    async ({ params, body, auth, tenantService, webhookService, set }) => {
+    async ({ params, body, auth, tenantService, set }) => {
       try {
         onlySelf(auth!, params.tenantId);
 
@@ -50,6 +48,9 @@ export const onboardingWebhookRoutes = new Elysia()
             webhookEnabled: true,
             config: {
               ...tenantObj.config,
+              webhookUrl,
+              webhookEnabled: true,
+              webhookAuth: webhookSecret,
               invoiceIdKey,
             },
             metadata: {
@@ -64,13 +65,6 @@ export const onboardingWebhookRoutes = new Elysia()
           },
           getActor(auth),
         );
-
-        await webhookService.configureWebhook({
-          enabled: true,
-          tenantId: params.tenantId,
-          webhookUrl,
-          webhookSecret,
-        });
 
         try {
           const onboarding = await tenantService.getOnboardingStatus(
