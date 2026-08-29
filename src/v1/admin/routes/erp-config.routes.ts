@@ -104,7 +104,6 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
     async ({
       auth,
       body,
-      query,
       llmService,
       transformWorkflowService,
       auditService,
