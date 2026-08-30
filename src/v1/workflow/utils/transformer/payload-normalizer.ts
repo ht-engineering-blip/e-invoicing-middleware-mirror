@@ -81,13 +81,7 @@ export function normalizeInvoicePayload(
 
     const generated = generateIRN(invoiceReference, effectiveServiceId);
 
-    if (generated) {
-      irn = generated;
-    } else {
-      irn = `INV${today}001`;
-    }
-  } else {
-    irn = `INV${today}001`;
+    if (generated) irn = generated;
   }
 
   // 4. Resolve Issue Date

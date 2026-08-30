@@ -105,7 +105,9 @@ export function resolveCurrencyCode(
 
   let defaultCurrency = "NGN";
   if (currencies && currencies.length > 0) {
-    const foundNgn = currencies.find((c) => c.code && c.code.toUpperCase() === "NGN");
+    const foundNgn = currencies.find(
+      (c) => c.code && c.code.toUpperCase() === "NGN",
+    );
     if (foundNgn && foundNgn.code) {
       defaultCurrency = foundNgn.code;
     } else if (currencies[0]?.code) {
@@ -113,9 +115,7 @@ export function resolveCurrencyCode(
     }
   }
 
-  if (!input || typeof input !== "string") {
-    return defaultCurrency;
-  }
+  if (!input || typeof input !== "string") return defaultCurrency;
 
   const trimmed = input.trim();
   const upper = trimmed.toUpperCase();
@@ -153,14 +153,10 @@ export function resolveCurrencyCode(
       (c.name && c.name.toLowerCase() === lower) ||
       (c.name_plural && c.name_plural.toLowerCase() === lower),
   );
-  if (matchByName && matchByName.code) {
-    return matchByName.code;
-  }
+  if (matchByName && matchByName.code) return matchByName.code;
 
   // 4. If input matches 3-letter currency code pattern
-  if (/^[A-Z]{3}$/.test(upper)) {
-    return upper;
-  }
+  if (/^[A-Z]{3}$/.test(upper)) return upper;
 
   return defaultCurrency;
 }
@@ -216,7 +212,8 @@ export function lookupHsnCode(description: string): string {
     for (const entry of dynamicHsCodes) {
       if (!entry) continue;
       let score = 0;
-      const targetText = `${entry.label || ""} ${(entry.keywords || []).join(" ")}`.toLowerCase();
+      const targetText =
+        `${entry.label || ""} ${(entry.keywords || []).join(" ")}`.toLowerCase();
 
       if (entry.code.toLowerCase() === normalized) {
         score = 100;
@@ -258,7 +255,11 @@ export function generateUniqueHsnCode(
   description?: string,
 ): string {
   let baseCode = "9999.00";
-  if (description && typeof description === "string" && description.trim() !== "") {
+  if (
+    description &&
+    typeof description === "string" &&
+    description.trim() !== ""
+  ) {
     baseCode = lookupHsnCode(description);
   }
 

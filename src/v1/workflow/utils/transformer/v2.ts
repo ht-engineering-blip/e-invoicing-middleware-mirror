@@ -109,7 +109,7 @@ export class FIRSInvoiceTransformerV2 {
         };
       }
 
-      const transformedData = result.data as Record<string, unknown>;
+      const transformedData = result.data;
       sanitizeInvoiceIRNs(transformedData);
 
       const validated = this.validateWithZod(
@@ -182,23 +182,43 @@ export class FIRSInvoiceTransformerV2 {
 
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-      const invoiceRef =
-        (typeof invoice.invoice_reference === "string" &&
-          invoice.invoice_reference) ||
-        generateInvoiceRef();
-      const issueDate =
-        typeof invoice.issue_date === "string" && invoice.issue_date
-          ? new Date(invoice.issue_date)
-          : undefined;
+      let invoiceRef: string;
+      if (
+        typeof invoice.invoice_reference === "string" &&
+        invoice.invoice_reference.trim() !== ""
+      ) {
+        invoiceRef = invoice.invoice_reference.trim();
+      } else {
+        invoiceRef = generateInvoiceRef();
+      }
 
-      const serviceId =
-        authContext?.serviceId || authContext?.businessId?.slice(0, 8);
+      let issueDate: Date | undefined;
+      if (
+        typeof invoice.issue_date === "string" &&
+        invoice.issue_date.trim() !== ""
+      ) {
+        issueDate = new Date(invoice.issue_date);
+      } else {
+        issueDate = undefined;
+      }
+
+      let serviceId: string | undefined;
+      if (authContext?.serviceId) {
+        serviceId = authContext.serviceId;
+      } else if (authContext?.businessId) {
+        serviceId = authContext.businessId.slice(0, 8);
+      } else {
+        serviceId = undefined;
+      }
+
       const computedIrn = generateIRN(invoiceRef, serviceId, issueDate);
 
-      const expectedIrn =
-        typeof invoice.irn === "string" && invoice.irn
-          ? invoice.irn
-          : computedIrn;
+      let expectedIrn: string | undefined;
+      if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
+        expectedIrn = invoice.irn.trim();
+      } else {
+        expectedIrn = computedIrn;
+      }
 
       if (expectedBusinessId) resolved.business_id = expectedBusinessId;
       if (expectedIrn) resolved.irn = expectedIrn;
@@ -239,10 +259,7 @@ export class FIRSInvoiceTransformerV2 {
         );
 
         const response = await this.callLLM(prompt);
-        const parsed = this.safeParseLLMJSON(response) as Record<
-          string,
-          unknown
-        >;
+        const parsed = this.safeParseLLMJSON(response) as Record<string, any>;
 
         if (
           parsed.business_id !== undefined &&
