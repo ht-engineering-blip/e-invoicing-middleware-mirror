@@ -29,10 +29,13 @@ function redactERPCredentials(config: any): any {
   if (!config) return config;
   const cloned = JSON.parse(JSON.stringify(config));
   if (cloned.authentication) {
-    if (cloned.authentication.password) cloned.authentication.password = "[REDACTED]";
+    if (cloned.authentication.password)
+      cloned.authentication.password = "[REDACTED]";
     if (cloned.authentication.token) cloned.authentication.token = "[REDACTED]";
-    if (cloned.authentication.apiKeyValue) cloned.authentication.apiKeyValue = "[REDACTED]";
-    if (cloned.authentication.secret) cloned.authentication.secret = "[REDACTED]";
+    if (cloned.authentication.apiKeyValue)
+      cloned.authentication.apiKeyValue = "[REDACTED]";
+    if (cloned.authentication.secret)
+      cloned.authentication.secret = "[REDACTED]";
   }
   return cloned;
 }
@@ -51,7 +54,10 @@ export const adminTenantConfigRoutes = new Elysia()
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const page = Math.max(1, parseInt(String(query?.page || 1), 10));
-        const limit = Math.min(100, Math.max(1, parseInt(String(query?.limit || 20), 10)));
+        const limit = Math.min(
+          100,
+          Math.max(1, parseInt(String(query?.limit || 20), 10)),
+        );
         const result = await tenantService.listAllERPConfigs(query as any);
         return ResponseBuilder.paginate(
           result.configs,
@@ -108,6 +114,40 @@ export const adminTenantConfigRoutes = new Elysia()
   )
 
   /**
+   * PUT /api/v1/tenants/:tenantId/erp-sync
+   * Update/Configure ERP sync for a tenant
+   */
+  .put(
+    "/:tenantId/erp-sync",
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+        const result = await tenantService.configureERPSync(
+          params.tenantId,
+          body,
+          getActor(auth),
+        );
+        return ResponseBuilder.success(
+          result,
+          undefined,
+          "ERP sync configured successfully",
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Error configuring ERP sync", {
+          tenantId: params.tenantId,
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to configure ERP sync",
+          error.statusCode || 500,
+        );
+      }
+    },
+    configureERPSyncValidation,
+  )
+
+  /**
    * GET /api/v1/tenants/:tenantId/erp-sync
    * Get ERP sync config for a tenant
    */
@@ -123,7 +163,8 @@ export const adminTenantConfigRoutes = new Elysia()
           (auth as any)?.isAdmin === true ||
           (auth as any)?.role === "super_admin";
 
-        const allowDecrypt = isGlobalAdmin && (query as any)?.decrypt !== "false";
+        const allowDecrypt =
+          isGlobalAdmin && (query as any)?.decrypt !== "false";
 
         const responseConfig = allowDecrypt
           ? config
@@ -275,7 +316,9 @@ export const adminTenantConfigRoutes = new Elysia()
           ...(updatedTenant?.config || existingConfig),
           idKeyMap,
           referenceIdKeyMap,
-          ...(updatePayload.invoiceIdKey ? { invoiceIdKey: updatePayload.invoiceIdKey } : {}),
+          ...(updatePayload.invoiceIdKey
+            ? { invoiceIdKey: updatePayload.invoiceIdKey }
+            : {}),
         };
 
         const result = def

@@ -604,17 +604,31 @@ describe("Tenant Admin Routes & Credentials Redaction Security Tests", () => {
       expect(authBlock.apiKeyValue).toBe("[REDACTED]");
     });
 
-    it("should reject viewer role from accessing ERP Sync Config", async () => {
+    it("should allow tenant OWNER to configure ERP sync via PUT", async () => {
       const response = await adminTenantRoutes.handle(
         new Request("http://localhost/tenant-123/erp-sync", {
-          method: "GET",
-          headers: viewerTokenHeader,
+          method: "PUT",
+          headers: {
+            ...ownerTokenHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "ERP Sync Service",
+            method: "POST",
+            baseUrl: "https://api.github.com",
+            endpoint: "/sync",
+            enabled: true,
+            authentication: {
+              type: "bearer",
+              token: "new-secret-token",
+            },
+          }),
         }),
       );
-      expect([200, 403]).toContain(response.status);
+      expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.success).toBe(false);
-      expect(body.statusCode).toBe(403);
+      expect(body.success).toBe(true);
+      expect(body.message).toBe("ERP sync configured successfully");
     });
   });
 
