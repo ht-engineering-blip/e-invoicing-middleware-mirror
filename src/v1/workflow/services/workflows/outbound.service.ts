@@ -40,9 +40,7 @@ export class OutboundWorkflowService {
     return encryptedData;
   }
 
-  getFIRSError(error: any) {
-    return extractFIRSError(error);
-  }
+  getFIRSError = (error: any) => extractFIRSError(error);
 
   async handleOutboundWorkflow(
     invoice: SecureInvoice,

@@ -1,12 +1,8 @@
 import { firsConfig } from "../../../../@config";
-import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
-import type {
-  FIRSDownloadInvoiceResponse,
-  FIRSDownloadedInvoiceData,
-} from "../../../../@lib/adapters/firs/types";
-import { TenantService } from "../../../tenants/services/tenant.service";
 import { logger } from "../../../../@lib";
+import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { extractFIRSError } from "../../../shared/utils";
+import { TenantService } from "../../../tenants/services/tenant.service";
 
 export interface InboundWorkflowInvoice {
   irn: string;
@@ -33,9 +29,7 @@ export class InboundWorkflowService {
     this.firsService = dependencies?.firsService ?? new FIRSService();
   }
 
-  getFIRSError(error: any) {
-    return extractFIRSError(error);
-  }
+  getFIRSError = (error: any) => extractFIRSError(error);
 
   async handleInboundWorkflow(
     invoice: InboundWorkflowInvoice,
@@ -48,10 +42,9 @@ export class InboundWorkflowService {
       }
 
       // Step 0: Download the invoice from FIRS
-      const downloadResponse: FIRSDownloadInvoiceResponse =
-        await this.firsService.downloadInvoice(irn);
+      const downloadResponse = await this.firsService.downloadInvoice(irn);
 
-      const invoiceData: FIRSDownloadedInvoiceData = downloadResponse?.data;
+      const invoiceData = downloadResponse?.data;
 
       if (
         !invoiceData ||
