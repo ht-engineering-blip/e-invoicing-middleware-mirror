@@ -200,6 +200,40 @@ export const adminTenantCrudRoutes = new Elysia()
   )
 
   /**
+   * PATCH /api/v1/tenants/:tenantId
+   * Partial update tenant
+   */
+  .patch(
+    "/:tenantId",
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+        const tenant = await tenantService.updateTenant(
+          params.tenantId,
+          body,
+          getActor(auth),
+        );
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant updated successfully",
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Error updating tenant", {
+          tenantId: params.tenantId,
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to update tenant",
+          error.statusCode || 500,
+        );
+      }
+    },
+    updateTenantValidation,
+  )
+
+  /**
    * POST /api/v1/tenants/:tenantId/activate
    * Activate tenant
    */
