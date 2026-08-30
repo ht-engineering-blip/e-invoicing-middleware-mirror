@@ -216,6 +216,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
 );
 
 // Compound Indexes for performance
+WebhookEventSchema.index({ tenantId: 1, eventId: 1 });
 WebhookEventSchema.index({ tenantId: 1, eventType: 1 });
 WebhookEventSchema.index({ tenantId: 1, status: 1 });
 WebhookEventSchema.index({ resourceId: 1 });
