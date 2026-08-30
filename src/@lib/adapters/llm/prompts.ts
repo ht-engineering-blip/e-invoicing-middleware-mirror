@@ -266,10 +266,10 @@ ${JSON.stringify(FIRS_INVOICE_METADATA.category_summary, null, 2)}
 ## INVOICE LINE ITEM RULES:
 Each invoice_line must contain:
 - hsn_code: product/service classification code. MUST NOT be empty. If it is missing or empty in the input data, you must deduce the correct HSN code from the item name or description (e.g., if the item is "phone", deduce the HSN code for mobile phones). If it does not contain a decimal point, format it to end with ".00" (e.g., "90983" becomes "90983.00"). Ensure each distinct type of product or service in the invoice line items has a unique and appropriate HSN code assigned (do not reuse the same HSN code for different products or services).
-- product_category: category name
+- product_category: REQUIRED. Category name (e.g., "Cereals; rice, semi-milled or wholly milled", "IT and Computing Equipment", "Office Furniture", "Industrial Equipment"). Deduce an appropriate category name from the item name, description, or business context if not provided in source data.
 - invoiced_quantity: quantity (number)
 - line_extension_amount: line total before tax
-- item: object with name, description
+- item: object with name (REQUIRED - use item name from source data) and description (REQUIRED - if missing or empty in the input data, generate a clear, professional description based on item.name and category)
 - price: object with price_amount (number), base_quantity (number, usually 1), price_unit (UN/ECE unit code — NOT a currency; use H87=piece, XBG=bag, KGM=kg, LTR=litre, TNE=tonne, XBX=box, XCT=carton; default H87 if unsure — NEVER use "NGN", "USD" or similar currency codes)
 
 ## IMPORTANT INSTRUCTIONS:

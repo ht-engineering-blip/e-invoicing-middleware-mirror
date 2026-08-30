@@ -336,6 +336,14 @@ export function normalizeInvoicePayload(
       serviceCategory = line.service_category.trim();
     }
 
+    if (!productCategory) {
+      productCategory =
+        serviceCategory ||
+        itemName ||
+        itemDescription ||
+        "General Goods and Services";
+    }
+
     // Seller's Item Identification
     let sellersItemIdentification: string | undefined = undefined;
     if (

@@ -30,7 +30,19 @@ export async function executeTransmitInvoiceStep(params: {
       throw new ValidationError("Invoice does not belong to this business");
     }
 
-    const transmitResult = await firsService.transmitInvoice(irn);
+    let transmitData: unknown;
+    try {
+      transmitData = await firsService.transmitInvoice(irn);
+    } catch (transmitErr: unknown) {
+      // Check if invoice is already signed and confirmed on FIRS
+      const confirmed = await firsService.confirmSignedInvoice(irn).catch(() => null);
+      if (confirmed?.data?.code === 200 || confirmed?.data?.data) {
+        transmitData = confirmed.data;
+      } else {
+        const { message, code } = extractFIRSError(transmitErr);
+        throw new AppError(code, `Transmission failed: ${message}`);
+      }
+    }
 
     if (invoice) {
       await outboundRepo.update(irn, {
@@ -43,11 +55,11 @@ export async function executeTransmitInvoiceStep(params: {
       success: true,
       irn,
       transmitted: true,
-      data: transmitResult,
+      data: transmitData,
       workflowState: { transmitted: true },
     };
-  } catch (error: any) {
-    if (error instanceof ValidationError) throw error;
+  } catch (error: unknown) {
+    if (error instanceof ValidationError || error instanceof AppError) throw error;
     const { message, code } = extractFIRSError(error);
     throw new AppError(code, `Transmission failed: ${message}`);
   }

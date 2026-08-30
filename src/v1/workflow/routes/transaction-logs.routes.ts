@@ -382,7 +382,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             payload: { irn: params.irn, ...body },
             resourceId: params.irn,
             resourceType: "invoice",
-            webhookUrl: "",
+            webhookUrl: `/workflow/invoices/outbound/${params.irn}/payment-status`,
             maxRetries: 0,
             jobErrors: [],
             metadata: { source: "payment_status_update" },
@@ -460,6 +460,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           OutboundInvoiceStatus.FAILED,
           OutboundInvoiceStatus.TRANSMISTION_FAILED,
           OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.RETRYING,
           OutboundInvoiceStatus.VALIDATED,
           OutboundInvoiceStatus.SIGNED,
         ];
@@ -500,6 +501,28 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           };
         }
 
+        // Resolve the invoice payload to use on retry
+        const incomingPayload =
+          body?.invoice ||
+          body?.payload ||
+          invoice.metadata?.transformedInvoice ||
+          invoice.metadata?.originalPayload ||
+          invoice.metadata;
+
+        const transformedInvoice =
+          body?.invoice ||
+          invoice.metadata?.transformedInvoice ||
+          (startAction === WorkflowAction.TRANSFORM ? undefined : incomingPayload);
+
+        // If retrying from validate or later but no transformed invoice exists, start from transform
+        if (
+          !transformedInvoice &&
+          startAction !== WorkflowAction.TRANSFORM &&
+          startAction !== WorkflowAction.GENERATE_IRN
+        ) {
+          startAction = WorkflowAction.TRANSFORM;
+        }
+
         // Default chain from the requested step onward
         const defaultChain = DEFAULT_OUTBOUND_CHAIN;
 
@@ -513,14 +536,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           tenantId: invoice.tenantId,
           eventId,
           eventType: "invoice.retry",
-          payload: { irn: params.irn, fromStep: startAction },
+          payload: incomingPayload || { irn: params.irn, fromStep: startAction },
           resourceId: params.irn,
           resourceType: "invoice",
-          webhookUrl: "",
+          webhookUrl: `/workflow/invoices/outbound/${params.irn}/retry-from-step`,
           maxRetries: 0,
           jobErrors: [],
           metadata: { source: "manual_retry", fromStep: startAction },
-        } as any);
+        });
 
         await outboundRepo.addWebhookEvent(params.irn, eventId);
 
@@ -534,12 +557,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
           eventType: "invoice.retry",
-          payload: invoice.metadata?.transformedInvoice || invoice.metadata,
+          payload: incomingPayload,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
           initialContext: {
-            transformedInvoice: invoice.metadata?.transformedInvoice,
+            transformedInvoice: transformedInvoice || undefined,
+            originalPayload: incomingPayload,
             source: invoice.source,
           },
         });
@@ -547,7 +571,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         return {
           success: true,
           message: `Retry scheduled from step: ${startAction}`,
-          data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
+          data: {
+            irn: params.irn,
+            status: OutboundInvoiceStatus.CREATED,
+            fromStep: startAction,
+            actions,
+            jobChainId,
+          },
         };
       } catch (error: any) {
         set.status = error.statusCode || 500;

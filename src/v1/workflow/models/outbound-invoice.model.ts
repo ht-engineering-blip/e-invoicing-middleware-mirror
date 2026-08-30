@@ -5,6 +5,7 @@ import { SchemaSourceType } from "./invoice-schema-dictionary.model";
  */
 export enum OutboundInvoiceStatus {
   CREATED = "CREATED",
+  RETRYING = "RETRYING",
   VALIDATED = "VALIDATED",
   SIGNED = "SIGNED",
   TRANSMITTED = "TRANSMITTED",

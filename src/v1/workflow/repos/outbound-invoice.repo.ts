@@ -850,6 +850,7 @@ export class OutboundInvoiceRepository {
       const updateDoc: any = { $set: { status } };
       if (
         status === OutboundInvoiceStatus.CREATED ||
+        status === OutboundInvoiceStatus.RETRYING ||
         status === OutboundInvoiceStatus.DELIVERED
       ) {
         updateDoc.$unset = { lastJobError: 1 };

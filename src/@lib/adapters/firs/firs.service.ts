@@ -9,6 +9,7 @@ import { AppError, HandleErrorResponse, RestClient } from "../rest";
 import { generateQRCode } from "./generateQR";
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
+import { sanitizeInvoicePayload } from "../../../v1/workflow/utils/invoice-sanitizer.util";
 import type {
   FIRSDownloadInvoiceResponse,
   FIRSDecryptInvoiceInput,
@@ -264,9 +265,12 @@ export class FIRSService {
     }
   }
 
-  public async validateInvoice(invoice: any) {
+  public async validateInvoice(
+    invoice: Record<string, unknown>,
+  ): Promise<OkayResponse> {
     const client = this.appClient;
-    return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
+    const sanitized = sanitizeInvoicePayload(invoice);
+    return client.post<OkayResponse>("api/v1/invoice/validate", sanitized);
   }
 
   public async searchInvoice(business_id: string, irn: string) {
@@ -279,9 +283,12 @@ export class FIRSService {
     );
   }
 
-  public async signInvoice(invoice: any) {
+  public async signInvoice(
+    invoice: Record<string, unknown>,
+  ): Promise<OkayResponse> {
     const client = this.appClient;
-    return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
+    const sanitized = sanitizeInvoicePayload(invoice);
+    return client.post<OkayResponse>("api/v1/invoice/sign", sanitized);
   }
 
   public async transmitInvoice(irn: string) {
