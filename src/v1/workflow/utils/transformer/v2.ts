@@ -495,8 +495,52 @@ export class FIRSInvoiceTransformerV2 {
               if (!st) continue;
               st.taxable_amount = toFloat(st.taxable_amount);
               st.tax_amount = toFloat(st.tax_amount);
-              if (st.tax_category && typeof st.tax_category === "object") {
-                st.tax_category.percent = toFloat(st.tax_category.percent);
+              if (!st.tax_category || typeof st.tax_category !== "object") {
+                st.tax_category = {};
+              }
+              const percentNum = toFloat(st.tax_category.percent, 7.5);
+              st.tax_category.percent = percentNum;
+
+              const validFirsCategories = [
+                "STANDARD_VAT",
+                "ZERO_VAT",
+                "EXEMPT_VAT",
+                "REDUCED_VAT",
+                "STANDARD_GST",
+                "REDUCED_GST",
+                "ZERO_GST",
+                "ALCOHOL_EXCISE_TAX",
+                "TOBACCO_EXCISE_TAX",
+                "FUEL_EXCISE_TAX",
+                "IMPORT_DUTY",
+                "EXPORT_DUTY",
+                "LUXURY_TAX",
+                "SERVICE_TAX",
+                "TOURISM_TAX",
+              ];
+
+              let rawCatId = "";
+              if (typeof st.tax_category.id === "string") {
+                rawCatId = st.tax_category.id.trim().toUpperCase();
+              }
+
+              if (
+                !rawCatId ||
+                rawCatId === "LOCAL_SALES_TAX" ||
+                rawCatId === "STATE_SALES_TAX" ||
+                rawCatId === "VAT" ||
+                rawCatId === "TAX" ||
+                !validFirsCategories.includes(rawCatId)
+              ) {
+                if (percentNum === 0) {
+                  st.tax_category.id = "ZERO_VAT";
+                } else if (percentNum > 0 && percentNum < 7.5) {
+                  st.tax_category.id = "REDUCED_VAT";
+                } else {
+                  st.tax_category.id = "STANDARD_VAT";
+                }
+              } else {
+                st.tax_category.id = rawCatId;
               }
             }
           }
