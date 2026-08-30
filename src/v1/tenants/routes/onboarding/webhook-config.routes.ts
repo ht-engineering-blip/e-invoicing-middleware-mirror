@@ -36,7 +36,8 @@ export const onboardingWebhookRoutes = new Elysia()
         const webhookUrl = `${baseUrl}/v1/webhook/inbound/${webhookPath}`;
 
         const tenant = await tenantService.getTenantById(params.tenantId);
-        const tenantObj = tenant.toObject();
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
 
         const invoiceIdKey =
           body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;
@@ -122,7 +123,8 @@ export const onboardingWebhookRoutes = new Elysia()
         logger.info("Updating Invoice ID Key", { tenantId: params.tenantId });
 
         const tenant = await tenantService.getTenantById(params.tenantId);
-        const tenantObj = tenant.toObject();
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
 
         const invoiceIdKey =
           body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;

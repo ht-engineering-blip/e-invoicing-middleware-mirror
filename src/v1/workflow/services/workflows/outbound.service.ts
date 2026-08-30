@@ -40,9 +40,7 @@ export class OutboundWorkflowService {
     return encryptedData;
   }
 
-  getFIRSError(error: any) {
-    return extractFIRSError(error);
-  }
+  getFIRSError = (error: any) => extractFIRSError(error);
 
   async handleOutboundWorkflow(
     invoice: SecureInvoice,
@@ -255,19 +253,31 @@ export class OutboundWorkflowService {
         } catch (transmitError: any) {
           console.error("TRANSMISSION FAILED (tolerated)", { transmitError });
           transmissionFailed = true;
-
+          const errorMessage = transmitError?.message;
           await this.outboundRepo.update(invoice.irn, {
             status: OutboundInvoiceStatus.TRANSMISTION_FAILED,
+            lastJobError: {
+              action: "transmit",
+              error: errorMessage,
+              failedAt: new Date(),
+            },
             metadata: {
               ...stored?.metadata,
               workflowState: wf,
-              transmissionError: transmitError.message || String(transmitError),
+              transmissionError: errorMessage,
             },
           });
+          await this.outboundRepo.setLastJobError(
+            invoice.irn,
+            "transmit",
+            errorMessage,
+          );
           await this.outboundRepo.updateWorkflowState(invoice.irn, {
-            delivered: true,
+            transmitted: false,
+            delivered: false,
           });
-          wf.delivered = true;
+          wf.transmitted = false;
+          wf.delivered = false;
         }
       }
 
@@ -275,6 +285,9 @@ export class OutboundWorkflowService {
         qrCode: encryptedData?.qrCode || stored?.qrCode,
         data: encryptedData?.data || stored?.metadata?.firsSignedData,
         transmissionFailed,
+        transmissionError: transmissionFailed
+          ? (stored?.metadata?.transmissionError ?? "Transmission failed")
+          : undefined,
       };
     } catch (error: any) {
       console.error("OUTBOUND WORKFLOW STEP FAILED", { error });

@@ -80,9 +80,8 @@ export class TransformWorkflowService {
           sanitizedErrors.push(JSON.stringify(err));
         }
       }
-      if (sanitizedErrors.length > 0) {
-        return sanitizedErrors;
-      }
+
+      if (sanitizedErrors.length > 0) return sanitizedErrors;
     }
 
     if (
@@ -98,9 +97,8 @@ export class TransformWorkflowService {
           zodErrors.push(issue.message);
         }
       }
-      if (zodErrors.length > 0) {
-        return zodErrors;
-      }
+
+      if (zodErrors.length > 0) return zodErrors;
     }
 
     return ["Transformation failed"];

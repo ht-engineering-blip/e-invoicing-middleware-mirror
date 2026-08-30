@@ -38,8 +38,9 @@ export const adminTenantCrudRoutes = new Elysia()
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.createTenant(body, getActor(auth));
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
+
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,
@@ -200,6 +201,40 @@ export const adminTenantCrudRoutes = new Elysia()
   )
 
   /**
+   * PATCH /api/v1/tenants/:tenantId
+   * Partial update tenant
+   */
+  .patch(
+    "/:tenantId",
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+        const tenant = await tenantService.updateTenant(
+          params.tenantId,
+          body,
+          getActor(auth),
+        );
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant updated successfully",
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Error updating tenant", {
+          tenantId: params.tenantId,
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to update tenant",
+          error.statusCode || 500,
+        );
+      }
+    },
+    updateTenantValidation,
+  )
+
+  /**
    * POST /api/v1/tenants/:tenantId/activate
    * Activate tenant
    */
@@ -307,8 +342,8 @@ export const adminTenantCrudRoutes = new Elysia()
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.getTenantById(params.tenantId);
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,

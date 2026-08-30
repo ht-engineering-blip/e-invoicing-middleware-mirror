@@ -31,13 +31,6 @@ import {
   SYSTEM_PROMPT_V2,
 } from "../../../../@lib/adapters/llm/prompts";
 
-export interface MappingRuleItem {
-  source: string;
-  target: string;
-  transform?: string;
-  [key: string]: unknown;
-}
-
 /* -----------------------------------------------------
  CLASS
 ----------------------------------------------------- */
@@ -84,12 +77,10 @@ export class FIRSInvoiceTransformerV2 {
 
     try {
       if (sourceType) {
-        const sourceSchemaDoc =
-          await transformService.getInvoiceSchema(sourceType);
-        if (sourceSchemaDoc) {
-          sourceSchema = sourceSchemaDoc.fields;
-          mappingRules = (sourceSchemaDoc.mapping_rules ||
-            []) as MappingRuleItem[];
+        const sourceDoc = await transformService.getInvoiceSchema(sourceType);
+        if (sourceDoc) {
+          sourceSchema = sourceDoc.fields;
+          mappingRules = sourceDoc.mapping_rules || [];
         }
       }
 
@@ -200,13 +191,9 @@ export class FIRSInvoiceTransformerV2 {
           ? new Date(invoice.issue_date)
           : undefined;
 
-      const effectiveServiceId =
+      const serviceId =
         authContext?.serviceId || authContext?.businessId?.slice(0, 8);
-      const computedIrn = generateIRN(
-        invoiceRef,
-        effectiveServiceId,
-        issueDate,
-      );
+      const computedIrn = generateIRN(invoiceRef, serviceId, issueDate);
 
       const expectedIrn =
         typeof invoice.irn === "string" && invoice.irn
@@ -223,8 +210,7 @@ export class FIRSInvoiceTransformerV2 {
         ) {
           resolved.accounting_supplier_party = {};
         }
-        (resolved.accounting_supplier_party as Record<string, unknown>).tin =
-          expectedSupplierTIN;
+        resolved.accounting_supplier_party.tin = expectedSupplierTIN;
       }
 
       const missing = this.findMissingFields(resolved, firsSchema);
@@ -503,7 +489,7 @@ export class FIRSInvoiceTransformerV2 {
   private ensureRequiredFields(
     data: Record<string, unknown>,
     schema: ISchemaField[],
-  ): Record<string, unknown> {
+  ): Record<string, any> {
     for (const field of schema) {
       const fieldRequired =
         field.is_required || field.validation_rules?.indexOf("required") !== -1;

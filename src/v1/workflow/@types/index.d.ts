@@ -365,3 +365,10 @@ interface NRSVerifiedInvoicePayload {
   nrs_validated: boolean;
   [key: string]: unknown;
 }
+
+interface MappingRuleItem {
+  source: string;
+  target: string;
+  transform?: string;
+  [key: string]: unknown;
+}

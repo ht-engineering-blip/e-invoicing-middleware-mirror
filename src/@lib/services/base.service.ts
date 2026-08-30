@@ -45,7 +45,7 @@ export class BaseService {
   /**
    * Send an email using NodeMailerClient.
    * Centralizes mailing boilerplate for all extending services.
-   * 
+   *
    * @param mail - MailContent structure with to, subject, html body
    */
   protected async sendEmail(mail: MailContent): Promise<boolean> {
@@ -98,7 +98,11 @@ export class BaseService {
         eventType,
         severity: severity as any,
         actor: { actorType: actorType as any, actorId, actorName },
-        resource: { resourceType: resourceType as any, resourceId, resourceName },
+        resource: {
+          resourceType: resourceType as any,
+          resourceId,
+          resourceName,
+        },
         description,
         metadata,
         timestamp: new Date(),
@@ -116,10 +120,7 @@ export class BaseService {
    * General-purpose data sanitization helper using central omitKeys.
    * Enforces type-safety by restricting keysToOmit to compile-time keys of T or dot-notation paths.
    */
-  protected sanitize<T>(
-    data: T,
-    keysToOmit?: AutocompletePaths<T>[]
-  ): T {
+  protected sanitize<T>(data: T, keysToOmit?: AutocompletePaths<T>[]): T {
     return utils.omitKeys(data, keysToOmit as AutocompletePaths<T>[]);
   }
 
@@ -138,24 +139,24 @@ export class BaseService {
     },
     expiresIn?: string,
   ): Promise<string> {
-
-
-
     let businessId = "";
-    if (tenant.config?.firsCredentials?.clientId) {
-      businessId = decryptSensitiveData(tenant.config.firsCredentials.clientId);
-    }
-
+    const config = tenant?.config;
+    const metadata = tenant.metadata;
+    const firsCredentials = config?.firsCredentials;
+    const clientId = firsCredentials?.clientId;
     let permissions = tenant.permissions;
-    if (!permissions) {
-      permissions = tenant.type === "team_member" ? [] : ["*"];
-    }
+
+    if (clientId) businessId = decryptSensitiveData(clientId);
+
+    if (!permissions) permissions = tenant.type === "team_member" ? [] : ["*"];
 
     let email = tenant.contactEmail;
 
-    if (tenant.type === 'team_member') email = tenant.email;
+    if (tenant.type === "team_member") email = tenant.email;
 
-    const tokenPayload: any = {
+    const actTokenId = tenant.activationTokenId || metadata?.activationTokenId;
+
+    const tokenPayload = {
       tenantId: tenant.tenantId,
       type: tenant.type || "tenant",
       role: tenant.role || "owner",
@@ -163,17 +164,10 @@ export class BaseService {
       scopes: permissions,
       email,
       businessName: tenant.businessName,
-      businessId
+      businessId,
+      userId: tenant.userId,
+      activationTokenId: actTokenId,
     };
-
-    const actTokenId = tenant.activationTokenId || tenant.metadata?.activationTokenId;
-    if (actTokenId) {
-      tokenPayload.activationTokenId = actTokenId;
-    }
-
-    if (tenant.userId) {
-      tokenPayload.userId = tenant.userId;
-    }
 
     const jwtSecret = jwtConfig?.secret as string;
     const jwtExpiry = expiresIn || jwtConfig?.expiry;
