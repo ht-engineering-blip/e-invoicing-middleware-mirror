@@ -66,7 +66,8 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         onlySelf(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
-        const tenantObj = tenant.toObject();
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
 
         // Build update data (cannot update TIN or BRN)
         const updateData: any = {};

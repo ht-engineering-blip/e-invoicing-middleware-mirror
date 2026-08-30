@@ -195,9 +195,12 @@ export const onboardingCredentialsRoutes = new Elysia()
           getActor(auth),
         );
 
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
+
         const activationToken = await authService.createAuthToken(
           {
-            ...tenant.toObject(),
+            ...rawTenant,
             activationTokenId,
           } as any,
           "12HRS",

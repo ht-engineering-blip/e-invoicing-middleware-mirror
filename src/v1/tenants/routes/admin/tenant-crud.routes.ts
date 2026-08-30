@@ -38,8 +38,9 @@ export const adminTenantCrudRoutes = new Elysia()
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.createTenant(body, getActor(auth));
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
+
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,
@@ -341,8 +342,8 @@ export const adminTenantCrudRoutes = new Elysia()
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.getTenantById(params.tenantId);
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,
