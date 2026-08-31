@@ -14,7 +14,11 @@ import {
   OutboundPaymentStatus,
 } from "../models/outbound-invoice.model";
 import { scheduleJobChain } from "../jobs/orchestrator";
-import { ACTION_TO_JOB, WorkflowAction, DEFAULT_OUTBOUND_CHAIN } from "../jobs/types";
+import {
+  ACTION_TO_JOB,
+  WorkflowAction,
+  DEFAULT_OUTBOUND_CHAIN,
+} from "../jobs/types";
 import {
   listOutboundInvoicesValidation,
   getOutboundInvoiceValidation,
@@ -214,7 +218,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         if (allJobIds.length > 0) {
           try {
             const objectIds = allJobIds
-              .filter((id: string) => typeof id === "string" && id.length === 24)
+              .filter(
+                (id: string) => typeof id === "string" && id.length === 24,
+              )
               .map((id: string) => new mongoose.Types.ObjectId(id));
 
             if (objectIds.length > 0) {
@@ -512,7 +518,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const transformedInvoice =
           body?.invoice ||
           invoice.metadata?.transformedInvoice ||
-          (startAction === WorkflowAction.TRANSFORM ? undefined : incomingPayload);
+          (startAction === WorkflowAction.TRANSFORM
+            ? undefined
+            : incomingPayload);
 
         // If retrying from validate or later but no transformed invoice exists, start from transform
         if (
@@ -536,7 +544,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           tenantId: invoice.tenantId,
           eventId,
           eventType: "invoice.retry",
-          payload: incomingPayload || { irn: params.irn, fromStep: startAction },
+          payload: incomingPayload || {
+            irn: params.irn,
+            fromStep: startAction,
+          },
           resourceId: params.irn,
           resourceType: "invoice",
           webhookUrl: `/workflow/invoices/outbound/${params.irn}/retry-from-step`,

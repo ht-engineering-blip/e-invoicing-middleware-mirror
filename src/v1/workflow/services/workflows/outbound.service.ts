@@ -272,23 +272,34 @@ export class OutboundWorkflowService {
           wf.transmitted = true;
           wf.delivered = true;
         } catch (transmitError: unknown) {
+          const transmitErrorMsg =
+            transmitError instanceof Error
+              ? transmitError.message
+              : String(transmitError);
           console.warn(
             "TRANSMISSION WARNING (tolerated — invoice is signed & confirmed):",
             transmitError,
           );
+          transmissionFailed = true;
+          wf.transmitted = false;
+          wf.delivered = true;
           await this.outboundRepo.update(invoice.irn, {
             status: OutboundInvoiceStatus.DELIVERED,
             metadata: {
               ...stored?.metadata,
+              transmissionError: transmitErrorMsg,
               workflowState: wf,
             },
           });
           await this.outboundRepo.updateWorkflowState(invoice.irn, {
-            transmitted: true,
+            transmitted: false,
             delivered: true,
           });
-          wf.transmitted = true;
-          wf.delivered = true;
+          await this.outboundRepo.setLastJobError(
+            invoice.irn,
+            "transmit",
+            transmitErrorMsg,
+          );
         }
       }
 

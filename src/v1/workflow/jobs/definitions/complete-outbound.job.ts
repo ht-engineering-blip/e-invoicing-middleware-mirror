@@ -125,7 +125,10 @@ export function registerCompleteOutboundJob(): void {
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
           const currentInvoice = await outboundRepo.findByIrn(irn);
-          const existingTransError = transmissionErrorMsg;
+          const existingTransError =
+            transmissionErrorMsg ??
+            result?.transmissionError ??
+            currentInvoice?.metadata?.transmissionError;
 
           await outboundRepo.update(irn, {
             qrCode,
@@ -140,9 +143,17 @@ export function registerCompleteOutboundJob(): void {
           });
 
           await outboundRepo.updateWorkflowState(irn, {
-            transmitted: true,
+            transmitted: !transmissionFailed,
             delivered: true,
           });
+
+          if (transmissionFailed && existingTransError) {
+            await outboundRepo.setLastJobError(
+              irn,
+              "transmit",
+              existingTransError,
+            );
+          }
         }
 
         logger.info("[Job:complete-outbound] Done — invoice finalized", {

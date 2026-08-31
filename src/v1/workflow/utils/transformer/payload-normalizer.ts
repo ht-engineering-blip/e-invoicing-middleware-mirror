@@ -56,8 +56,6 @@ export function normalizeInvoicePayload(
   let effectiveServiceId: string | undefined = undefined;
   if (authContext && authContext.serviceId) {
     effectiveServiceId = authContext.serviceId;
-  } else if (authContext && authContext.businessId) {
-    effectiveServiceId = authContext.businessId.slice(0, 8);
   }
 
   let irn = "";

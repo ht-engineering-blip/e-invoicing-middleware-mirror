@@ -205,10 +205,6 @@ export class FIRSInvoiceTransformerV2 {
       let serviceId: string | undefined;
       if (authContext?.serviceId) {
         serviceId = authContext.serviceId;
-      } else if (authContext?.businessId) {
-        serviceId = authContext.businessId.slice(0, 8);
-      } else {
-        serviceId = undefined;
       }
 
       const computedIrn = generateIRN(invoiceRef, serviceId, issueDate);

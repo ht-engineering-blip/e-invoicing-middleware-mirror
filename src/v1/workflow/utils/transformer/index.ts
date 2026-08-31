@@ -218,7 +218,7 @@ export class FIRSInvoiceTransformer {
     ) {
       parsedContent.irn = generateIRN(
         String(parsedContent.invoice_reference || invoiceData.invoiceNumber),
-        authContext?.businessId?.slice(0, 8),
+        authContext?.serviceId,
         new Date(),
       );
     }

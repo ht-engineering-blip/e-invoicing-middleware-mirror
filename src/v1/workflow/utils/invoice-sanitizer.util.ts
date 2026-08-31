@@ -5,7 +5,7 @@ import { generateUniqueHsnCode } from "./transformer/classification.helper";
  * Implements full FIRS/NRS Schema 1.1 compliance for all required and optional structures.
  */
 export function sanitizeInvoicePayload(
-  rawInvoice: Record<string, unknown>,
+  rawInvoice: Record<string, any>,
 ): Record<string, unknown> {
   if (!rawInvoice || typeof rawInvoice !== "object") return rawInvoice;
 
@@ -100,15 +100,28 @@ export function sanitizeInvoicePayload(
   if (
     typeof rawInvoice.irn === "string" &&
     (rawInvoice.irn as string).trim() !== "" &&
-    /^[A-Z0-9]+-[A-Z0-9]{8}-[0-9]{8}$/.test((rawInvoice.irn as string).trim().toUpperCase())
+    /^[A-Z0-9]+-[A-Z0-9]{8}-[0-9]{8}$/.test(
+      (rawInvoice.irn as string).trim().toUpperCase(),
+    )
   ) {
-    invoice.irn = (rawInvoice.irn as string).trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
-  } else if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
-    invoice.irn = invoice.irn
-      .toUpperCase()
+    invoice.irn = (rawInvoice.irn as string)
       .trim()
-      .replace(/\s+/g, "")
+      .toUpperCase()
       .replace(/[^A-Z0-9-]/g, "");
+  } else if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
+    const rawUpper = invoice.irn.toUpperCase().trim().replace(/\s+/g, "");
+    const parts = rawUpper.split("-").filter(Boolean);
+    if (parts.length >= 3) {
+      const datePart = parts[parts.length - 1].replace(/[^0-9]/g, "");
+      const servicePart = parts[parts.length - 2].replace(/[^A-Z0-9]/g, "");
+      const refPart = parts
+        .slice(0, parts.length - 2)
+        .join("")
+        .replace(/[^A-Z0-9]/g, "");
+      invoice.irn = `${refPart}-${servicePart}-${datePart}`;
+    } else {
+      invoice.irn = rawUpper.replace(/[^A-Z0-9-]/g, "");
+    }
   }
 
   if (
@@ -129,18 +142,46 @@ export function sanitizeInvoicePayload(
       ref = `INV${(invoice.issue_date as string).replace(/-/g, "")}`;
     }
 
-    let serviceId: string;
+    let serviceId = "";
     if (
-      typeof invoice.business_id === "string" &&
-      invoice.business_id.length >= 8
+      typeof invoice.service_id === "string" &&
+      invoice.service_id.trim() !== ""
     ) {
-      serviceId = invoice.business_id.slice(0, 8).toUpperCase();
-    } else {
-      serviceId = "8593BD6E";
+      serviceId = invoice.service_id.trim().toUpperCase();
+    } else if (
+      typeof invoice.serviceId === "string" &&
+      invoice.serviceId.trim() !== ""
+    ) {
+      serviceId = invoice.serviceId.trim().toUpperCase();
+    } else if (
+      typeof rawInvoice.service_id === "string" &&
+      rawInvoice.service_id.trim() !== ""
+    ) {
+      serviceId = rawInvoice.service_id.trim().toUpperCase();
+    } else if (
+      typeof rawInvoice.serviceId === "string" &&
+      rawInvoice.serviceId.trim() !== ""
+    ) {
+      serviceId = rawInvoice.serviceId.trim().toUpperCase();
     }
 
-    const dateStr = (invoice.issue_date as string).replace(/-/g, "");
-    invoice.irn = `${ref}-${serviceId}-${dateStr}`;
+    if (serviceId) {
+      let ref: string;
+      if (
+        typeof invoice.invoice_reference === "string" &&
+        invoice.invoice_reference.trim() !== ""
+      ) {
+        ref = invoice.invoice_reference
+          .trim()
+          .replace(/[^A-Z0-9]/gi, "")
+          .toUpperCase();
+      } else {
+        ref = `INV${(invoice.issue_date as string).replace(/-/g, "")}`;
+      }
+
+      const dateStr = (invoice.issue_date as string).replace(/-/g, "");
+      invoice.irn = `${ref}-${serviceId}-${dateStr}`;
+    }
   }
 
   if (
@@ -149,7 +190,7 @@ export function sanitizeInvoicePayload(
     rawInvoice.data !== invoice
   ) {
     (rawInvoice.data as Record<string, unknown>).irn = invoice.irn;
-    (rawInvoice.data as Record<string, unknown>).business_id = invoice.business_id;
+    rawInvoice.data.business_id = invoice.business_id;
   }
 
   // 4. Accounting Supplier Party
@@ -268,9 +309,13 @@ export function sanitizeInvoicePayload(
       !Array.isArray(invoice.billing_reference) ||
       invoice.billing_reference.length === 0
     ) {
+      const parentIrn =
+        typeof invoice.irn === "string" && invoice.irn.trim() !== ""
+          ? invoice.irn
+          : `INV-${todayDateStr.replace(/-/g, "")}`;
       invoice.billing_reference = [
         {
-          irn: String(invoice.irn || "ITW001-8593BD6E-20260830"),
+          irn: parentIrn,
           issue_date: String(invoice.issue_date || todayDateStr),
         },
       ];
@@ -396,7 +441,8 @@ export function sanitizeInvoicePayload(
 
       // HSN Code
       const lineDesc = (line.product_category as string) || itemName;
-      const existingHsn = typeof line.hsn_code === "string" ? line.hsn_code.trim() : "";
+      const existingHsn =
+        typeof line.hsn_code === "string" ? line.hsn_code.trim() : "";
       if (
         !existingHsn ||
         !/^\d{4}\.\d{2}$/.test(existingHsn) ||
@@ -718,9 +764,13 @@ export function autoFixInvoiceFromFIRSError(
     errString.includes("billing_reference") ||
     errString.includes("credit note and debit note")
   ) {
+    const fallbackIrn =
+      typeof target.irn === "string" && target.irn.trim() !== ""
+        ? target.irn
+        : `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
     target.billing_reference = [
       {
-        irn: String(target.irn || "INV001-8593BD6E-20260830"),
+        irn: fallbackIrn,
         issue_date: String(
           target.issue_date || new Date().toISOString().slice(0, 10),
         ),
@@ -763,23 +813,33 @@ export function autoFixInvoiceFromFIRSError(
       baseRef = `INV${dateStr}`;
     }
 
-    let serviceId: string;
+    let serviceId = "";
     if (parts[1] && parts[1].length === 8) {
       serviceId = parts[1].toUpperCase();
     } else if (
-      typeof target.business_id === "string" &&
-      target.business_id.length >= 8
+      typeof target.service_id === "string" &&
+      target.service_id.trim() !== ""
     ) {
-      serviceId = target.business_id.slice(0, 8).toUpperCase();
-    } else {
-      serviceId = "8593BD6E";
+      serviceId = target.service_id.trim().toUpperCase();
+    } else if (
+      typeof target.serviceId === "string" &&
+      target.serviceId.trim() !== ""
+    ) {
+      serviceId = target.serviceId.trim().toUpperCase();
     }
 
-    const padding = Math.random().toString(36).substring(2, 6).toUpperCase();
-    target.irn = `${baseRef}${padding}-${serviceId}-${dateStr}`;
+    if (serviceId) {
+      const padding = Math.random().toString(36).substring(2, 6).toUpperCase();
+      target.irn = `${baseRef}${padding}-${serviceId}-${dateStr}`;
+    } else if (rawIrn) {
+      target.irn = rawIrn.replace(/[^A-Za-z0-9-]/g, "").toUpperCase();
+    }
 
-    if (Array.isArray(target.billing_reference) && target.billing_reference.length > 0) {
-      (target.billing_reference[0] as Record<string, unknown>).irn = target.irn;
+    if (
+      Array.isArray(target.billing_reference) &&
+      target.billing_reference.length > 0
+    ) {
+      target.billing_reference[0].irn = target.irn;
     }
   }
 
