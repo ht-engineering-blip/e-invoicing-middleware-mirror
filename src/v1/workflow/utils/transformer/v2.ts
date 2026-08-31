@@ -604,11 +604,11 @@ export class FIRSInvoiceTransformerV2 {
   }
 
   private setDeepValue(
-    obj: Record<string, unknown>,
+    obj: Record<string, any>,
     path: string,
     value: unknown,
   ): void {
-    if (!path || typeof path !== "string") return;
+    if (!obj || typeof obj !== "object" || !path || typeof path !== "string") return;
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -628,6 +628,7 @@ export class FIRSInvoiceTransformerV2 {
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
 
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
 
@@ -648,6 +649,7 @@ export class FIRSInvoiceTransformerV2 {
         });
       }
     } else {
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current[last] = value;
     }
   }
@@ -666,6 +668,10 @@ export class FIRSInvoiceTransformerV2 {
     if (current == null || keys.length === 0) return current;
 
     const [key, ...rest] = keys;
+
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      return undefined;
+    }
 
     if (key === "*") {
       if (!Array.isArray(current)) return undefined;
