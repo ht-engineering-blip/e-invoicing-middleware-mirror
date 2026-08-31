@@ -33,7 +33,7 @@ export interface TransformationResult {
   rawResponse?: string;
 }
 
-export type TransformInvoiceInput = Record<string, unknown>;
+export type TransformInvoiceInput = Record<string, any>;
 
 export class FIRSInvoiceTransformer {
   private apiKey: string;
@@ -216,15 +216,11 @@ export class FIRSInvoiceTransformer {
       parsedContent.irn === "IRN" ||
       parsedContent.irn === "{{TEST_BUSINESS_ID}}"
     ) {
-      parsedContent.irn =
-        generateIRN(
-          String(
-            parsedContent.invoice_reference ||
-              invoiceData.invoiceNumber ||
-              "INV",
-          ),
-          authContext?.businessId?.slice(0, 8) || "34A843BE",
-        ) || `INV${new Date().toISOString().slice(0, 10).replace(/-/g, "")}001`;
+      parsedContent.irn = generateIRN(
+        String(parsedContent.invoice_reference || invoiceData.invoiceNumber),
+        authContext?.serviceId,
+        new Date(),
+      );
     }
 
     sanitizeInvoiceIRNs(parsedContent);

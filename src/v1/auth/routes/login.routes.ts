@@ -37,7 +37,7 @@ export const authLoginRoutes = new Elysia()
    * Login for team members
    */
   .post(
-    "/team-login",
+    "/team-member",
     async ({ body, authService, set }) => {
       try {
         const result = await authService.loginTeamMember(

@@ -1,25 +1,40 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { connectMongo } from "../src/@lib/adapters/mongo";
-import { TenantModel } from "../src/v1/tenants/models/tenant.model";
+import { TenantModel, TenantStatus } from "../src/v1/tenants/models/tenant.model";
 import { TenantService } from "../src/v1/tenants/services/tenant.service";
 
 describe("Tenant Email Verification Flow", () => {
   let tenantId: string;
-  let oldEmail: string;
+  let testEmail: string;
   let testNewEmail: string;
   let tenantService: TenantService;
   let tenant: any;
 
   beforeAll(async () => {
     await connectMongo();
-    tenant = await TenantModel.findOne({}).lean();
-    if (tenant) {
-      tenantId = tenant.tenantId;
-      oldEmail = tenant.contactEmail;
-      testNewEmail = `test-verify-${Date.now()}@example.com`;
-      tenantService = new TenantService();
-    }
+    tenantService = new TenantService();
+    tenantId = `TEST-VERIFY-${Date.now()}`;
+    testEmail = `test-initial-${Date.now()}@example.com`;
+    testNewEmail = `test-verify-${Date.now()}@example.com`;
+
+    // Create an isolated temporary tenant for this test
+    tenant = await TenantModel.create({
+      tenantId,
+      businessName: "Test Verification Tenant",
+      tin: "1234567890",
+      businessRegistrationNumber: "RC-999999",
+      contactEmail: testEmail,
+      contactPhone: "+2348000000000",
+      status: TenantStatus.ACTIVE,
+    });
   }, 20000);
+
+  afterAll(async () => {
+    // Clean up temporary tenant
+    if (tenantId) {
+      await TenantModel.deleteOne({ tenantId });
+    }
+  });
 
   it("should block direct email update without verification", async () => {
     if (!tenant) return;
@@ -49,7 +64,7 @@ describe("Tenant Email Verification Flow", () => {
     // Valid token
     const validToken = await tenantService.createAuthToken(
       {
-        ...tenant,
+        ...tenant.toObject(),
         contactEmail: testNewEmail,
         newEmail: testNewEmail,
       },
@@ -61,11 +76,5 @@ describe("Tenant Email Verification Flow", () => {
       validToken,
     );
     expect(verifyRes.message).toBeDefined();
-
-    // Revert back
-    await TenantModel.updateOne(
-      { tenantId },
-      { $set: { contactEmail: oldEmail } },
-    );
   }, 20000);
 });

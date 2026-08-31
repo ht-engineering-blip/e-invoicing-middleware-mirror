@@ -56,8 +56,6 @@ export function normalizeInvoicePayload(
   let effectiveServiceId: string | undefined = undefined;
   if (authContext && authContext.serviceId) {
     effectiveServiceId = authContext.serviceId;
-  } else if (authContext && authContext.businessId) {
-    effectiveServiceId = authContext.businessId.slice(0, 8);
   }
 
   let irn = "";
@@ -81,13 +79,7 @@ export function normalizeInvoicePayload(
 
     const generated = generateIRN(invoiceReference, effectiveServiceId);
 
-    if (generated) {
-      irn = generated;
-    } else {
-      irn = `INV${today}001`;
-    }
-  } else {
-    irn = `INV${today}001`;
+    if (generated) irn = generated;
   }
 
   // 4. Resolve Issue Date
@@ -340,6 +332,14 @@ export function normalizeInvoicePayload(
       line.service_category.trim() !== ""
     ) {
       serviceCategory = line.service_category.trim();
+    }
+
+    if (!productCategory) {
+      productCategory =
+        serviceCategory ||
+        itemName ||
+        itemDescription ||
+        "General Goods and Services";
     }
 
     // Seller's Item Identification

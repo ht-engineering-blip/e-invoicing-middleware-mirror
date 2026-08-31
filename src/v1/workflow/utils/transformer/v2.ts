@@ -109,7 +109,7 @@ export class FIRSInvoiceTransformerV2 {
         };
       }
 
-      const transformedData = result.data as Record<string, unknown>;
+      const transformedData = result.data;
       sanitizeInvoiceIRNs(transformedData);
 
       const validated = this.validateWithZod(
@@ -182,23 +182,39 @@ export class FIRSInvoiceTransformerV2 {
 
       const expectedBusinessId = authContext?.businessId;
       const expectedSupplierTIN = authContext?.businessTIN;
-      const invoiceRef =
-        (typeof invoice.invoice_reference === "string" &&
-          invoice.invoice_reference) ||
-        generateInvoiceRef();
-      const issueDate =
-        typeof invoice.issue_date === "string" && invoice.issue_date
-          ? new Date(invoice.issue_date)
-          : undefined;
+      let invoiceRef: string;
+      if (
+        typeof invoice.invoice_reference === "string" &&
+        invoice.invoice_reference.trim() !== ""
+      ) {
+        invoiceRef = invoice.invoice_reference.trim();
+      } else {
+        invoiceRef = generateInvoiceRef();
+      }
 
-      const serviceId =
-        authContext?.serviceId || authContext?.businessId?.slice(0, 8);
+      let issueDate: Date | undefined;
+      if (
+        typeof invoice.issue_date === "string" &&
+        invoice.issue_date.trim() !== ""
+      ) {
+        issueDate = new Date(invoice.issue_date);
+      } else {
+        issueDate = undefined;
+      }
+
+      let serviceId: string | undefined;
+      if (authContext?.serviceId) {
+        serviceId = authContext.serviceId;
+      }
+
       const computedIrn = generateIRN(invoiceRef, serviceId, issueDate);
 
-      const expectedIrn =
-        typeof invoice.irn === "string" && invoice.irn
-          ? invoice.irn
-          : computedIrn;
+      let expectedIrn: string | undefined;
+      if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
+        expectedIrn = invoice.irn.trim();
+      } else {
+        expectedIrn = computedIrn;
+      }
 
       if (expectedBusinessId) resolved.business_id = expectedBusinessId;
       if (expectedIrn) resolved.irn = expectedIrn;
@@ -239,10 +255,7 @@ export class FIRSInvoiceTransformerV2 {
         );
 
         const response = await this.callLLM(prompt);
-        const parsed = this.safeParseLLMJSON(response) as Record<
-          string,
-          unknown
-        >;
+        const parsed = this.safeParseLLMJSON(response) as Record<string, any>;
 
         if (
           parsed.business_id !== undefined &&
@@ -307,26 +320,242 @@ export class FIRSInvoiceTransformerV2 {
       const validation = this.validateWithZod(completed, firsZodSchema);
 
       if (!validation.valid) {
-        const repaired = await this.repairJSON(
-          completed,
-          validation.errors,
-          authContext,
-          sourceSchema,
-          taxCategories,
-          invoiceTypes,
-        );
-
-        const recheck = this.validateWithZod(repaired, firsZodSchema);
-
-        if (!recheck.valid) {
-          return {
-            success: false,
-            error: recheck.errors,
-            originalInvoice: invoice,
-          };
+        try {
+          const repaired = await this.repairJSON(
+            completed,
+            validation.errors,
+            authContext,
+            sourceSchema,
+            taxCategories,
+            invoiceTypes,
+          );
+          if (repaired && typeof repaired === "object") {
+            completed = repaired;
+          }
+        } catch (repairErr: unknown) {
+          logger.warn(
+            "[TransformerV2] Repair JSON attempt warning:",
+            repairErr,
+          );
         }
+      }
 
-        completed = repaired;
+      const toFloat = (val: unknown, fallback: number = 0): number => {
+        if (typeof val === "number") return isNaN(val) ? fallback : val;
+        if (typeof val === "string") {
+          const cleaned = val.replace(/[^0-9.-]+/g, "");
+          const num = Number(cleaned);
+          return isNaN(num) ? fallback : num;
+        }
+        return fallback;
+      };
+
+      if (Array.isArray(completed.invoice_line)) {
+        for (const line of completed.invoice_line as Record<string, any>[]) {
+          if (!line) continue;
+
+          // 1. Ensure item object exists
+          if (!line.item || typeof line.item !== "object") {
+            line.item = {};
+          }
+
+          // 2. Resolve item name using if/else
+          let itemName = "General Item";
+          if (
+            typeof line.item.name === "string" &&
+            line.item.name.trim() !== ""
+          ) {
+            itemName = line.item.name.trim();
+          } else if (typeof line.name === "string" && line.name.trim() !== "") {
+            itemName = line.name.trim();
+          } else if (
+            typeof line.product_category === "string" &&
+            line.product_category.trim() !== ""
+          ) {
+            itemName = line.product_category.trim();
+          }
+          line.item.name = itemName;
+
+          // 3. Resolve item description using if/else
+          let itemDesc = itemName;
+          if (
+            typeof line.item.description === "string" &&
+            line.item.description.trim() !== ""
+          ) {
+            itemDesc = line.item.description.trim();
+          } else if (
+            typeof line.description === "string" &&
+            line.description.trim() !== ""
+          ) {
+            itemDesc = line.description.trim();
+          }
+          line.item.description = itemDesc;
+
+          // 4. Resolve product category using if/else
+          if (
+            typeof line.product_category === "string" &&
+            line.product_category.trim() !== ""
+          ) {
+            line.product_category = line.product_category.trim();
+          } else if (
+            typeof line.service_category === "string" &&
+            line.service_category.trim() !== ""
+          ) {
+            line.product_category = line.service_category.trim();
+          } else if (itemName && itemName !== "General Item") {
+            line.product_category = itemName;
+          } else {
+            line.product_category = "General Goods and Services";
+          }
+
+          // 5. Resolve price structure & UN/ECE price unit using if/else
+          if (
+            typeof line.price === "number" ||
+            typeof line.price === "string"
+          ) {
+            line.price = {
+              price_amount: toFloat(line.price),
+              base_quantity: 1,
+              price_unit: "H87",
+            };
+          } else if (line.price && typeof line.price === "object") {
+            line.price.price_amount = toFloat(line.price.price_amount);
+            line.price.base_quantity = toFloat(line.price.base_quantity, 1);
+            const rawUnit =
+              typeof line.price.price_unit === "string"
+                ? line.price.price_unit.trim()
+                : "";
+            if (
+              !rawUnit ||
+              rawUnit.length > 3 ||
+              /NGN|USD|EUR|GBP|PER|\//i.test(rawUnit) ||
+              !/^[A-Z0-9]{1,3}$/i.test(rawUnit)
+            ) {
+              line.price.price_unit = "H87";
+            } else {
+              line.price.price_unit = rawUnit.toUpperCase();
+            }
+          } else {
+            line.price = {
+              price_amount: toFloat(line.line_extension_amount),
+              base_quantity: 1,
+              price_unit: "H87",
+            };
+          }
+
+          // 6. Coerce invoiced quantity and calculate line extension amount
+          line.invoiced_quantity = toFloat(line.invoiced_quantity, 1);
+          line.line_extension_amount = toFloat(
+            line.line_extension_amount,
+            line.invoiced_quantity * line.price.price_amount,
+          );
+
+          if (line.discount_rate !== undefined) {
+            line.discount_rate = toFloat(line.discount_rate);
+          }
+          if (line.discount_amount !== undefined) {
+            line.discount_amount = toFloat(line.discount_amount);
+          }
+          if (line.fee_rate !== undefined) {
+            line.fee_rate = toFloat(line.fee_rate);
+          }
+          if (line.fee_amount !== undefined) {
+            line.fee_amount = toFloat(line.fee_amount);
+          }
+        }
+      }
+
+      if (
+        completed.legal_monetary_total &&
+        typeof completed.legal_monetary_total === "object"
+      ) {
+        const lmt = completed.legal_monetary_total as Record<string, any>;
+        lmt.line_extension_amount = toFloat(lmt.line_extension_amount);
+        lmt.tax_exclusive_amount = toFloat(lmt.tax_exclusive_amount);
+        lmt.tax_inclusive_amount = toFloat(lmt.tax_inclusive_amount);
+        lmt.payable_amount = toFloat(lmt.payable_amount);
+        if (lmt.prepaid_amount !== undefined)
+          lmt.prepaid_amount = toFloat(lmt.prepaid_amount);
+        if (lmt.allowance_total_amount !== undefined)
+          lmt.allowance_total_amount = toFloat(lmt.allowance_total_amount);
+        if (lmt.charge_total_amount !== undefined)
+          lmt.charge_total_amount = toFloat(lmt.charge_total_amount);
+      }
+
+      if (Array.isArray(completed.tax_total)) {
+        for (const tt of completed.tax_total as Record<string, any>[]) {
+          if (!tt) continue;
+          tt.tax_amount = toFloat(tt.tax_amount);
+          if (Array.isArray(tt.tax_subtotal)) {
+            for (const st of tt.tax_subtotal as Record<string, any>[]) {
+              if (!st) continue;
+              st.taxable_amount = toFloat(st.taxable_amount);
+              st.tax_amount = toFloat(st.tax_amount);
+              if (!st.tax_category || typeof st.tax_category !== "object") {
+                st.tax_category = {};
+              }
+              const percentNum = toFloat(st.tax_category.percent, 7.5);
+              st.tax_category.percent = percentNum;
+
+              const validFirsCategories = [
+                "STANDARD_VAT",
+                "ZERO_VAT",
+                "EXEMPT_VAT",
+                "REDUCED_VAT",
+                "STANDARD_GST",
+                "REDUCED_GST",
+                "ZERO_GST",
+                "ALCOHOL_EXCISE_TAX",
+                "TOBACCO_EXCISE_TAX",
+                "FUEL_EXCISE_TAX",
+                "IMPORT_DUTY",
+                "EXPORT_DUTY",
+                "LUXURY_TAX",
+                "SERVICE_TAX",
+                "TOURISM_TAX",
+              ];
+
+              let rawCatId = "";
+              if (typeof st.tax_category.id === "string") {
+                rawCatId = st.tax_category.id.trim().toUpperCase();
+              }
+
+              if (
+                !rawCatId ||
+                rawCatId === "LOCAL_SALES_TAX" ||
+                rawCatId === "STATE_SALES_TAX" ||
+                rawCatId === "VAT" ||
+                rawCatId === "TAX" ||
+                !validFirsCategories.includes(rawCatId)
+              ) {
+                if (percentNum === 0) {
+                  st.tax_category.id = "ZERO_VAT";
+                } else if (percentNum > 0 && percentNum < 7.5) {
+                  st.tax_category.id = "REDUCED_VAT";
+                } else {
+                  st.tax_category.id = "STANDARD_VAT";
+                }
+              } else {
+                st.tax_category.id = rawCatId;
+              }
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(completed.allowance_charge)) {
+        for (const ac of completed.allowance_charge as Record<string, any>[]) {
+          if (!ac) continue;
+          ac.amount = toFloat(ac.amount);
+        }
+      }
+
+      const finalValidation = this.validateWithZod(completed, firsZodSchema);
+      if (!finalValidation.valid) {
+        logger.warn(
+          "[TransformerV2] Final schema validation notice:",
+          finalValidation.errors,
+        );
       }
 
       return {

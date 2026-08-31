@@ -1,6 +1,36 @@
 import { Currency } from "../../../../@lib/adapters/firs/types";
 
 /**
+ * Interface for incoming dynamic HS code objects
+ */
+export interface DynamicHsCodeInput {
+  code?: string;
+  value?: string;
+  hsCode?: string;
+  label?: string;
+  description?: string;
+  name?: string;
+  keywords?: string[];
+}
+
+/**
+ * Normalized HS code entry stored in memory
+ */
+export interface NormalizedHsCodeEntry {
+  code: string;
+  label: string;
+  keywords: string[];
+}
+
+/**
+ * Interface for incoming dynamic quantity code objects
+ */
+export interface DynamicQuantityCodeInput {
+  code?: string;
+  value?: string;
+}
+
+/**
  * Sanitize an HSN code to the FIRS-required format: digits + "." + exactly 2 decimal digits.
  * Handles: pure digits ("8517" → "8517.00"), missing decimals ("8517." → "8517.00"),
  * single decimal ("8517.1" → "8517.10"), extra decimals ("8517.123" → "8517.12"),
@@ -52,28 +82,40 @@ export function sanitizeHsnCode(val: unknown): string | undefined {
 }
 
 let dynamicQuantityCodes: Set<string> | null = null;
-let dynamicHsCodes: Array<{
-  code: string;
-  label?: string;
-  keywords?: string[];
-}> | null = null;
+let dynamicHsCodes: NormalizedHsCodeEntry[] | null = null;
 let dynamicCurrencies: Currency[] | null = null;
 
 export function setDynamicQuantityCodes(
-  codes: Array<{ code: string; value?: string }>,
+  codes: DynamicQuantityCodeInput[],
 ): void {
   if (Array.isArray(codes) && codes.length > 0) {
-    dynamicQuantityCodes = new Set(
-      codes.map((c) => c.code.toUpperCase().trim()),
-    );
+    const validCodes = codes
+      .filter((c): c is DynamicQuantityCodeInput & { code: string } =>
+        Boolean(c && typeof c.code === "string" && c.code.trim() !== ""),
+      )
+      .map((c) => c.code.toUpperCase().trim());
+    if (validCodes.length > 0) {
+      dynamicQuantityCodes = new Set(validCodes);
+    }
   }
 }
 
-export function setDynamicHsCodes(
-  codes: Array<{ code: string; label?: string; keywords?: string[] }>,
-): void {
+export function setDynamicHsCodes(codes: DynamicHsCodeInput[]): void {
   if (Array.isArray(codes) && codes.length > 0) {
-    dynamicHsCodes = codes;
+    dynamicHsCodes = codes
+      .map((c): NormalizedHsCodeEntry | null => {
+        if (!c) return null;
+        const rawCode = c.code || c.value || c.hsCode;
+        if (typeof rawCode !== "string" || rawCode.trim() === "") {
+          return null;
+        }
+        return {
+          code: rawCode.trim(),
+          label: c.label || c.description || c.name || "",
+          keywords: Array.isArray(c.keywords) ? c.keywords : [],
+        };
+      })
+      .filter((entry): entry is NormalizedHsCodeEntry => entry !== null);
   }
 }
 
@@ -105,7 +147,13 @@ export function resolveCurrencyCode(
 
   let defaultCurrency = "NGN";
   if (currencies && currencies.length > 0) {
-    const foundNgn = currencies.find((c) => c.code && c.code.toUpperCase() === "NGN");
+    const foundNgn = currencies.find(
+      (c) =>
+        c &&
+        c.code &&
+        typeof c.code === "string" &&
+        c.code.toUpperCase() === "NGN",
+    );
     if (foundNgn && foundNgn.code) {
       defaultCurrency = foundNgn.code;
     } else if (currencies[0]?.code) {
@@ -113,9 +161,7 @@ export function resolveCurrencyCode(
     }
   }
 
-  if (!input || typeof input !== "string") {
-    return defaultCurrency;
-  }
+  if (!input || typeof input !== "string") return defaultCurrency;
 
   const trimmed = input.trim();
   const upper = trimmed.toUpperCase();
@@ -130,7 +176,11 @@ export function resolveCurrencyCode(
 
   // 1. Direct code match (e.g. "USD", "ngn", "EUR")
   const matchByCode = currencies.find(
-    (c) => c.code && c.code.toUpperCase() === upper,
+    (c) =>
+      c &&
+      c.code &&
+      typeof c.code === "string" &&
+      c.code.toUpperCase() === upper,
   );
   if (matchByCode && matchByCode.code) {
     return matchByCode.code;
@@ -139,8 +189,12 @@ export function resolveCurrencyCode(
   // 2. Match by symbol or native symbol (e.g. "$", "₦", "€", "CA$")
   const matchBySymbol = currencies.find(
     (c) =>
-      (c.symbol && c.symbol.trim() === trimmed) ||
-      (c.symbol_native && c.symbol_native.trim() === trimmed),
+      (c?.symbol &&
+        typeof c.symbol === "string" &&
+        c.symbol.trim() === trimmed) ||
+      (c?.symbol_native &&
+        typeof c.symbol_native === "string" &&
+        c.symbol_native.trim() === trimmed),
   );
   if (matchBySymbol && matchBySymbol.code) {
     return matchBySymbol.code;
@@ -150,17 +204,17 @@ export function resolveCurrencyCode(
   const lower = trimmed.toLowerCase();
   const matchByName = currencies.find(
     (c) =>
-      (c.name && c.name.toLowerCase() === lower) ||
-      (c.name_plural && c.name_plural.toLowerCase() === lower),
+      (c?.name &&
+        typeof c.name === "string" &&
+        c.name.toLowerCase() === lower) ||
+      (c?.name_plural &&
+        typeof c.name_plural === "string" &&
+        c.name_plural.toLowerCase() === lower),
   );
-  if (matchByName && matchByName.code) {
-    return matchByName.code;
-  }
+  if (matchByName && matchByName.code) return matchByName.code;
 
   // 4. If input matches 3-letter currency code pattern
-  if (/^[A-Z]{3}$/.test(upper)) {
-    return upper;
-  }
+  if (/^[A-Z]{3}$/.test(upper)) return upper;
 
   return defaultCurrency;
 }
@@ -171,25 +225,25 @@ export function resolveCurrencyCode(
  */
 export function sanitizePriceUnit(val: unknown): string {
   if (!val || typeof val !== "string") {
-    if (dynamicQuantityCodes && dynamicQuantityCodes.size > 0) {
-      return Array.from(dynamicQuantityCodes)[0];
-    }
     return "H87";
   }
 
-  const s = val.trim().toUpperCase();
+  let s = val.trim().toUpperCase();
+
+  // Strip currencies or "per" e.g. "NGN per 1", "NGN/1", "USD"
+  if (/NGN|USD|EUR|GBP|PER|\//i.test(s)) {
+    return "H87";
+  }
+
+  if (s.length > 3 || !/^[A-Z0-9]{1,3}$/.test(s)) {
+    return "H87";
+  }
 
   if (dynamicQuantityCodes && dynamicQuantityCodes.size > 0) {
     if (dynamicQuantityCodes.has(s)) {
       return s;
     }
-
-    const base = s.replace(/\s*(PER|\/)\s*[\d\w]+.*$/, "").trim();
-    if (dynamicQuantityCodes.has(base)) {
-      return base;
-    }
-
-    return Array.from(dynamicQuantityCodes)[0];
+    return "H87";
   }
 
   return s;
@@ -214,11 +268,13 @@ export function lookupHsnCode(description: string): string {
     let bestMatch: { code: string; score: number } | undefined = undefined;
 
     for (const entry of dynamicHsCodes) {
-      if (!entry) continue;
+      const entryCode = entry.code;
       let score = 0;
-      const targetText = `${entry.label || ""} ${(entry.keywords || []).join(" ")}`.toLowerCase();
+      const label = entry.label;
+      const keywords = entry.keywords.join(" ");
+      const targetText = `${label} ${keywords}`.toLowerCase();
 
-      if (entry.code.toLowerCase() === normalized) {
+      if (entryCode.toLowerCase() === normalized) {
         score = 100;
       } else if (targetText.includes(normalized)) {
         score = 50;
@@ -233,7 +289,7 @@ export function lookupHsnCode(description: string): string {
 
       if (score > 0) {
         if (!bestMatch || score > bestMatch.score) {
-          bestMatch = { code: entry.code, score };
+          bestMatch = { code: entryCode, score };
         }
       }
     }
@@ -258,7 +314,11 @@ export function generateUniqueHsnCode(
   description?: string,
 ): string {
   let baseCode = "9999.00";
-  if (description && typeof description === "string" && description.trim() !== "") {
+  if (
+    description &&
+    typeof description === "string" &&
+    description.trim() !== ""
+  ) {
     baseCode = lookupHsnCode(description);
   }
 

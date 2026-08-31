@@ -115,7 +115,7 @@ describe("Complete Outbound Job & Inbound Webhook Pipeline Tests", () => {
           businessRegistrationNumber: "RC-61392352",
           contactEmail: testEmail,
           contactPhone: testPhone,
-          password: testPassword,
+          password: await hashString(testPassword),
           status: TenantStatus.ACTIVE,
           metadata: {
             webhookPath: webhookPath,

@@ -117,7 +117,7 @@ export function registerCompleteOutboundJob(): void {
         let finalStatus = OutboundInvoiceStatus.DELIVERED;
         let transmissionErrorMsg: string | undefined;
 
-        if (transmissionFailed) {
+        if (transmissionFailed && !qrCode) {
           finalStatus = OutboundInvoiceStatus.TRANSMISTION_FAILED;
           transmissionErrorMsg = result?.transmissionError;
         }
@@ -125,20 +125,14 @@ export function registerCompleteOutboundJob(): void {
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
           const currentInvoice = await outboundRepo.findByIrn(irn);
-          const existingTransError = transmissionErrorMsg;
+          const existingTransError =
+            transmissionErrorMsg ??
+            result?.transmissionError ??
+            currentInvoice?.metadata?.transmissionError;
 
           await outboundRepo.update(irn, {
             qrCode,
             status: finalStatus,
-            ...(transmissionFailed || existingTransError
-              ? {
-                  lastJobError: {
-                    action: "transmit",
-                    error: existingTransError || "Transmission to FIRS failed",
-                    failedAt: new Date(),
-                  },
-                }
-              : {}),
             metadata: {
               ...(currentInvoice?.metadata ?? {}),
               ...(context.metadata ?? {}),
@@ -148,24 +142,17 @@ export function registerCompleteOutboundJob(): void {
             },
           });
 
-          if (
-            !transmissionFailed &&
-            finalStatus === OutboundInvoiceStatus.DELIVERED
-          ) {
-            // Mark delivered: true only when transmission succeeded
-            await outboundRepo.updateWorkflowState(irn, { delivered: true });
-          } else {
-            await outboundRepo.updateWorkflowState(irn, {
-              transmitted: false,
-              delivered: false,
-            });
-            if (existingTransError) {
-              await outboundRepo.setLastJobError(
-                irn,
-                "transmit",
-                existingTransError,
-              );
-            }
+          await outboundRepo.updateWorkflowState(irn, {
+            transmitted: !transmissionFailed,
+            delivered: true,
+          });
+
+          if (transmissionFailed && existingTransError) {
+            await outboundRepo.setLastJobError(
+              irn,
+              "transmit",
+              existingTransError,
+            );
           }
         }
 

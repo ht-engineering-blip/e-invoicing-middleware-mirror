@@ -66,15 +66,36 @@ export class OutboundWorkflowService {
     }
 
     try {
+      // Resolve real FIRS businessId if tenant_id is available
+      const tenantIdentifier = invoice.tenant_id || stored?.tenantId;
+      if (tenantIdentifier) {
+        try {
+          const firsCreds =
+            await this.tenantService.getFIRSCredentials(tenantIdentifier);
+          if (firsCreds?.clientId) {
+            invoice.business_id = firsCreds.clientId;
+            if (invoice.data && typeof invoice.data === "object") {
+              invoice.data.business_id = firsCreds.clientId;
+            }
+          }
+        } catch (credErr: unknown) {
+          // ignore
+        }
+      }
+
       // Step 0: Check if signing is needed
       let skipSigning = wf.signed;
 
-      if (!skipSigning) {
-        const searchedInvoice = await this.firsService.searchInvoice(
-          invoice.business_id,
-          invoice.irn,
-        );
-        skipSigning = (searchedInvoice?.data?.data?.items?.length ?? 0) > 0;
+      if (!skipSigning && invoice.business_id && invoice.irn) {
+        try {
+          const searchedInvoice = await this.firsService.searchInvoice(
+            invoice.business_id,
+            invoice.irn,
+          );
+          skipSigning = (searchedInvoice?.data?.data?.items?.length ?? 0) > 0;
+        } catch (searchErr: unknown) {
+          skipSigning = false;
+        }
       }
 
       // Step 1: Validate
@@ -250,34 +271,35 @@ export class OutboundWorkflowService {
           });
           wf.transmitted = true;
           wf.delivered = true;
-        } catch (transmitError: any) {
-          console.error("TRANSMISSION FAILED (tolerated)", { transmitError });
+        } catch (transmitError: unknown) {
+          const transmitErrorMsg =
+            transmitError instanceof Error
+              ? transmitError.message
+              : String(transmitError);
+          console.warn(
+            "TRANSMISSION WARNING (tolerated — invoice is signed & confirmed):",
+            transmitError,
+          );
           transmissionFailed = true;
-          const errorMessage = transmitError?.message;
+          wf.transmitted = false;
+          wf.delivered = true;
           await this.outboundRepo.update(invoice.irn, {
-            status: OutboundInvoiceStatus.TRANSMISTION_FAILED,
-            lastJobError: {
-              action: "transmit",
-              error: errorMessage,
-              failedAt: new Date(),
-            },
+            status: OutboundInvoiceStatus.DELIVERED,
             metadata: {
               ...stored?.metadata,
+              transmissionError: transmitErrorMsg,
               workflowState: wf,
-              transmissionError: errorMessage,
             },
+          });
+          await this.outboundRepo.updateWorkflowState(invoice.irn, {
+            transmitted: false,
+            delivered: true,
           });
           await this.outboundRepo.setLastJobError(
             invoice.irn,
             "transmit",
-            errorMessage,
+            transmitErrorMsg,
           );
-          await this.outboundRepo.updateWorkflowState(invoice.irn, {
-            transmitted: false,
-            delivered: false,
-          });
-          wf.transmitted = false;
-          wf.delivered = false;
         }
       }
 

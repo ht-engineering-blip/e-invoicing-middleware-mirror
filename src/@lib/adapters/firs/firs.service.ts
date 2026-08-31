@@ -3,15 +3,16 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
 } from "axios";
-import https from "node:https";
 import { decryptInvoice } from "firs-einvoicing";
-import { AppError, HandleErrorResponse, RestClient } from "../rest";
-import { generateQRCode } from "./generateQR";
+import https from "node:https";
 import { firsConfig } from "../../../@config";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
+import { retryWithAutoFix } from "../../../v1/workflow/utils/invoice-sanitizer.util";
+import { AppError, HandleErrorResponse, RestClient } from "../rest";
+import { generateQRCode } from "./generateQR";
 import type {
-  FIRSDownloadInvoiceResponse,
   FIRSDecryptInvoiceInput,
+  FIRSDownloadInvoiceResponse,
 } from "./types";
 
 export interface FIRSUserInfo {
@@ -264,9 +265,15 @@ export class FIRSService {
     }
   }
 
-  public async validateInvoice(invoice: any) {
+  public async validateInvoice(
+    invoice: Record<string, unknown>,
+  ): Promise<OkayResponse> {
     const client = this.appClient;
-    return client.post<OkayResponse>("api/v1/invoice/validate", invoice);
+    return retryWithAutoFix(
+      async (sanitized) =>
+        client.post<OkayResponse>("api/v1/invoice/validate", sanitized),
+      invoice,
+    );
   }
 
   public async searchInvoice(business_id: string, irn: string) {
@@ -279,9 +286,15 @@ export class FIRSService {
     );
   }
 
-  public async signInvoice(invoice: any) {
+  public async signInvoice(
+    invoice: Record<string, unknown>,
+  ): Promise<OkayResponse> {
     const client = this.appClient;
-    return client.post<OkayResponse>("api/v1/invoice/sign", invoice);
+    return retryWithAutoFix(
+      async (sanitized) =>
+        client.post<OkayResponse>("api/v1/invoice/sign", sanitized),
+      invoice,
+    );
   }
 
   public async transmitInvoice(irn: string) {
