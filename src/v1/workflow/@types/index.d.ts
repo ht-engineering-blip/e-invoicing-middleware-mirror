@@ -44,9 +44,11 @@ interface SearchResponse {
 
 interface SecureInvoice {
   tenant_id: string;
+  tenantId?: string;
   business_id: string;
   irn: string;
   invoice_line?: InvoiceLineInput[];
+  data?: Record<string, any>;
   [key: string]: unknown;
 }
 

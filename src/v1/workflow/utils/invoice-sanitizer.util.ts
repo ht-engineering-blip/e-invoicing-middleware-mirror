@@ -30,7 +30,12 @@ export function sanitizeInvoicePayload(
   };
 
   // 1. Root Level Core Identifiers
-  if (typeof invoice.business_id === "string") {
+  if (
+    typeof rawInvoice.business_id === "string" &&
+    (rawInvoice.business_id as string).trim() !== ""
+  ) {
+    invoice.business_id = (rawInvoice.business_id as string).trim();
+  } else if (typeof invoice.business_id === "string") {
     invoice.business_id = invoice.business_id.trim();
   }
 
@@ -92,7 +97,13 @@ export function sanitizeInvoicePayload(
   }
 
   // 3. IRN Sanitization & Generation
-  if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
+  if (
+    typeof rawInvoice.irn === "string" &&
+    (rawInvoice.irn as string).trim() !== "" &&
+    /^[A-Z0-9]+-[A-Z0-9]{8}-[0-9]{8}$/.test((rawInvoice.irn as string).trim().toUpperCase())
+  ) {
+    invoice.irn = (rawInvoice.irn as string).trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  } else if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
     invoice.irn = invoice.irn
       .toUpperCase()
       .trim()
@@ -138,6 +149,7 @@ export function sanitizeInvoicePayload(
     rawInvoice.data !== invoice
   ) {
     (rawInvoice.data as Record<string, unknown>).irn = invoice.irn;
+    (rawInvoice.data as Record<string, unknown>).business_id = invoice.business_id;
   }
 
   // 4. Accounting Supplier Party
@@ -716,16 +728,58 @@ export function autoFixInvoiceFromFIRSError(
     ];
   }
 
-  // 6. IRN Format Fix
+  // 6. IRN Format & Template Validation Fix
   if (
+    errString.includes("irn validation failed") ||
+    errString.includes("refer to the template") ||
     errString.includes("valid irn") ||
     errString.includes("irn value must be")
   ) {
-    if (typeof target.irn === "string") {
-      target.irn = target.irn
-        .toUpperCase()
-        .replace(/\s+/g, "")
-        .replace(/[^A-Z0-9-]/g, "");
+    const rawIrn = String(target.irn || "");
+    const parts = rawIrn.split("-").filter(Boolean);
+
+    let dateStr: string;
+    if (
+      typeof target.issue_date === "string" &&
+      target.issue_date.length >= 10
+    ) {
+      dateStr = target.issue_date.slice(0, 10).replace(/-/g, "");
+    } else {
+      dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    }
+
+    let baseRef: string;
+    if (
+      typeof target.invoice_number === "string" &&
+      target.invoice_number.trim() !== ""
+    ) {
+      baseRef = target.invoice_number
+        .trim()
+        .replace(/[^A-Za-z0-9]/g, "")
+        .toUpperCase();
+    } else if (parts[0]) {
+      baseRef = parts[0].replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    } else {
+      baseRef = `INV${dateStr}`;
+    }
+
+    let serviceId: string;
+    if (parts[1] && parts[1].length === 8) {
+      serviceId = parts[1].toUpperCase();
+    } else if (
+      typeof target.business_id === "string" &&
+      target.business_id.length >= 8
+    ) {
+      serviceId = target.business_id.slice(0, 8).toUpperCase();
+    } else {
+      serviceId = "8593BD6E";
+    }
+
+    const padding = Math.random().toString(36).substring(2, 6).toUpperCase();
+    target.irn = `${baseRef}${padding}-${serviceId}-${dateStr}`;
+
+    if (Array.isArray(target.billing_reference) && target.billing_reference.length > 0) {
+      (target.billing_reference[0] as Record<string, unknown>).irn = target.irn;
     }
   }
 

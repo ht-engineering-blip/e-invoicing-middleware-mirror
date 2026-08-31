@@ -67,13 +67,16 @@ export class OutboundWorkflowService {
 
     try {
       // Resolve real FIRS businessId if tenant_id is available
-      if (invoice.tenant_id) {
+      const tenantIdentifier = invoice.tenant_id || stored?.tenantId;
+      if (tenantIdentifier) {
         try {
-          const firsCreds = await this.tenantService.getFIRSCredentials(
-            invoice.tenant_id,
-          );
+          const firsCreds =
+            await this.tenantService.getFIRSCredentials(tenantIdentifier);
           if (firsCreds?.clientId) {
             invoice.business_id = firsCreds.clientId;
+            if (invoice.data && typeof invoice.data === "object") {
+              invoice.data.business_id = firsCreds.clientId;
+            }
           }
         } catch (credErr: unknown) {
           // ignore
