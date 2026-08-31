@@ -275,6 +275,7 @@ export class AuthService extends BaseService {
       const decoded: any = jwt.verify(
         currentToken,
         jwtConfig?.secret || "default-secret",
+        { algorithms: ["HS256"] },
       );
 
       let tenant: any;

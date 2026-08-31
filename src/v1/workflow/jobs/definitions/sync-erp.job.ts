@@ -267,14 +267,28 @@ export function registerSyncErpJob(): void {
         explicitCode,
       );
 
-      const renderedBody = renderBody(erpSyncConfig.bodyTemplate, {
-        ...context,
+      // Whitelist Handlebars data model to prevent prototype pollution and unauthorized context leakage
+      const templateData: Record<string, unknown> = {
         tenantId,
         jobChainId,
+        eventType,
+        irn: context.irn,
         qrCode,
         invoiceType,
-        invoice_type: invoiceType, // Also pass snake_case for templates that use {{invoice_type}}
-      });
+        invoice_type: invoiceType,
+        erpInvoiceId: context.erpInvoiceId,
+        sourceType: context.sourceType,
+        source: context.source,
+        transformedInvoice: context.transformedInvoice,
+        validationResult: context.validationResult,
+        signedInvoice: context.signedInvoice,
+        firsResponse: context.firsResponse,
+        originalPayload: context.originalPayload,
+        payload: context.payload,
+        customFields: context.customFields,
+      };
+
+      const renderedBody = renderBody(erpSyncConfig.bodyTemplate, templateData);
 
       // Execute request with configurable timeout and redirect: 'error' (maxRedirects: 0)
       const controller = new AbortController();
@@ -295,12 +309,6 @@ export function registerSyncErpJob(): void {
       }
 
       const responseText = await response.text();
-      let responseData: any;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = responseText;
-      }
 
       if (!response.ok) {
         throw new Error(
@@ -312,13 +320,14 @@ export function registerSyncErpJob(): void {
         jobChainId,
         tenantId,
         status: response.status,
-        mappedKeys: Object.keys(responseData),
       });
 
+      // Strip raw ERP response from propagating through the chain to avoid sensitive data leakage
       await chainNext(job, {
         erpSyncResult: {
           status: response.status,
-          data: responseData,
+          success: true,
+          timestamp: new Date().toISOString(),
         },
       });
     } catch (err: any) {

@@ -6,7 +6,6 @@ import { AuthContext } from "../../../../middlewares";
 import { SchemaSourceType } from "../../models";
 import { generateIRN, sanitizeInvoiceIRNs } from "./utils";
 import { FIRSInvoiceSchema, type FIRSInvoice } from "./schema-validator";
-
 export {
   FIRSInvoiceSchema,
   DateSchema,
@@ -20,10 +19,52 @@ export {
   InvoiceLineSchema,
   DocumentReferenceSchema,
 } from "./schema-validator";
-
 export type { FIRSInvoice } from "./schema-validator";
-
 export { normalizeInvoicePayload } from "./payload-normalizer";
+
+import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
+
+const ALLOWED_LLM_FIELDS = new Set([
+  "business_id",
+  "irn",
+  "issue_date",
+  "issue_time",
+  "due_date",
+  "invoice_type_code",
+  "document_currency_code",
+  "invoice_kind",
+  "invoice_reference",
+  "invoice_number",
+  "service_id",
+  "accounting_supplier_party",
+  "accounting_customer_party",
+  "payment_means",
+  "payment_terms",
+  "allowance_charge",
+  "tax_total",
+  "legal_monetary_total",
+  "invoice_line",
+  "billing_reference",
+  "additional_document_reference",
+  "contract_document_reference",
+  "originator_document_reference",
+  "dispatch_document_reference",
+  "receipt_document_reference",
+  "order_reference",
+  "notes",
+]);
+
+function filterAllowedLLMFields(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (ALLOWED_LLM_FIELDS.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
 
 export interface TransformationResult {
   success: boolean;
@@ -108,12 +149,10 @@ export class FIRSInvoiceTransformer {
         validationErrors: validationResult.error,
         rawResponse: JSON.stringify(transformedData),
       };
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Transformation error";
+    } catch (error: any) {
       return {
         success: false,
-        errors: [errorMessage],
+        errors: [error.message || "Failed to transform invoice data"],
       };
     }
   }
@@ -207,24 +246,30 @@ export class FIRSInvoiceTransformer {
       throw new Error("Failed to parse LLM response as JSON");
     }
 
+    // 1. Allowlist fields from LLM output to prevent prompt injection / unrecognized payload structures
+    let sanitizedContent = filterAllowedLLMFields(parsedContent);
+
     if (authContext?.businessId) {
-      parsedContent.business_id = authContext.businessId;
+      sanitizedContent.business_id = authContext.businessId;
     }
 
     if (
-      !parsedContent.irn ||
-      parsedContent.irn === "IRN" ||
-      parsedContent.irn === "{{TEST_BUSINESS_ID}}"
+      !sanitizedContent.irn ||
+      sanitizedContent.irn === "IRN" ||
+      sanitizedContent.irn === "{{TEST_BUSINESS_ID}}"
     ) {
-      parsedContent.irn = generateIRN(
-        String(parsedContent.invoice_reference || invoiceData.invoiceNumber),
+      sanitizedContent.irn = generateIRN(
+        String(sanitizedContent.invoice_reference || invoiceData.invoiceNumber),
         authContext?.serviceId,
         new Date(),
       );
     }
 
-    sanitizeInvoiceIRNs(parsedContent);
-    return parsedContent;
+    // 2. Re-derive financial totals & sanitize schema structures from source line items
+    sanitizedContent = sanitizeInvoicePayload(sanitizedContent);
+
+    sanitizeInvoiceIRNs(sanitizedContent);
+    return sanitizedContent;
   }
 
   /**
@@ -262,10 +307,11 @@ export class FIRSInvoiceTransformer {
           fixed.issue_date = new Date().toISOString().slice(0, 10);
         } else if (path === "invoice_type_code") {
           const original = String(data.invoice_type_code || "");
-          fixed.invoice_type_code =
-            original === "381" || original === "380" || original === "384"
-              ? original
-              : "396";
+          if (original === "381" || original === "380" || original === "384") {
+            fixed.invoice_type_code = original;
+          } else {
+            fixed.invoice_type_code = "396";
+          }
         } else if (path === "document_currency_code") {
           fixed.document_currency_code = "NGN";
         }

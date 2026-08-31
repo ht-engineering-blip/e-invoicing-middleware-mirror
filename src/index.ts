@@ -62,10 +62,63 @@ const openapiPlugin = docsConfig.enabled
     })
   : new Elysia();
 
+const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+];
+
+let envAllowedOrigins: string[] = [];
+if (process.env.ALLOWED_ORIGINS) {
+  envAllowedOrigins = process.env.ALLOWED_ORIGINS.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+} else {
+  envAllowedOrigins = [];
+}
+
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...envAllowedOrigins]),
+);
+
+const isOriginAllowed = (origin: string): boolean => {
+  if (!origin) return false;
+  if (allowedOrigins.includes(origin)) return true;
+  return envAllowedOrigins.some((pattern) => {
+    if (pattern.startsWith("*.")) {
+      const domain = pattern.slice(2);
+      try {
+        const parsed = new URL(origin);
+        return (
+          parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)
+        );
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+};
+
 const app = new Elysia()
   .use(
     cors({
-      origin: true,
+      origin: (request: Request | any) => {
+        const req = request?.request || request;
+        let origin: string | null | undefined;
+        if (typeof req?.headers?.get === "function") {
+          origin = req.headers.get("origin");
+        } else {
+          origin = req?.headers?.origin;
+        }
+
+        if (origin) {
+          return isOriginAllowed(origin);
+        }
+        return false;
+      },
       credentials: true,
       allowedHeaders: [
         "Content-Type",
@@ -73,6 +126,9 @@ const app = new Elysia()
         "x-api-key",
         "x-admin-key",
         "x-docs-password",
+        "x-event-type",
+        "x-idempotency-key",
+        "x-webhook-key",
       ],
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
