@@ -4,7 +4,7 @@ import axios from "axios";
 import { appConfig } from "../../../../@config";
 import { logger, ResponseBuilder } from "../../../../@lib";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
-import { onlySelf } from "../../../auth/utils/access-checks";
+import { onlyTenantAdmin } from "../../../auth/utils/access-checks";
 import { TenantService } from "../../services/tenant.service";
 import { signWebhookPayload } from "../../../webhook";
 import {
@@ -25,7 +25,7 @@ export const onboardingWebhookRoutes = new Elysia()
     "/:tenantId/webhook/generate",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Generating webhook URL", { tenantId: params.tenantId });
 
@@ -118,7 +118,7 @@ export const onboardingWebhookRoutes = new Elysia()
     "/:tenantId/invoice-id-key",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Updating Invoice ID Key", { tenantId: params.tenantId });
 
@@ -169,7 +169,7 @@ export const onboardingWebhookRoutes = new Elysia()
     "/:tenantId/webhook/test",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Testing webhook", { tenantId: params.tenantId });
 

@@ -38,11 +38,13 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     expect(text).toBe("OpenAPI Documentation HTML");
   });
 
+  const testDocsPassword = process.env.DOCS_PASSWORD || "test-docs-pass";
+
   it("should reject unauthenticated request to /openapi with 401 and WWW-Authenticate header when docs are protected", async () => {
     docsConfig.enabled = true;
     docsConfig.isProtected = true;
     docsConfig.username = "admin";
-    docsConfig.password = "SecretDocsPass123";
+    docsConfig.password = testDocsPassword;
 
     const app = new Elysia()
       .use(docsAuthMiddleware)
@@ -61,7 +63,7 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     docsConfig.enabled = true;
     docsConfig.isProtected = true;
     docsConfig.username = "admin";
-    docsConfig.password = "SecretDocsPass123";
+    docsConfig.password = testDocsPassword;
 
     const app = new Elysia()
       .use(docsAuthMiddleware)
@@ -83,13 +85,13 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     docsConfig.enabled = true;
     docsConfig.isProtected = true;
     docsConfig.username = "admin";
-    docsConfig.password = "SecretDocsPass123";
+    docsConfig.password = testDocsPassword;
 
     const app = new Elysia()
       .use(docsAuthMiddleware)
       .get("/openapi", () => "OpenAPI Documentation HTML");
 
-    const validAuth = Buffer.from("admin:SecretDocsPass123").toString("base64");
+    const validAuth = Buffer.from(`admin:${testDocsPassword}`).toString("base64");
     const res = await app.handle(
       new Request("http://localhost/openapi", {
         headers: {
@@ -107,7 +109,7 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     docsConfig.enabled = true;
     docsConfig.isProtected = true;
     docsConfig.username = "admin";
-    docsConfig.password = "SecretDocsPass123";
+    docsConfig.password = testDocsPassword;
 
     const app = new Elysia()
       .use(docsAuthMiddleware)
@@ -116,7 +118,7 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     const res = await app.handle(
       new Request("http://localhost/openapi", {
         headers: {
-          "x-docs-password": "SecretDocsPass123",
+          "x-docs-password": testDocsPassword,
         },
       }),
     );
@@ -128,14 +130,14 @@ describe("Password-Protected OpenAPI Documentation Tests", () => {
     docsConfig.enabled = true;
     docsConfig.isProtected = true;
     docsConfig.username = "admin";
-    docsConfig.password = "SecretDocsPass123";
+    docsConfig.password = testDocsPassword;
 
     const app = new Elysia()
       .use(docsAuthMiddleware)
       .get("/openapi", () => "OpenAPI Documentation HTML");
 
     const res = await app.handle(
-      new Request("http://localhost/openapi?password=SecretDocsPass123"),
+      new Request(`http://localhost/openapi?password=${encodeURIComponent(testDocsPassword)}`),
     );
 
     expect(res.status).toBe(200);

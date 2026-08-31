@@ -3,7 +3,7 @@ import { requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder } from "../../../@lib";
 import { TeamMemberService } from "../services/team-member.service";
 import { TeamMemberRole, TeamMemberStatus } from "../models/team-member.model";
-import { onlySelf } from "../../auth/utils/access-checks";
+import { onlySelf, onlyTenantAdmin } from "../../auth/utils/access-checks";
 import {
   acceptInviteValidation,
   listTeamMembersValidation,
@@ -126,8 +126,8 @@ export const protectedTeamRoutes = new Elysia({ prefix: "/:tenantId/team" })
     "/",
     async ({ params, body, auth, teamService, set }) => {
       try {
-        // Check authorization
-        onlySelf(auth!, params.tenantId);
+        // Check authorization (only tenant admin can invite)
+        onlyTenantAdmin(auth!, params.tenantId);
 
         const member = await teamService.inviteTeamMember(
           params.tenantId,
@@ -215,8 +215,8 @@ export const protectedTeamRoutes = new Elysia({ prefix: "/:tenantId/team" })
     "/:userId",
     async ({ params, body, auth, teamService, set }) => {
       try {
-        // Check authorization
-        onlySelf(auth!, params.tenantId);
+        // Check authorization (only tenant admin can update)
+        onlyTenantAdmin(auth!, params.tenantId);
 
         const member = await teamService.updateTeamMember(
           params.tenantId,
@@ -264,8 +264,8 @@ export const protectedTeamRoutes = new Elysia({ prefix: "/:tenantId/team" })
     "/:userId",
     async ({ params, auth, teamService, set }) => {
       try {
-        // Check authorization
-        onlySelf(auth!, params.tenantId);
+        // Check authorization (only tenant admin can remove)
+        onlyTenantAdmin(auth!, params.tenantId);
 
         await teamService.removeTeamMember(
           params.tenantId,
@@ -298,8 +298,8 @@ export const protectedTeamRoutes = new Elysia({ prefix: "/:tenantId/team" })
     "/:userId/resend-invite",
     async ({ params, auth, teamService, set }) => {
       try {
-        // Check authorization
-        onlySelf(auth!, params.tenantId);
+        // Check authorization (only tenant admin can resend invite)
+        onlyTenantAdmin(auth!, params.tenantId);
 
         await teamService.resendInvitation(params.tenantId, params.userId);
 
