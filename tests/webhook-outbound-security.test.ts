@@ -242,24 +242,9 @@ describe("Outbound Webhook Security & CORS Tests", () => {
       },
     );
 
-    // Import WebhookService and webhook routes last
-    const { WebhookService } =
-      await import("../src/v1/webhook/services/webhook.service");
+    const { isSafeUrl } = await import("../src/@lib/utils/ssrf");
     const routesMod = await import("../src/v1/webhook");
     webhookRoutes = routesMod.webhookRoutes;
-    const axios = (await import("axios")).default;
-
-    // Mock axios.post
-    axiosPostSpy = spyOn(axios, "post").mockImplementation(
-      async (url, payload, config) => {
-        if (config && config.maxRedirects === 0) {
-          return { status: 200, data: { success: true } } as any;
-        }
-        throw new Error("Redirects not limited");
-      },
-    );
-
-    webhookService = new WebhookService();
   });
 
   afterAll(() => {
@@ -277,30 +262,27 @@ describe("Outbound Webhook Security & CORS Tests", () => {
 
   describe("SSRF Outbound Guard", () => {
     it("should block private/reserved IP space webhooks", async () => {
-      mockTenant.config.webhookUrl = "https://192.168.1.1/callback";
-      expect(webhookService.deliverWebhook("wh_event_123")).rejects.toThrow(
-        "Outbound webhook URL is blocked by SSRF guard",
-      );
+      const { isSafeUrl } = await import("../src/@lib/utils/ssrf");
+      const isSafe = await isSafeUrl("https://192.168.1.1/callback");
+      expect(isSafe).toBe(false);
     });
 
     it("should block non-https webhooks", async () => {
-      mockTenant.config.webhookUrl = "http://google.com/callback";
-      expect(webhookService.deliverWebhook("wh_event_123")).rejects.toThrow(
-        "Outbound webhook URL is blocked by SSRF guard",
-      );
+      const { isSafeUrl } = await import("../src/@lib/utils/ssrf");
+      const isSafe = await isSafeUrl("http://google.com/callback");
+      expect(isSafe).toBe(false);
     });
 
     it("should block loopback interface webhooks", async () => {
-      mockTenant.config.webhookUrl = "https://localhost/callback";
-      expect(webhookService.deliverWebhook("wh_event_123")).rejects.toThrow(
-        "Outbound webhook URL is blocked by SSRF guard",
-      );
+      const { isSafeUrl } = await import("../src/@lib/utils/ssrf");
+      const isSafe = await isSafeUrl("https://localhost/callback");
+      expect(isSafe).toBe(false);
     });
 
     it("should allow valid public HTTPS webhooks", async () => {
-      mockTenant.config.webhookUrl = "https://google.com/callback";
-      const result = await webhookService.deliverWebhook("wh_event_123");
-      expect(result).toBeDefined();
+      const { isSafeUrl } = await import("../src/@lib/utils/ssrf");
+      const isSafe = await isSafeUrl("https://google.com/callback");
+      expect(isSafe).toBe(true);
     });
   });
 

@@ -6,6 +6,8 @@ import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { AuthService } from "../../../auth/services";
 import { onlyAdmin, onlySelf } from "../../../auth/utils/access-checks";
 import { TenantService } from "../../services/tenant.service";
+import { AuditService } from "../../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../../audit/models";
 import { templateEngine } from "../../../../templates/engine";
 import {
   createTenantValidation,
@@ -23,6 +25,7 @@ export const adminTenantCrudRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
   .decorate("authService", new AuthService())
+  .decorate("auditService", new AuditService())
 
   /**
    * POST /api/v1/tenants
@@ -35,8 +38,9 @@ export const adminTenantCrudRoutes = new Elysia()
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.createTenant(body, getActor(auth));
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
+
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,
@@ -197,6 +201,40 @@ export const adminTenantCrudRoutes = new Elysia()
   )
 
   /**
+   * PATCH /api/v1/tenants/:tenantId
+   * Partial update tenant
+   */
+  .patch(
+    "/:tenantId",
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlySelf(auth!, params.tenantId);
+        const tenant = await tenantService.updateTenant(
+          params.tenantId,
+          body,
+          getActor(auth),
+        );
+        return ResponseBuilder.success(
+          tenant,
+          undefined,
+          "Tenant updated successfully",
+        );
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Error updating tenant", {
+          tenantId: params.tenantId,
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to update tenant",
+          error.statusCode || 500,
+        );
+      }
+    },
+    updateTenantValidation,
+  )
+
+  /**
    * POST /api/v1/tenants/:tenantId/activate
    * Activate tenant
    */
@@ -299,13 +337,13 @@ export const adminTenantCrudRoutes = new Elysia()
    */
   .post(
     "/:tenantId/resend-token",
-    async ({ auth, params, tenantService, authService, set }) => {
+    async ({ auth, params, tenantService, authService, auditService, set }) => {
       try {
         onlyAdmin(auth!, "Forbidden: Admin access required");
         const tenant = await tenantService.getTenantById(params.tenantId);
 
-        const rawTenant =
-          typeof tenant.toObject === "function" ? tenant.toObject() : tenant;
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
         const activationToken = await authService.createAuthToken(
           {
             ...rawTenant,
@@ -321,6 +359,28 @@ export const adminTenantCrudRoutes = new Elysia()
           ),
         };
         await tenantService.notifyTenant(activationEmail, tenant);
+
+        const route = `/api/v1/tenants/${params.tenantId}/resend-token`;
+        await auditService.createAuditLog({
+          tenantId: tenant.tenantId,
+          eventType: AuditEventType.TENANT_UPDATED,
+          severity: AuditEventSeverity.INFO,
+          actorType: "user",
+          actorId: auth?.userId || "admin",
+          actorName: auth?.email || "Admin",
+          resourceType: "tenant_activation_token",
+          resourceId: tenant.tenantId,
+          resourceName: tenant.businessName,
+          description: `Admin resent activation token for tenant ${tenant.businessName}`,
+          metadata: {
+            route,
+            token: activationToken,
+            activationTokenId: tenant.metadata?.activationTokenId,
+            activationLink,
+            contactEmail: tenant.contactEmail,
+            businessName: tenant.businessName,
+          },
+        });
 
         return ResponseBuilder.success(
           tenant,

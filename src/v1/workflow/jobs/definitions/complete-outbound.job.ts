@@ -28,6 +28,7 @@ export function registerCompleteOutboundJob(): void {
         let qrCode: string | undefined;
         let firsSignedData: any;
         let transmissionFailed = false;
+        let result: any;
 
         if (!context.transformedInvoice) {
           // ── Full-pipeline mode ────────────────────────────────────────────────
@@ -72,8 +73,12 @@ export function registerCompleteOutboundJob(): void {
           });
 
           // Step 4: validate → sign (if needed) → confirm → QR → transmit
-          const result = await outboundService.handleOutboundWorkflow(
-            transformed,
+          const securePayload: SecureInvoice = {
+            ...transformed,
+            tenant_id: tenantId,
+          };
+          result = await outboundService.handleOutboundWorkflow(
+            securePayload,
             true,
           );
           qrCode = result.qrCode as string;
@@ -110,27 +115,45 @@ export function registerCompleteOutboundJob(): void {
         }
 
         let finalStatus = OutboundInvoiceStatus.DELIVERED;
+        let transmissionErrorMsg: string | undefined;
 
-        if (transmissionFailed) {
+        if (transmissionFailed && !qrCode) {
           finalStatus = OutboundInvoiceStatus.TRANSMISTION_FAILED;
+          transmissionErrorMsg = result?.transmissionError;
         }
 
         // ── Persist final state ─────────────────────────────────────────────────
         if (irn) {
+          const currentInvoice = await outboundRepo.findByIrn(irn);
+          const existingTransError =
+            transmissionErrorMsg ??
+            result?.transmissionError ??
+            currentInvoice?.metadata?.transmissionError;
+
           await outboundRepo.update(irn, {
             qrCode,
             status: finalStatus,
             metadata: {
+              ...(currentInvoice?.metadata ?? {}),
               ...(context.metadata ?? {}),
-              ...(context.transformedInvoice
-                ? { transformedInvoice: context.transformedInvoice }
-                : {}),
+              transmissionError: existingTransError,
               firsSignedData,
+              transformedInvoice: context?.transformedInvoice,
             },
           });
 
-          // Mark delivered: true so the Delivered progress badge turns green
-          await outboundRepo.updateWorkflowState(irn, { delivered: true });
+          await outboundRepo.updateWorkflowState(irn, {
+            transmitted: !transmissionFailed,
+            delivered: true,
+          });
+
+          if (transmissionFailed && existingTransError) {
+            await outboundRepo.setLastJobError(
+              irn,
+              "transmit",
+              existingTransError,
+            );
+          }
         }
 
         logger.info("[Job:complete-outbound] Done — invoice finalized", {

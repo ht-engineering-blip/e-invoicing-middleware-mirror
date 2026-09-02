@@ -2,6 +2,7 @@ import { Agenda, computeJobState } from "agenda";
 import { MongoBackend, MongoJobRepository } from "@agendajs/mongo-backend";
 import { databaseConfig } from "../../@config/database";
 import { logger } from "../logger";
+import { TIME_MS } from "../constants";
 
 // High-performance MongoJobRepository getJobsOverview override.
 // Default @agendajs/mongo-backend implementation fetches ALL job documents into memory
@@ -214,7 +215,7 @@ export const agenda = new Agenda({
   processEvery: "2 seconds",
   defaultConcurrency: 5,
   maxConcurrency: 20,
-  defaultLockLifetime: 5 * 60 * 1000, // 5 min max per job
+  defaultLockLifetime: TIME_MS.FIVE_MINUTES, // 5 min max per job
   logging: true,
 });
 

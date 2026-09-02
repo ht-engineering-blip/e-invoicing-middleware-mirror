@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { Elysia } from "elysia";
 import { connectMongo } from "../src/@lib/adapters/mongo";
 import { encryptSensitiveData } from "../src/@lib/crypto";
+import { hashString } from "../src/@lib/utils/encryption";
 import { agenda } from "../src/@lib/queue/agenda";
 import { errorHandlerMiddleware } from "../src/middlewares";
 import { v1Routes } from "../src/v1";
@@ -114,7 +115,7 @@ describe("Complete Outbound Job & Inbound Webhook Pipeline Tests", () => {
           businessRegistrationNumber: "RC-61392352",
           contactEmail: testEmail,
           contactPhone: testPhone,
-          password: testPassword,
+          password: await hashString(testPassword),
           status: TenantStatus.ACTIVE,
           metadata: {
             webhookPath: webhookPath,
@@ -160,6 +161,7 @@ describe("Complete Outbound Job & Inbound Webhook Pipeline Tests", () => {
   }, 30000);
 
   beforeEach(async () => {
+    const hashedPassword = await hashString(testPassword);
     await TenantModel.findOneAndUpdate(
       { tenantId: testTenantId },
       {
@@ -170,7 +172,7 @@ describe("Complete Outbound Job & Inbound Webhook Pipeline Tests", () => {
           businessRegistrationNumber: "RC-61392352",
           contactEmail: testEmail,
           contactPhone: testPhone,
-          password: testPassword,
+          password: hashedPassword,
           status: TenantStatus.ACTIVE,
           metadata: {
             webhookPath: webhookPath,

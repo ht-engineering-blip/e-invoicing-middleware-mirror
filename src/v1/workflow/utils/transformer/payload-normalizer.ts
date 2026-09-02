@@ -52,11 +52,16 @@ export function normalizeInvoicePayload(
     businessId = rawInvoice.business_id.trim();
   }
 
-  // 3. Resolve IRN
+  // 3. Resolve Effective Service ID and IRN
+  let effectiveServiceId: string | undefined = undefined;
+  if (authContext && authContext.serviceId) {
+    effectiveServiceId = authContext.serviceId;
+  }
+
   let irn = "";
   if (typeof rawInvoice.irn === "string" && rawInvoice.irn.trim() !== "") {
     irn = rawInvoice.irn.trim();
-  } else if (authContext && authContext.businessId) {
+  } else if (effectiveServiceId) {
     let invoiceReference = "";
     if (
       typeof rawInvoice.invoice_reference === "string" &&
@@ -72,18 +77,9 @@ export function normalizeInvoicePayload(
       invoiceReference = generateInvoiceRef();
     }
 
-    const generated = generateIRN(
-      invoiceReference,
-      authContext.businessId.slice(0, 8),
-    );
+    const generated = generateIRN(invoiceReference, effectiveServiceId);
 
-    if (generated) {
-      irn = generated;
-    } else {
-      irn = `INV${today}001`;
-    }
-  } else {
-    irn = `INV${today}001`;
+    if (generated) irn = generated;
   }
 
   // 4. Resolve Issue Date
@@ -336,6 +332,14 @@ export function normalizeInvoicePayload(
       line.service_category.trim() !== ""
     ) {
       serviceCategory = line.service_category.trim();
+    }
+
+    if (!productCategory) {
+      productCategory =
+        serviceCategory ||
+        itemName ||
+        itemDescription ||
+        "General Goods and Services";
     }
 
     // Seller's Item Identification

@@ -7,7 +7,7 @@
 import crypto from "crypto";
 import * as jwt from "jsonwebtoken";
 import { jwtConfig } from "../../../@config";
-import { BaseService, logger } from "../../../@lib";
+import { BaseService, logger, TIME_MS } from "../../../@lib";
 import {
   ConflictError,
   NotFoundError,
@@ -116,7 +116,7 @@ export class TenantService extends BaseService {
 
     const tenantId = this.generateBusinessId(input.businessName, input.tin);
     const activationTokenId = crypto.randomUUID();
-    const activationTokenExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+    const activationTokenExpiresAt = new Date(Date.now() + TIME_MS.TWELVE_HOURS);
 
     const tenant = await this.tenantRepo.create({
       tenantId,

@@ -67,6 +67,8 @@ export const retryInvoiceFromStepValidation = {
           'Action name to resume from (e.g. "validate", "sign", "transmit")',
       }),
     ),
+    payload: t.Optional(t.Record(t.String(), t.Unknown())),
+    invoice: t.Optional(t.Record(t.String(), t.Unknown())),
   }),
   detail: {
     tags: ["Transaction Logs"],

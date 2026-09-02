@@ -1,9 +1,11 @@
 import { aiConfig } from "../../../../@config";
+import { AppError, logger } from "../../../../@lib";
 import { AuthContext } from "../../../../middlewares";
+import { TTLCache } from "../../../shared/utils";
 import { TenantService } from "../../../tenants/services/tenant.service";
 import {
-  ISchemaField,
   InvoiceSchemaDictionaryDocument,
+  ISchemaField,
   SchemaSourceType,
   SchemaStatus,
 } from "../../models";
@@ -12,9 +14,13 @@ import {
   InvoiceSchemaDictionaryRepository,
   UpdateSchemaDictionaryInput,
 } from "../../repos/invoice-schema-dictionary.repo";
-import { FIRSInvoiceTransformer } from "../../utils/transformer";
+import {
+  FIRSInvoiceTransformer,
+  type FIRSInvoice,
+  type TransformationResult,
+  type TransformInvoiceInput,
+} from "../../utils/transformer";
 import { FIRSInvoiceTransformerV2 } from "../../utils/transformer/v2";
-import { TTLCache } from "../../../shared/utils";
 
 /**
  * Input for upserting invoice schema
@@ -34,7 +40,7 @@ export interface UpsertSchemaInput {
 
 export class TransformWorkflowService {
   private tenantService: TenantService;
-  private invoiceSchemaRepo: InvoiceSchemaDictionaryRepository;
+  private invoiceRepo: InvoiceSchemaDictionaryRepository;
 
   // Cache schemas for 10 minutes to eliminate repetitive DB queries
   private schemaCache = new TTLCache<
@@ -45,14 +51,82 @@ export class TransformWorkflowService {
     defaultTtlMs: 600_000,
   });
 
-  constructor(dependencies?: {
+  constructor(dep?: {
     tenantService?: TenantService;
-    invoiceSchemaRepo?: InvoiceSchemaDictionaryRepository;
+    invoiceRepo?: InvoiceSchemaDictionaryRepository;
   }) {
-    this.tenantService = dependencies?.tenantService ?? new TenantService();
-    this.invoiceSchemaRepo =
-      dependencies?.invoiceSchemaRepo ??
-      new InvoiceSchemaDictionaryRepository();
+    this.tenantService = dep?.tenantService ?? new TenantService();
+    this.invoiceRepo =
+      dep?.invoiceRepo ?? new InvoiceSchemaDictionaryRepository();
+  }
+
+  /**
+   * Extracts and normalizes errors from a TransformationResult
+   */
+  private extractTransformationErrors(
+    result: TransformationResult | null | undefined,
+  ): string[] {
+    if (!result) return ["Transformation result is empty"];
+
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      const sanitizedErrors: string[] = [];
+      for (const err of result.errors) {
+        if (typeof err === "string" && err.trim() !== "") {
+          sanitizedErrors.push(err.trim());
+        } else if (err !== null && err !== undefined) {
+          sanitizedErrors.push(JSON.stringify(err));
+        }
+      }
+
+      if (sanitizedErrors.length > 0) return sanitizedErrors;
+    }
+
+    if (
+      result.validationErrors &&
+      Array.isArray(result.validationErrors.issues)
+    ) {
+      const zodErrors: string[] = [];
+      for (const issue of result.validationErrors.issues) {
+        const path = issue.path.join(".");
+        if (path && path.trim() !== "") {
+          zodErrors.push(`${path}: ${issue.message}`);
+        } else {
+          zodErrors.push(issue.message);
+        }
+      }
+
+      if (zodErrors.length > 0) return zodErrors;
+    }
+
+    return ["Transformation failed"];
+  }
+
+  /**
+   * Logs and throws a standardized AppError for transformation failures
+   */
+  private handleTransformationFailure(
+    serviceLabel: string,
+    result: TransformationResult | null | undefined,
+  ): never {
+    const errors = this.extractTransformationErrors(result);
+    const primaryErrorMessage = errors[0] || "Transformation failed";
+
+    logger.error(`[TransformService] ${serviceLabel} failed`, {
+      primaryError: primaryErrorMessage,
+      errorCount: errors.length,
+      errors,
+    });
+
+    const errorDetails = errors.map((errMessage) => ({
+      message: errMessage,
+    }));
+
+    throw new AppError(
+      400,
+      primaryErrorMessage,
+      "TRANSFORMATION_ERROR",
+      errorDetails,
+    );
   }
 
   /**
@@ -62,7 +136,7 @@ export class TransformWorkflowService {
     invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
-  ): Promise<any> => {
+  ): Promise<FIRSInvoice & Record<string, unknown>> => {
     const transformer = new FIRSInvoiceTransformer(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -76,11 +150,10 @@ export class TransformWorkflowService {
       sourceType,
     );
 
-    if (result?.success) {
-      return result.data;
+    if (result && result.success && result.data) {
+      return result.data as FIRSInvoice & Record<string, unknown>;
     } else {
-      console.error("Errors:", result?.errors);
-      throw result?.errors;
+      this.handleTransformationFailure("V1 Transformation", result);
     }
   };
 
@@ -91,7 +164,7 @@ export class TransformWorkflowService {
     invoice: TransformInvoiceInput,
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
-  ): Promise<any> => {
+  ): Promise<FIRSInvoice & Record<string, unknown>> => {
     const transformer = new FIRSInvoiceTransformerV2(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -105,11 +178,10 @@ export class TransformWorkflowService {
       sourceType,
     );
 
-    if (result?.success) {
-      return result.data;
+    if (result && result.success && result.data) {
+      return result.data as FIRSInvoice & Record<string, unknown>;
     } else {
-      console.error("Errors:", result?.errors);
-      throw result?.errors;
+      this.handleTransformationFailure("V2 Transformation", result);
     }
   };
 
@@ -126,8 +198,7 @@ export class TransformWorkflowService {
     this.schemaCache.delete(`source:${sourceType}`);
     this.schemaCache.delete(`id:${schemaId}`);
 
-    const existingSchema =
-      await this.invoiceSchemaRepo.findBySchemaId(schemaId);
+    const existingSchema = await this.invoiceRepo.findBySchemaId(schemaId);
 
     if (existingSchema) {
       const updatePayload: UpdateSchemaDictionaryInput = {
@@ -147,10 +218,7 @@ export class TransformWorkflowService {
         updatePayload.mapping_rules = schemaPayload.mapping_rules;
       }
 
-      const updated = await this.invoiceSchemaRepo.update(
-        schemaId,
-        updatePayload,
-      );
+      const updated = await this.invoiceRepo.update(schemaId, updatePayload);
       this.schemaCache.set(`id:${schemaId}`, updated);
       this.schemaCache.set(`source:${sourceType}`, updated);
       return updated;
@@ -168,7 +236,7 @@ export class TransformWorkflowService {
         created_by: schemaPayload.created_by || "system",
       };
 
-      const created = await this.invoiceSchemaRepo.create(createPayload);
+      const created = await this.invoiceRepo.create(createPayload);
       this.schemaCache.set(`id:${schemaId}`, created);
       this.schemaCache.set(`source:${sourceType}`, created);
       return created;
@@ -246,16 +314,13 @@ export class TransformWorkflowService {
     const cached = this.schemaCache.get(cacheKey);
     if (cached !== undefined) return cached;
 
-    const s = await this.invoiceSchemaRepo.findDefaultBySourceType(sourceType);
+    const s = await this.invoiceRepo.findDefaultBySourceType(sourceType);
     if (s) {
       this.schemaCache.set(cacheKey, s);
       return s;
     }
 
-    const schemas = await this.invoiceSchemaRepo.findBySourceType(
-      sourceType,
-      true,
-    );
+    const schemas = await this.invoiceRepo.findBySourceType(sourceType, true);
     const result = schemas.length > 0 ? schemas[0] : null;
     this.schemaCache.set(cacheKey, result);
     return result;
@@ -271,7 +336,7 @@ export class TransformWorkflowService {
     const cached = this.schemaCache.get(cacheKey);
     if (cached !== undefined) return cached;
 
-    const schema = await this.invoiceSchemaRepo.findBySchemaId(schemaId);
+    const schema = await this.invoiceRepo.findBySchemaId(schemaId);
     this.schemaCache.set(cacheKey, schema);
     return schema;
   };
@@ -288,7 +353,7 @@ export class TransformWorkflowService {
     page: number = 1,
     limit: number = 20,
   ) => {
-    return this.invoiceSchemaRepo.findMany(
+    return this.invoiceRepo.findMany(
       {
         source_type: filters?.sourceType,
         status: filters?.status,
@@ -307,11 +372,7 @@ export class TransformWorkflowService {
     updatedBy: string = "system",
   ): Promise<InvoiceSchemaDictionaryDocument> => {
     this.schemaCache.clear();
-    return this.invoiceSchemaRepo.setStatus(
-      schemaId,
-      SchemaStatus.ACTIVE,
-      updatedBy,
-    );
+    return this.invoiceRepo.setStatus(schemaId, SchemaStatus.ACTIVE, updatedBy);
   };
 
   /**
@@ -322,7 +383,7 @@ export class TransformWorkflowService {
     updatedBy: string = "system",
   ): Promise<InvoiceSchemaDictionaryDocument> => {
     this.schemaCache.clear();
-    return this.invoiceSchemaRepo.setAsDefault(schemaId, updatedBy);
+    return this.invoiceRepo.setAsDefault(schemaId, updatedBy);
   };
 
   /**
@@ -330,14 +391,14 @@ export class TransformWorkflowService {
    */
   deleteInvoiceSchema = async (schemaId: string): Promise<boolean> => {
     this.schemaCache.clear();
-    return this.invoiceSchemaRepo.delete(schemaId);
+    return this.invoiceRepo.delete(schemaId);
   };
 
   /**
    * Get all supported ERP types with their schema status
    */
   getSupportedERPTypes = async () => {
-    return this.invoiceSchemaRepo.getSourceTypesSummary();
+    return this.invoiceRepo.getSourceTypesSummary();
   };
 
   /**

@@ -1,51 +1,51 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from "mongoose";
 
 /**
  * Supported Schema Types/Sources
  */
 export enum SchemaSourceType {
   // ERP Systems
-  SAP = 'SAP',
-  ORACLE = 'ORACLE',
-  ZOHO = 'ZOHO',
-  QUICKBOOKS = 'QUICKBOOKS',
-  XERO = 'XERO',
-  SAGE = 'SAGE',
-  DYNAMICS = 'DYNAMICS',
-  NETSUITE = 'NETSUITE',
-  ODOO = 'ODOO',
-  FRESHBOOKS = 'FRESHBOOKS',
-  WAVE = 'WAVE',
+  SAP = "SAP",
+  ORACLE = "ORACLE",
+  ZOHO = "ZOHO",
+  QUICKBOOKS = "QUICKBOOKS",
+  XERO = "XERO",
+  SAGE = "SAGE",
+  DYNAMICS = "DYNAMICS",
+  NETSUITE = "NETSUITE",
+  ODOO = "ODOO",
+  FRESHBOOKS = "FRESHBOOKS",
+  WAVE = "WAVE",
   // Standards
-  FIRS_UBL = 'FIRS_UBL',
-  PEPPOL_BIS = 'PEPPOL_BIS',
-  UBL_2_1 = 'UBL_2_1',
+  FIRS_UBL = "FIRS_UBL",
+  PEPPOL_BIS = "PEPPOL_BIS",
+  UBL_2_1 = "UBL_2_1",
   // Custom
-  CUSTOM = 'CUSTOM',
+  CUSTOM = "CUSTOM",
 }
 
 /**
  * Schema Status
  */
 export enum SchemaStatus {
-  DRAFT = 'draft',
-  ACTIVE = 'active',
-  DEPRECATED = 'deprecated',
-  ARCHIVED = 'archived',
+  DRAFT = "draft",
+  ACTIVE = "active",
+  DEPRECATED = "deprecated",
+  ARCHIVED = "archived",
 }
 
 /**
  * Field Data Types
  */
 export enum FieldDataType {
-  STRING = 'String',
-  NUMBER = 'Number',
-  BOOLEAN = 'Boolean',
-  DATE = 'Date',
-  DATETIME = 'DateTime',
-  ARRAY = 'Array',
-  OBJECT = 'Object',
-  ENUM = 'Enum',
+  STRING = "String",
+  NUMBER = "Number",
+  BOOLEAN = "Boolean",
+  DATE = "Date",
+  DATETIME = "DateTime",
+  ARRAY = "Array",
+  OBJECT = "Object",
+  ENUM = "Enum",
 }
 
 /**
@@ -83,26 +83,26 @@ export interface InvoiceSchemaDictionaryDocument extends Document {
   // Schema Identification
   schema_id: string;
   name: string;
-  description?: string; 
+  description?: string;
 
   // Source Information
-  source_type: SchemaSourceType | string; 
+  source_type: SchemaSourceType | string;
 
   // Status & Metadata
-  status: SchemaStatus; 
+  status: SchemaStatus;
   tenant_id?: string;
 
   // Field Definitions
   fields: ISchemaField[];
 
   // Mapping Rules (for mapping to/from this schema)
-  mapping_rules?: Array<Record<string, any>>
+  mapping_rules?: Array<MappingRuleItem>;
 
   // Additional Metadata
-  metadata?: Record<string, any>; 
+  metadata?: Record<string, any>;
 
   // Audit
-  created_by: string; 
+  created_by: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -123,7 +123,17 @@ const SchemaFieldSchema = new Schema<ISchemaField>(
     data_type: {
       type: String,
       required: true,
-      enum: [...Object.values(FieldDataType), 'String', 'Number', 'Boolean', 'Date', 'DateTime', 'Array', 'Object', 'Enum'],
+      enum: [
+        ...Object.values(FieldDataType),
+        "String",
+        "Number",
+        "Boolean",
+        "Date",
+        "DateTime",
+        "Array",
+        "Object",
+        "Enum",
+      ],
     },
     format: {
       type: String,
@@ -148,9 +158,11 @@ const SchemaFieldSchema = new Schema<ISchemaField>(
     parent_field_id: {
       type: String,
     },
-    enum_values: [{
-      type: String,
-    }],
+    enum_values: [
+      {
+        type: String,
+      },
+    ],
     default_value: {
       type: Schema.Types.Mixed,
     },
@@ -166,91 +178,95 @@ const SchemaFieldSchema = new Schema<ISchemaField>(
     max_value: {
       type: Number,
     },
-    mapping_hints: [{
-      type: String,
-    }],
+    mapping_hints: [
+      {
+        type: String,
+      },
+    ],
   },
-  { _id: false }
+  { _id: false },
 );
 
 /**
  * Mongoose Schema for Invoice Schema Dictionary
  */
-const InvoiceSchemaDictionarySchema = new Schema<InvoiceSchemaDictionaryDocument>(
-  {
-    schema_id: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
-    name: {
-      type: String,
-      required: true,
-    },
-    description: {
-      type: String,
-    },
-    
-    // Source Information
-    source_type: {
-      type: String,
-      required: true, 
-      index: true,
-    },
-    
+const InvoiceSchemaDictionarySchema =
+  new Schema<InvoiceSchemaDictionaryDocument>(
+    {
+      schema_id: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+      },
+      name: {
+        type: String,
+        required: true,
+      },
+      description: {
+        type: String,
+      },
 
-    // Status & Metadata
-    status: {
-      type: String,
-      enum: Object.values(SchemaStatus),
-      default: SchemaStatus.DRAFT,
-      index: true,
-    },  
-    tenant_id: {
-      type: String,
-      index: true,
-    },
+      // Source Information
+      source_type: {
+        type: String,
+        required: true,
+        index: true,
+      },
 
-    // Field Definitions
-    fields: {
-      type: [SchemaFieldSchema],
-      required: true,
-    },
+      // Status & Metadata
+      status: {
+        type: String,
+        enum: Object.values(SchemaStatus),
+        default: SchemaStatus.DRAFT,
+        index: true,
+      },
+      tenant_id: {
+        type: String,
+        index: true,
+      },
 
-    // Mapping Rules
-    mapping_rules: {
-      type: Array<any>,
-    },
+      // Field Definitions
+      fields: {
+        type: [SchemaFieldSchema],
+        required: true,
+      },
 
-    // Additional Metadata
-    metadata: {
-      type: Schema.Types.Mixed,
-      default: {},
-    },
-    
+      // Mapping Rules
+      mapping_rules: {
+        type: Array<any>,
+      },
 
-    // Audit
-    created_by: {
-      type: String,
-      required: true,
+      // Additional Metadata
+      metadata: {
+        type: Schema.Types.Mixed,
+        default: {},
+      },
+
+      // Audit
+      created_by: {
+        type: String,
+        required: true,
+      },
     },
-  },
-  {
-    timestamps: true,
-    collection: 'invoice_schema_dictionaries',
-  }
-);
+    {
+      timestamps: true,
+      collection: "invoice_schema_dictionaries",
+    },
+  );
 
 // Compound Indexes for performance
 InvoiceSchemaDictionarySchema.index({ source_type: 1, status: 1 });
 InvoiceSchemaDictionarySchema.index({ source_type: 1, is_default: 1 });
 InvoiceSchemaDictionarySchema.index({ tenant_id: 1, source_type: 1 });
-InvoiceSchemaDictionarySchema.index({ name: 'text', description: 'text' });
+InvoiceSchemaDictionarySchema.index({ name: "text", description: "text" });
 
 /**
  * Invoice Schema Dictionary Model
  */
 export const InvoiceSchemaDictionaryModel =
   mongoose.models.InvoiceSchemaDictionary ||
-  mongoose.model<InvoiceSchemaDictionaryDocument>('InvoiceSchemaDictionary', InvoiceSchemaDictionarySchema);
+  mongoose.model<InvoiceSchemaDictionaryDocument>(
+    "InvoiceSchemaDictionary",
+    InvoiceSchemaDictionarySchema,
+  );

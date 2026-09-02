@@ -7,7 +7,7 @@ import { extractFIRSError } from "../../../shared/utils";
 export interface ValidateInvoiceResult {
   success: boolean;
   valid: boolean;
-  data?: any;
+  data?: unknown;
   errors?: string[];
   workflowState: { validated: boolean };
 }
@@ -17,18 +17,18 @@ export interface ValidateInvoiceResult {
  */
 export async function executeValidateInvoiceStep(params: {
   businessId: string;
-  invoice: any;
+  invoice: Record<string, unknown>;
   firsService: FIRSService;
   outboundRepo: OutboundInvoiceRepository;
 }): Promise<ValidateInvoiceResult> {
   const { businessId, invoice, firsService, outboundRepo } = params;
 
   try {
-    const targetInvoice = invoice?.data || invoice?.invoice || invoice;
-    targetInvoice.business_id = businessId;
+    const rawTarget = (invoice?.data || invoice?.invoice || invoice) as Record<string, unknown>;
+    const targetInvoice: Record<string, unknown> = { ...rawTarget, business_id: businessId };
 
     // Call FIRS validation API
-    const validationResult: any =
+    const validationResult: OkayResponse =
       await firsService.validateInvoice(targetInvoice);
 
     if (validationResult?.code !== 200 || !validationResult?.data?.ok) {
@@ -44,7 +44,7 @@ export async function executeValidateInvoiceStep(params: {
     }
 
     // If IRN exists, update the stored invoice in DB
-    if (targetInvoice.irn) {
+    if (typeof targetInvoice.irn === "string" && targetInvoice.irn.trim() !== "") {
       const existing = await outboundRepo.findByIrn(targetInvoice.irn);
       if (existing) {
         await outboundRepo.update(targetInvoice.irn, {
@@ -62,7 +62,7 @@ export async function executeValidateInvoiceStep(params: {
       data: validationResult.data,
       workflowState: { validated: true },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     const { message, code } = extractFIRSError(error);
     throw new AppError(code, `Validation failed: ${message}`);
   }

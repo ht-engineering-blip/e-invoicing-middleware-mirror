@@ -1,6 +1,6 @@
 export const FIRS_SCHEMA_EXAMPLE = `{
     "business_id": "8f8b8e88-6b83-4a34-934d-1a8684bb57f2",
-    "irn": "IRN",
+    "irn": "ITW001-E9E0C0D3-20240619",
     "issue_date": "2024-05-14",
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
@@ -247,10 +247,11 @@ PRICE UNIT RULES (CRITICAL):
   * General merchandise/unknown goods: use 9403 (furniture) or 9503 (toys/misc)
 
 INVOICE LINE CLASSIFICATION RULES:
-- If the line item is a physical product: set hsn_code to the appropriate HS heading (e.g., "8471.00" for a laptop)
-- If the line item is a service: set isic_code to the appropriate ISIC code; do NOT set hsn_code
+- If the line item is a physical product: set hsn_code to the appropriate HS heading (e.g., "8471.00" for a laptop) and set product_category to a descriptive category (e.g., "Computers & Electronics", "Cereals and Grains", "Office Supplies")
+- If the line item is a service: set isic_code to the appropriate ISIC code; set product_category or service_category (e.g., "IT & Software Consultancy", "Financial & Accounting Services")
+- product_category is REQUIRED on every invoice_line - deduce an appropriate category from item.name, item.description, or context if missing
 - item.name is REQUIRED - use the product name or service name from the input data
-- item.description is REQUIRED - provide a brief description
+- item.description is REQUIRED - if missing or empty in the input data, generate a clear, professional description based on item.name and category
 
 PARTY INFORMATION RULES:
 - accounting_supplier_party: MANDATORY (party_name, tin, email, postal_address)

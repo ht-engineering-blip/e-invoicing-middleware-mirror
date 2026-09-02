@@ -15,13 +15,14 @@ if (
 }
 
 import { Elysia } from "elysia";
-import { appConfig } from "./@config";
+import { appConfig, docsConfig } from "./@config";
 import { v1Routes } from "./v1";
-import { errorHandlerMiddleware } from "./middlewares";
+import { docsAuthMiddleware, errorHandlerMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
 import { mongoPlugin, connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
+import { openapi } from "@elysiajs/openapi";
 import mongoose from "mongoose";
 
 if (!appConfig) {
@@ -41,10 +42,101 @@ connectMongo().catch((err) => {
 const dtsPlugin =
   process.env.NODE_ENV !== "production" ? dts("./src/index.ts") : new Elysia();
 
+const openapiPlugin = docsConfig.enabled
+  ? openapi({
+      path: "/openapi",
+      documentation: {
+        info: {
+          title: "E-Invoicing Middleware API",
+          version: "1.0.53",
+          description:
+            "Enterprise FIRS-Compliant E-Invoicing & ERP Orchestration Middleware",
+        },
+        tags: [
+          { name: "Invoicing", description: "FIRS Invoicing & QR Endpoints" },
+          { name: "Webhooks", description: "ERP & Inbound Webhooks" },
+          { name: "Tenants", description: "Tenant & Onboarding Operations" },
+          { name: "Admin", description: "Super Admin & Event Routing" },
+        ],
+      },
+    })
+  : new Elysia();
+
+const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+];
+
+let envAllowedOrigins: string[] = [];
+if (process.env.ALLOWED_ORIGINS) {
+  envAllowedOrigins = process.env.ALLOWED_ORIGINS.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+} else {
+  envAllowedOrigins = [];
+}
+
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...envAllowedOrigins]),
+);
+
+const isOriginAllowed = (origin: string): boolean => {
+  if (!origin) return false;
+  if (allowedOrigins.includes(origin)) return true;
+  return envAllowedOrigins.some((pattern) => {
+    if (pattern.startsWith("*.")) {
+      const domain = pattern.slice(2);
+      try {
+        const parsed = new URL(origin);
+        return (
+          parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)
+        );
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+};
+
 const app = new Elysia()
-  .use(cors())
+  .use(
+    cors({
+      origin: (request: Request | any) => {
+        const req = request?.request || request;
+        let origin: string | null | undefined;
+        if (typeof req?.headers?.get === "function") {
+          origin = req.headers.get("origin");
+        } else {
+          origin = req?.headers?.origin;
+        }
+
+        if (origin) {
+          return isOriginAllowed(origin);
+        }
+        return false;
+      },
+      credentials: true,
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "x-api-key",
+        "x-admin-key",
+        "x-docs-password",
+        "x-event-type",
+        "x-idempotency-key",
+        "x-webhook-key",
+      ],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    }),
+  )
   .use(mongoPlugin)
   .use(dtsPlugin)
+  .use(docsAuthMiddleware)
+  .use(openapiPlugin)
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get(
@@ -158,11 +250,15 @@ const app = new Elysia()
     // Default error handler
     const errorObj = error as any;
     logger.error(`[Unhandled Error - ${code}]:`, error);
-    set.status = errorObj.statusCode || errorObj.status || 500;
+    const status = errorObj.statusCode || errorObj.status || 500;
+    set.status = status;
     return {
       success: false,
       error: errorObj.message || "An error occurred",
-      statusCode: set.status || 500,
+      message: errorObj.message || "An error occurred",
+      code: errorObj.code || code || "INTERNAL_SERVER_ERROR",
+      statusCode: status,
+      ...(errorObj.details ? { details: errorObj.details } : {}),
     };
   });
 

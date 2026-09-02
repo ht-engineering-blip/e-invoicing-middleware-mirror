@@ -1,6 +1,6 @@
 import * as jwt from "jsonwebtoken";
 import { appConfig, jwtConfig } from "../../../@config";
-import { logger, BaseService } from "../../../@lib";
+import { logger, BaseService, TIME_MS } from "../../../@lib";
 import {
   AppError,
   NotFoundError,
@@ -48,8 +48,7 @@ export class AuthService extends BaseService {
     this.tenantRepo = dependencies?.tenantRepo ?? new TenantRepository();
     this.teamMemberRepo =
       dependencies?.teamMemberRepo ?? new TeamMemberRepository();
-    this.tenantService =
-      dependencies?.tenantService ?? new TenantService();
+    this.tenantService = dependencies?.tenantService ?? new TenantService();
     this.firsService = dependencies?.firsService ?? new FIRSService();
   }
 
@@ -188,7 +187,8 @@ export class AuthService extends BaseService {
     }
 
     const business = businesses[0];
-    const bName = (business as any).name || (business as any).legal_name || "Business";
+    const bName =
+      (business as any).name || (business as any).legal_name || "Business";
     const bTin = business.tin || "";
     const bReg = (business as any).registration_number || "";
 
@@ -275,6 +275,7 @@ export class AuthService extends BaseService {
       const decoded: any = jwt.verify(
         currentToken,
         jwtConfig?.secret || "default-secret",
+        { algorithms: ["HS256"] },
       );
 
       let tenant: any;
@@ -330,7 +331,7 @@ export class AuthService extends BaseService {
       await this.passwordResetRepo.deleteByEmail(email);
 
       const { token: resetToken, hash: tokenHash } = this.generateToken(32);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      const expiresAt = new Date(Date.now() + TIME_MS.ONE_HOUR);
 
       await this.passwordResetRepo.create({
         tenantId: tenant.tenantId,

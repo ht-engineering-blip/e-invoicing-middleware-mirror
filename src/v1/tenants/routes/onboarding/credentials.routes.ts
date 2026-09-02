@@ -1,11 +1,13 @@
 import { Elysia } from "elysia";
 import { firsConfig, appConfig } from "../../../../@config";
-import { logger, ResponseBuilder } from "../../../../@lib";
+import { logger, ResponseBuilder, TIME_MS } from "../../../../@lib";
 import { MailContent, withTemplate } from "../../../../@lib/messaging";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { onlySelf } from "../../../auth/utils/access-checks";
 import { AuthService } from "../../../auth/services";
 import { TenantService } from "../../services/tenant.service";
+import { AuditService } from "../../../audit/services/audit.service";
+import { AuditEventType, AuditEventSeverity } from "../../../audit/models";
 import { templateEngine } from "../../../../templates/engine";
 import {
   updateCredentialsValidation,
@@ -18,6 +20,7 @@ export const onboardingCredentialsRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
   .decorate("authService", new AuthService())
+  .decorate("auditService", new AuditService())
 
   /**
    * PUT /tenants/:tenantId/credentials
@@ -145,7 +148,7 @@ export const onboardingCredentialsRoutes = new Elysia()
    */
   .post(
     "/resend/token/:tenantId",
-    async ({ params, auth, tenantService, set, authService }) => {
+    async ({ params, auth, tenantService, authService, auditService, set }) => {
       try {
         onlySelf(auth!, params.tenantId);
 
@@ -177,7 +180,7 @@ export const onboardingCredentialsRoutes = new Elysia()
 
         const activationTokenId = crypto.randomUUID();
         const activationTokenExpiresAt = new Date(
-          Date.now() + 12 * 60 * 60 * 1000,
+          Date.now() + TIME_MS.TWELVE_HOURS,
         );
 
         const metadata = {
@@ -192,9 +195,12 @@ export const onboardingCredentialsRoutes = new Elysia()
           getActor(auth),
         );
 
+        const isObject = typeof tenant.toObject === "function";
+        const rawTenant = isObject ? tenant.toObject() : tenant;
+
         const activationToken = await authService.createAuthToken(
           {
-            ...tenant.toObject(),
+            ...rawTenant,
             activationTokenId,
           } as any,
           "12HRS",
@@ -208,6 +214,29 @@ export const onboardingCredentialsRoutes = new Elysia()
           ),
         };
         await tenantService.notifyTenant(activationEmail, tenant);
+
+        const route = `/tenants/resend/token/${params.tenantId}`;
+        await auditService.createAuditLog({
+          tenantId: tenant.tenantId,
+          eventType: AuditEventType.TENANT_UPDATED,
+          severity: AuditEventSeverity.INFO,
+          actorType: auth?.isAdmin ? "user" : "tenant",
+          actorId: auth?.userId || (auth?.isAdmin ? "admin" : params.tenantId),
+          actorName:
+            auth?.email || (auth?.isAdmin ? "Admin" : tenant.businessName),
+          resourceType: "tenant_activation_token",
+          resourceId: tenant.tenantId,
+          resourceName: tenant.businessName,
+          description: `Activation token resent for tenant ${tenant.businessName}`,
+          metadata: {
+            route,
+            token: activationToken,
+            activationTokenId,
+            activationLink,
+            contactEmail: tenant.contactEmail,
+            businessName: tenant.businessName,
+          },
+        });
 
         return ResponseBuilder.success(
           undefined,

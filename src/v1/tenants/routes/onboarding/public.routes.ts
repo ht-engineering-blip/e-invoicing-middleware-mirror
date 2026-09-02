@@ -3,7 +3,6 @@ import * as jwt from "jsonwebtoken";
 import { jwtConfig, appConfig } from "../../../../@config";
 import { logger, ResponseBuilder } from "../../../../@lib";
 import { TenantService } from "../../services/tenant.service";
-import { WebhookService } from "../../../webhook/services/webhook.service";
 import { activateValidation } from "../../validations/onboarding.validation";
 
 /**
@@ -11,7 +10,6 @@ import { activateValidation } from "../../validations/onboarding.validation";
  */
 export const publicOnboardingRoutes = new Elysia()
   .decorate("tenantService", new TenantService())
-  .decorate("webhookService", new WebhookService())
 
   /**
    * GET /tenants/activate/:token

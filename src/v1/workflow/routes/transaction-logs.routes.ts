@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import mongoose from "mongoose";
 import { requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder } from "../../../@lib";
 import { agenda } from "../../../@lib/queue/agenda";
@@ -13,7 +14,11 @@ import {
   OutboundPaymentStatus,
 } from "../models/outbound-invoice.model";
 import { scheduleJobChain } from "../jobs/orchestrator";
-import { ACTION_TO_JOB, WorkflowAction, DEFAULT_OUTBOUND_CHAIN } from "../jobs/types";
+import {
+  ACTION_TO_JOB,
+  WorkflowAction,
+  DEFAULT_OUTBOUND_CHAIN,
+} from "../jobs/types";
 import {
   listOutboundInvoicesValidation,
   getOutboundInvoiceValidation,
@@ -200,8 +205,6 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           tenantId,
         );
 
-        console.log({ result });
-
         if (!result) {
           set.status = 404;
           return ResponseBuilder.error("Invoice not found", 404);
@@ -209,15 +212,28 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         const { invoice, webhookEvents } = result;
 
-        // Fetch all Agenda jobs referenced across all webhook events
+        // Fetch all Agenda jobs referenced across all webhook events using fast lean projection
         const allJobIds = webhookEvents.flatMap((ev: any) => ev.jobIds ?? []);
         const agendaJobsById = new Map<string, any>();
         if (allJobIds.length > 0) {
           try {
-            const { jobs } = await agenda.db.queryJobs({ ids: allJobIds });
-            for (const job of jobs) {
-              const id = job._id?.toString();
-              if (id) agendaJobsById.set(id, job);
+            const objectIds = allJobIds
+              .filter(
+                (id: string) => typeof id === "string" && id.length === 24,
+              )
+              .map((id: string) => new mongoose.Types.ObjectId(id));
+
+            if (objectIds.length > 0) {
+              const col = (agenda.db as any)?.collection;
+              if (col) {
+                const rawJobs = await col
+                  .find({ _id: { $in: objectIds } })
+                  .toArray();
+                for (const job of rawJobs) {
+                  const id = job._id?.toString();
+                  if (id) agendaJobsById.set(id, job);
+                }
+              }
             }
           } catch (e: any) {
             logger.warn("Failed to fetch agenda jobs for invoice detail", {
@@ -234,13 +250,22 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
               if (!job) return null;
               const data = (job.data ?? {}) as any;
               const action = data.actions?.[data.stepIndex] ?? job.name;
+              const status =
+                job.state ||
+                (job.failedAt
+                  ? "failed"
+                  : job.lastFinishedAt
+                    ? "completed"
+                    : job.lockedAt
+                      ? "running"
+                      : "queued");
               return {
                 agendaJobId: id,
                 jobName: job.name,
                 action,
                 stepIndex: data.stepIndex ?? null,
                 jobChainId: data.jobChainId ?? null,
-                status: job.state,
+                status,
                 scheduledAt: job.nextRunAt ?? null,
                 startedAt: job.lastRunAt ?? null,
                 finishedAt: job.lastFinishedAt ?? null,
@@ -363,7 +388,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
             payload: { irn: params.irn, ...body },
             resourceId: params.irn,
             resourceType: "invoice",
-            webhookUrl: "",
+            webhookUrl: `/workflow/invoices/outbound/${params.irn}/payment-status`,
             maxRetries: 0,
             jobErrors: [],
             metadata: { source: "payment_status_update" },
@@ -441,6 +466,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           OutboundInvoiceStatus.FAILED,
           OutboundInvoiceStatus.TRANSMISTION_FAILED,
           OutboundInvoiceStatus.CREATED,
+          OutboundInvoiceStatus.RETRYING,
           OutboundInvoiceStatus.VALIDATED,
           OutboundInvoiceStatus.SIGNED,
         ];
@@ -481,6 +507,30 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           };
         }
 
+        // Resolve the invoice payload to use on retry
+        const incomingPayload =
+          body?.invoice ||
+          body?.payload ||
+          invoice.metadata?.transformedInvoice ||
+          invoice.metadata?.originalPayload ||
+          invoice.metadata;
+
+        const transformedInvoice =
+          body?.invoice ||
+          invoice.metadata?.transformedInvoice ||
+          (startAction === WorkflowAction.TRANSFORM
+            ? undefined
+            : incomingPayload);
+
+        // If retrying from validate or later but no transformed invoice exists, start from transform
+        if (
+          !transformedInvoice &&
+          startAction !== WorkflowAction.TRANSFORM &&
+          startAction !== WorkflowAction.GENERATE_IRN
+        ) {
+          startAction = WorkflowAction.TRANSFORM;
+        }
+
         // Default chain from the requested step onward
         const defaultChain = DEFAULT_OUTBOUND_CHAIN;
 
@@ -494,14 +544,17 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           tenantId: invoice.tenantId,
           eventId,
           eventType: "invoice.retry",
-          payload: { irn: params.irn, fromStep: startAction },
+          payload: incomingPayload || {
+            irn: params.irn,
+            fromStep: startAction,
+          },
           resourceId: params.irn,
           resourceType: "invoice",
-          webhookUrl: "",
+          webhookUrl: `/workflow/invoices/outbound/${params.irn}/retry-from-step`,
           maxRetries: 0,
           jobErrors: [],
           metadata: { source: "manual_retry", fromStep: startAction },
-        } as any);
+        });
 
         await outboundRepo.addWebhookEvent(params.irn, eventId);
 
@@ -515,12 +568,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           webhookEventId: eventId,
           tenantId: invoice.tenantId,
           eventType: "invoice.retry",
-          payload: invoice.metadata?.transformedInvoice || invoice.metadata,
+          payload: incomingPayload,
           actions,
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
           initialContext: {
-            transformedInvoice: invoice.metadata?.transformedInvoice,
+            transformedInvoice: transformedInvoice || undefined,
+            originalPayload: incomingPayload,
             source: invoice.source,
           },
         });
@@ -528,7 +582,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         return {
           success: true,
           message: `Retry scheduled from step: ${startAction}`,
-          data: { irn: params.irn, fromStep: startAction, actions, jobChainId },
+          data: {
+            irn: params.irn,
+            status: OutboundInvoiceStatus.CREATED,
+            fromStep: startAction,
+            actions,
+            jobChainId,
+          },
         };
       } catch (error: any) {
         set.status = error.statusCode || 500;

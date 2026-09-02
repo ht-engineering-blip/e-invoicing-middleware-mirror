@@ -1,17 +1,18 @@
 import { z } from "zod";
 import { handleConfigError } from "./errors";
 
-type AiProvider = "openai" | "gemini";
+export type AiProvider = "openai" | "gemini";
 
-type ApiKeyMap = Record<
-  AiProvider,
-  {
-    apiKey: string;
-    apiEndpoint?: string;
-    model?: string;
-    provider: AiProvider;
-  }
->;
+export interface AiProviderConfig {
+  apiKey: string;
+  apiEndpoint?: string;
+  model?: string;
+  provider: AiProvider;
+  enabled: boolean;
+  openaiEnabled: boolean;
+}
+
+export type ApiKeyMap = Record<AiProvider, AiProviderConfig>;
 
 const aiConfigSchema = z
   .object({
@@ -28,27 +29,60 @@ const aiConfigSchema = z
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       ),
     geminiModel: z.string().default("gemini-3.6-flash"),
+    enabled: z.boolean().default(true),
+    openaiEnabled: z.boolean().default(true),
   })
   .superRefine((data, ctx) => {
-    if (data.provider === "openai" && !data.openAIApiKey) {
+    if (
+      data.enabled &&
+      data.provider === "openai" &&
+      data.openaiEnabled &&
+      !data.openAIApiKey
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "OPENAI_API_KEY is required when AI_PROVIDER is 'openai'",
+        message:
+          "OPENAI_API_KEY is required when AI_PROVIDER is 'openai' and OpenAI is enabled",
         path: ["openAIApiKey"],
       });
     }
-    if (data.provider === "gemini" && !data.geminiApiKey) {
+    if (data.enabled && data.provider === "gemini" && !data.geminiApiKey) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "GEMINI_API_KEY is required when AI_PROVIDER is 'gemini'",
+        message:
+          "GEMINI_API_KEY is required when AI_PROVIDER is 'gemini' and AI is enabled",
         path: ["geminiApiKey"],
       });
     }
   });
 
-const parseAiConfig = () => {
+export function isOpenAiEnabled(): boolean {
+  if (
+    process.env.OPENAI_ENABLED === "false" ||
+    process.env.ENABLE_OPENAI === "false"
+  ) {
+    return false;
+  }
+  if (process.env.AI_ENABLED === "false") {
+    return false;
+  }
+  return true;
+}
+
+export function isAiEnabled(): boolean {
+  if (process.env.AI_ENABLED === "false") {
+    return false;
+  }
+  return true;
+}
+
+const parseAiConfig = (): AiProviderConfig | undefined => {
   try {
     const provider = (process.env.AI_PROVIDER as AiProvider) || "openai";
+    const openaiEnabled = isOpenAiEnabled();
+    const overallAiEnabled =
+      isAiEnabled() && (provider === "openai" ? openaiEnabled : true);
+
     const parsed = aiConfigSchema.parse({
       provider,
       openAIApiKey: process.env.OPENAI_API_KEY || "",
@@ -57,20 +91,26 @@ const parseAiConfig = () => {
       geminiApiKey: process.env.GEMINI_API_KEY || "",
       geminiApiEndpoint: process.env.GEMINI_API_ENDPOINT,
       geminiModel: process.env.GEMINI_API_MODEL || "gemini-3.6-flash",
+      enabled: overallAiEnabled,
+      openaiEnabled,
     });
 
     const config: ApiKeyMap = {
       openai: {
-        apiKey: parsed.openAIApiKey!,
+        apiKey: parsed.openAIApiKey || "",
         apiEndpoint: parsed.openApiEndpoint,
         provider: parsed.provider,
         model: parsed.inferenceModel,
+        enabled: parsed.enabled && parsed.openaiEnabled,
+        openaiEnabled: parsed.openaiEnabled,
       },
       gemini: {
-        apiKey: parsed.geminiApiKey!,
+        apiKey: parsed.geminiApiKey || "",
         apiEndpoint: parsed.geminiApiEndpoint,
         provider: parsed.provider,
         model: parsed.geminiModel,
+        enabled: parsed.enabled,
+        openaiEnabled: parsed.openaiEnabled,
       },
     };
 

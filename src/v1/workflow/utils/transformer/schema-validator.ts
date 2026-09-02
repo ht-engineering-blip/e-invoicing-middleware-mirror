@@ -32,25 +32,35 @@ export const PartySchema = z.object({
   postal_address: AddressSchema,
 });
 
+const NumericSchema = z.preprocess((val) => {
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  if (typeof val === "string") {
+    const cleaned = val.replace(/[^0-9.-]+/g, "");
+    const num = Number(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+  return 0;
+}, z.number());
+
 export const TaxSubtotalSchema = z.object({
-  taxable_amount: z.number(),
-  tax_amount: z.number(),
+  taxable_amount: NumericSchema,
+  tax_amount: NumericSchema,
   tax_category: z.object({
     id: z.string(),
-    percent: z.number(),
+    percent: NumericSchema,
   }),
 });
 
 export const TaxTotalSchema = z.object({
-  tax_amount: z.number(),
+  tax_amount: NumericSchema,
   tax_subtotal: z.array(TaxSubtotalSchema).min(1),
 });
 
 export const LegalMonetaryTotalSchema = z.object({
-  line_extension_amount: z.number(),
-  tax_exclusive_amount: z.number(),
-  tax_inclusive_amount: z.number(),
-  payable_amount: z.number(),
+  line_extension_amount: NumericSchema,
+  tax_exclusive_amount: NumericSchema,
+  tax_inclusive_amount: NumericSchema,
+  payable_amount: NumericSchema,
 });
 
 export const InvoiceLineSchema = z.object({
@@ -69,25 +79,33 @@ export const InvoiceLineSchema = z.object({
   isic_code: z.string().optional(),
   product_category: z.string().optional(),
   service_category: z.string().optional(),
-  invoiced_quantity: z.number(),
-  line_extension_amount: z.number(),
+  invoiced_quantity: NumericSchema,
+  line_extension_amount: NumericSchema,
   item: z.object({
-    name: z.string(),
-    description: z.string(),
+    name: z
+      .string()
+      .transform((val) => (val && val.trim() !== "" ? val.trim() : "General Item"))
+      .default("General Item"),
+    description: z
+      .string()
+      .transform((val) =>
+        val && val.trim() !== "" ? val.trim() : "General Item Description",
+      )
+      .default("General Item Description"),
     sellers_item_identification: z.string().optional(),
   }),
   price: z.object({
-    price_amount: z.number(),
-    base_quantity: z.number(),
+    price_amount: NumericSchema,
+    base_quantity: NumericSchema.default(1),
     price_unit: z
       .string()
       .transform((val) => sanitizePriceUnit(val))
       .default("H87"),
   }),
-  discount_rate: z.number().optional(),
-  discount_amount: z.number().optional(),
-  fee_rate: z.number().optional(),
-  fee_amount: z.number().optional(),
+  discount_rate: NumericSchema.optional(),
+  discount_amount: NumericSchema.optional(),
+  fee_rate: NumericSchema.optional(),
+  fee_amount: NumericSchema.optional(),
 });
 
 export const DocumentReferenceSchema = z.object({
@@ -143,7 +161,7 @@ export const FIRSInvoiceSchema = z.object({
     .array(
       z.object({
         charge_indicator: z.boolean(),
-        amount: z.number(),
+        amount: NumericSchema,
       }),
     )
     .optional(),

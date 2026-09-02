@@ -66,7 +66,8 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         onlySelf(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
-        const tenantObj = tenant.toObject();
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
 
         // Build update data (cannot update TIN or BRN)
         const updateData: any = {};
@@ -140,11 +141,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
           body.currentPassword,
         );
 
-        return ResponseBuilder.success(
-          result,
-          undefined,
-          result.message,
-        );
+        return ResponseBuilder.success(result, undefined, result.message);
       } catch (error: any) {
         set.status = error.statusCode || 500;
         logger.error("Failed to request email change", {
@@ -181,11 +178,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
           getActor(auth),
         );
 
-        return ResponseBuilder.success(
-          result,
-          undefined,
-          result.message,
-        );
+        return ResponseBuilder.success(result, undefined, result.message);
       } catch (error: any) {
         set.status = error.statusCode || 500;
         logger.error("Failed to verify email change", {

@@ -7,7 +7,7 @@ const firsConfigSchema = z.object({
   siApiSecret: z.string().optional(),
   appApiKey: z.string().optional(),
   appApiSecret: z.string().optional(),
-  rejectUnauthorized: z.boolean().default(false),
+  rejectUnauthorized: z.boolean().default(true),
   mockCertificate: z
     .string()
     .default(
@@ -32,7 +32,7 @@ const parseFirsConfig = () => {
       siApiSecret: process.env.FIRS_SI_API_SECRET,
       appApiKey: process.env.FIRS_APP_API_KEY,
       appApiSecret: process.env.FIRS_APP_API_SECRET,
-      rejectUnauthorized: process.env.FIRS_REJECT_UNAUTHORIZED === 'true',
+      rejectUnauthorized: process.env.FIRS_REJECT_UNAUTHORIZED !== 'false',
       mockCertificate: process.env.FIRS_MOCK_CERTIFICATE,
       mockPublicKey: process.env.FIRS_MOCK_PUBLIC_KEY,
 

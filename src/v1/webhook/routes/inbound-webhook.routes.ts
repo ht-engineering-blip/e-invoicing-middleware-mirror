@@ -83,7 +83,9 @@ export const inboundWebhookRoutes = new Elysia()
       }
 
       try {
-        body = (typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody) as Record<string, unknown>;
+        body = (
+          typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody
+        ) as Record<string, unknown>;
       } catch (err) {
         set.status = 400;
         return ResponseBuilder.error("Invalid JSON payload", 400);
@@ -135,7 +137,10 @@ export const inboundWebhookRoutes = new Elysia()
       const safeEventType = eventType.replace(/\./g, "_");
 
       if (useIdKeyMap.includes(eventType)) {
-        const idKeyMap = config?.idKeyMap as Record<string, string> | Map<string, string> | undefined;
+        const idKeyMap = config?.idKeyMap as
+          | Record<string, string>
+          | Map<string, string>;
+
         let invoiceIdKey: string | undefined;
         if (idKeyMap) {
           if (typeof (idKeyMap as Map<string, string>).get === "function") {
@@ -144,13 +149,15 @@ export const inboundWebhookRoutes = new Elysia()
             invoiceIdKey = (idKeyMap as Record<string, string>)[safeEventType];
           }
         }
-        erpInvoiceId = String(invoiceIdKey ? getNestedValue(body, invoiceIdKey) ?? "" : "").trim();
+        erpInvoiceId = String(
+          invoiceIdKey ? (getNestedValue(body, invoiceIdKey) ?? "") : "",
+        ).trim();
       } else {
         const invoiceIdKey = config?.invoiceIdKey ?? "invoiceId";
         erpInvoiceId = String(getNestedValue(body, invoiceIdKey) ?? "").trim();
       }
 
-      let generatedIrn = "";
+      let generatedIrn: string | undefined;
       if (erpInvoiceId) {
         const existingOutbound = await outboundRepo.findOne({
           tenantId: { _eq: tenant.tenantId },
@@ -169,12 +176,12 @@ export const inboundWebhookRoutes = new Elysia()
 
         const effectiveServiceId: string = isSelfBilled
           ? "34A843BE"
-          : (config?.firsCredentials?.serviceId || "34A843BE");
+          : config?.firsCredentials?.serviceId || "34A843BE";
 
         generatedIrn = generateIRN(
           erpInvoiceId || generateInvoiceRef(),
           effectiveServiceId,
-        ) || "";
+        );
       }
 
       const eventId = `wh_${Date.now()}_${generateRandomString(8)}`;

@@ -44,9 +44,11 @@ interface SearchResponse {
 
 interface SecureInvoice {
   tenant_id: string;
+  tenantId?: string;
   business_id: string;
   irn: string;
   invoice_line?: InvoiceLineInput[];
+  data?: Record<string, any>;
   [key: string]: unknown;
 }
 
@@ -363,5 +365,12 @@ interface NRSVerifiedInvoicePayload {
   invoice_number: string;
   status: string;
   nrs_validated: boolean;
+  [key: string]: unknown;
+}
+
+interface MappingRuleItem {
+  source: string;
+  target: string;
+  transform?: string;
   [key: string]: unknown;
 }
