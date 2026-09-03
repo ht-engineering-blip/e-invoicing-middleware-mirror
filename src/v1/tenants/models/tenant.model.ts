@@ -61,6 +61,8 @@ export interface ITenantConfig {
   webhookUrl?: string;
   webhookAuth?: string;
   webhookEnabled?: boolean;
+  webhookExpiresAt?: Date;
+  webhookLifespan?: string;
   invoiceIdKey?: string;
   idKeyMap?: Record<string, string>;
   referenceIdKeyMap?: Record<string, string>;
@@ -90,6 +92,8 @@ export interface TenantDocument extends Document {
   webhookUrl: String,
   webhookAuth: String,
   webhookEnabled: Boolean,
+  webhookExpiresAt?: Date;
+  webhookLifespan?: string;
 
   businessName: string;
   tin: string;
@@ -198,6 +202,8 @@ const TenantSchema = new Schema<TenantDocument>(
       webhookUrl: { type: String },
       webhookAuth: { type: String },
       webhookEnabled: { type: Boolean, default: false },
+      webhookExpiresAt: { type: Date },
+      webhookLifespan: { type: String },
       invoiceIdKey: { type: String },
       idKeyMap: { type: Map, of: String },
       referenceIdKeyMap: { type: Map, of: String },
