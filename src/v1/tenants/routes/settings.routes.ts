@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import { getActor, requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder, UnauthorizedError } from "../../../@lib";
 import { TenantService } from "../services/tenant.service";
-import { onlySelf } from "../../auth/utils/access-checks";
+import { onlySelf, onlyTenantAdmin } from "../../auth/utils/access-checks";
 import {
   getBusinessInfoValidation,
   updateBusinessInfoValidation,
@@ -62,8 +62,8 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
     "/business",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        // Check authorization
-        onlySelf(auth!, params.tenantId);
+        // Check authorization (requires admin role)
+        onlyTenantAdmin(auth!, params.tenantId);
 
         const tenant = await tenantService.getTenantById(params.tenantId);
         const isObject = typeof tenant.toObject === "function";
@@ -133,6 +133,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         if (!tenantId) {
           throw new UnauthorizedError("Tenant authentication required");
         }
+        onlyTenantAdmin(auth!, tenantId);
 
         const result = await tenantService.requestEmailChange(
           tenantId,
@@ -168,6 +169,7 @@ export const settingsRoutes = new Elysia({ prefix: "/:tenantId/settings" })
         if (!tenantId) {
           throw new UnauthorizedError("Tenant authentication required");
         }
+        onlyTenantAdmin(auth!, tenantId);
 
         const token =
           body?.token || body?._u || query?.token || query?._u || "";

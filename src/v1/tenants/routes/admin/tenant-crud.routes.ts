@@ -4,7 +4,7 @@ import { logger, ResponseBuilder } from "../../../../@lib";
 import { MailContent, withTemplate } from "../../../../@lib/messaging";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { AuthService } from "../../../auth/services";
-import { onlyAdmin, onlySelf } from "../../../auth/utils/access-checks";
+import { onlyAdmin, onlySelf, onlyTenantAdmin } from "../../../auth/utils/access-checks";
 import { TenantService } from "../../services/tenant.service";
 import { AuditService } from "../../../audit/services/audit.service";
 import { AuditEventType, AuditEventSeverity } from "../../../audit/models";
@@ -174,7 +174,7 @@ export const adminTenantCrudRoutes = new Elysia()
     "/:tenantId",
     async ({ auth, params, body, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
         const tenant = await tenantService.updateTenant(
           params.tenantId,
           body,
@@ -208,7 +208,7 @@ export const adminTenantCrudRoutes = new Elysia()
     "/:tenantId",
     async ({ auth, params, body, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
         const tenant = await tenantService.updateTenant(
           params.tenantId,
           body,

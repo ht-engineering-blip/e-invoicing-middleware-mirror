@@ -4,6 +4,7 @@ import {
   FIRSInvoiceSchema,
   TransformationResult,
   TransformInvoiceInput,
+  filterAllowedLLMFields,
 } from ".";
 import { InternalServerError, logger } from "../../../../@lib";
 import { AuthContext } from "../../../../middlewares";
@@ -255,7 +256,8 @@ export class FIRSInvoiceTransformerV2 {
         );
 
         const response = await this.callLLM(prompt);
-        const parsed = this.safeParseLLMJSON(response) as Record<string, any>;
+        const rawParsed = this.safeParseLLMJSON(response);
+        const parsed = filterAllowedLLMFields(rawParsed) as Record<string, any>;
 
         if (
           parsed.business_id !== undefined &&
@@ -976,7 +978,8 @@ Return valid, corrected JSON only following all system prompt rules.
       `${systemPrompt}\n\n${userRepairPrompt}`,
     );
 
-    const parsed = this.safeParseLLMJSON(response);
+    const rawParsed = this.safeParseLLMJSON(response);
+    const parsed = filterAllowedLLMFields(rawParsed);
 
     if (
       parsed.business_id !== undefined &&

@@ -9,7 +9,8 @@ const messagingConfigSchema = z.object({
   smtpPort: z.string(),
   smtpUser:  z.string(),
   smtpPassword: z.string(),
-  defaultEmailTemplate:  z.string()
+  defaultEmailTemplate:  z.string(),
+  rejectUnauthorized: z.boolean().default(true),
 });
 
 const parseMessagingConfig = () => {
@@ -21,6 +22,9 @@ const parseMessagingConfig = () => {
       smtpUser: process.env.SMTP_USER || 'devmail.sandbox',
       smtpPassword: process.env.SMTP_PASS || 'devmail.password',
       defaultEmailTemplate: process.env.DEFAULT_EMAIL_TEMPLATE || DEFAULT_TEMPLATE,
+      rejectUnauthorized:
+        process.env.SMTP_REJECT_UNAUTHORIZED !== 'false' &&
+        process.env.EMAIL_REJECT_UNAUTHORIZED !== 'false',
     });
   } catch (error) {
     handleConfigError('app', error);

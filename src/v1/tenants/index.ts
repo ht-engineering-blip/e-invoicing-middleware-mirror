@@ -8,7 +8,7 @@ import {
   updateFirsCredentialsValidator,
 } from "./utils/tenant.validators";
 
-import { onlySelf } from "../auth/utils/access-checks";
+import { onlySelf, onlyTenantAdmin } from "../auth/utils/access-checks";
 import adminTenantRoutes from "./routes/admin.routes";
 import {
   protectedOnboardingRoutes,
@@ -43,13 +43,7 @@ const authOnboardingRoutes = new Elysia()
           targetTenantId = auth.tenantId;
         }
 
-        if (
-          auth?.tenantId !== targetTenantId &&
-          auth?.businessId !== targetTenantId &&
-          !auth?.isAdmin
-        ) {
-          throw new UnauthorizedError("Invalid token used for this tenant");
-        }
+        onlyTenantAdmin(auth!, targetTenantId);
 
         const tenant = await tenantService.getTenantById(targetTenantId);
         if (tenant) {
