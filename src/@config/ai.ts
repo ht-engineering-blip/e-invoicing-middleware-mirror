@@ -16,7 +16,7 @@ export type ApiKeyMap = Record<AiProvider, AiProviderConfig>;
 
 const aiConfigSchema = z
   .object({
-    provider: z.enum(["openai", "gemini"]).default("gemini"),
+    provider: z.enum(["openai", "gemini"]).default("openai"),
     inferenceModel: z.string().default("gpt-4o-mini"),
     openApiEndpoint: z
       .string()
@@ -85,9 +85,19 @@ const parseAiConfig = (): AiProviderConfig | undefined => {
 
     const parsed = aiConfigSchema.parse({
       provider,
-      openAIApiKey: process.env.OPENAI_API_KEY || "",
-      openApiEndpoint: process.env.OPENAI_API_ENDPOINT,
-      inferenceModel: process.env.OPENAI_API_MODEL || "gpt-4o-mini",
+      openAIApiKey:
+        process.env.OPENAI_API_KEY ||
+        process.env.AI_API_KEY ||
+        "",
+      openApiEndpoint:
+        process.env.OPENAI_API_ENDPOINT ||
+        process.env.OPENAI_BASE_URL ||
+        "https://api.openai.com/v1/chat/completions",
+      inferenceModel:
+        process.env.OPENAI_API_MODEL ||
+        process.env.OPENAI_MODEL ||
+        process.env.AI_MODEL ||
+        "gpt-4o-mini",
       geminiApiKey: process.env.GEMINI_API_KEY || "",
       geminiApiEndpoint: process.env.GEMINI_API_ENDPOINT,
       geminiModel: process.env.GEMINI_API_MODEL || "gemini-2.0-flash",
