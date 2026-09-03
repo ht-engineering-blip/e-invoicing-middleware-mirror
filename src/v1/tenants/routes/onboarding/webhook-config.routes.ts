@@ -6,8 +6,13 @@ import { logger, ResponseBuilder } from "../../../../@lib";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
 import { onlyTenantAdmin } from "../../../auth/utils/access-checks";
 import { TenantService } from "../../services/tenant.service";
-import { signWebhookPayload } from "../../../webhook";
 import {
+  signWebhookPayload,
+  calculateWebhookExpiry,
+  isWebhookExpired,
+} from "../../../webhook";
+import {
+  getWebhookConfigValidation,
   generateWebhookValidation,
   updateInvoiceIdKeyValidation,
   testWebhookValidation,
@@ -16,6 +21,154 @@ import {
 export const onboardingWebhookRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
+
+  /**
+   * GET /tenants/:tenantId/webhook/config
+   * Retrieve current webhook configuration, lifespan, and expiration status
+   */
+  .get(
+    "/:tenantId/webhook/config",
+    async ({ params, auth, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
+
+        const webhookUrl =
+          tenantObj.metadata?.webhookUrl ||
+          tenantObj.config?.webhookUrl ||
+          null;
+        const webhookPath = tenantObj.metadata?.webhookPath || null;
+        const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
+        const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const lifespan =
+          tenantObj.metadata?.webhookLifespan ||
+          tenantObj.config?.webhookLifespan ||
+          null;
+        const expiresAtRaw =
+          tenantObj.metadata?.webhookExpiresAt ||
+          tenantObj.config?.webhookExpiresAt ||
+          null;
+
+        const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
+        const expired = expiresAt ? isWebhookExpired(expiresAt) : false;
+        const hasSecret = Boolean(
+          tenantObj.metadata?.webhookSecretHash ||
+            tenantObj.config?.webhookAuth,
+        );
+
+        let remainingDays: number | null = null;
+        if (expiresAt && !expired) {
+          remainingDays = Math.max(
+            0,
+            Math.ceil(
+              (expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+            ),
+          );
+        }
+
+        return ResponseBuilder.success({
+          tenantId: params.tenantId,
+          configured: Boolean(webhookUrl && hasSecret),
+          webhookUrl,
+          webhookPath,
+          webhookEnabled,
+          invoiceIdKey,
+          lifespan,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+          isExpired: expired,
+          hasSecret,
+          remainingDays,
+        });
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to get webhook configuration", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to get webhook configuration",
+          error.statusCode || 500,
+        );
+      }
+    },
+    getWebhookConfigValidation,
+  )
+
+  /**
+   * GET /tenants/:tenantId/webhook
+   * Alias for GET /tenants/:tenantId/webhook/config
+   */
+  .get(
+    "/:tenantId/webhook",
+    async ({ params, auth, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        const isObject = typeof tenant.toObject === "function";
+        const tenantObj = isObject ? tenant.toObject() : tenant;
+
+        const webhookUrl =
+          tenantObj.metadata?.webhookUrl ||
+          tenantObj.config?.webhookUrl ||
+          null;
+        const webhookPath = tenantObj.metadata?.webhookPath || null;
+        const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
+        const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const lifespan =
+          tenantObj.metadata?.webhookLifespan ||
+          tenantObj.config?.webhookLifespan ||
+          null;
+        const expiresAtRaw =
+          tenantObj.metadata?.webhookExpiresAt ||
+          tenantObj.config?.webhookExpiresAt ||
+          null;
+
+        const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
+        const expired = expiresAt ? isWebhookExpired(expiresAt) : false;
+        const hasSecret = Boolean(
+          tenantObj.metadata?.webhookSecretHash ||
+            tenantObj.config?.webhookAuth,
+        );
+
+        let remainingDays: number | null = null;
+        if (expiresAt && !expired) {
+          remainingDays = Math.max(
+            0,
+            Math.ceil(
+              (expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+            ),
+          );
+        }
+
+        return ResponseBuilder.success({
+          tenantId: params.tenantId,
+          configured: Boolean(webhookUrl && hasSecret),
+          webhookUrl,
+          webhookPath,
+          webhookEnabled,
+          invoiceIdKey,
+          lifespan,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+          isExpired: expired,
+          hasSecret,
+          remainingDays,
+        });
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to get webhook configuration", {
+          error: error.message,
+        });
+        return ResponseBuilder.error(
+          error.message || "Failed to get webhook configuration",
+          error.statusCode || 500,
+        );
+      }
+    },
+    getWebhookConfigValidation,
+  )
 
   /**
    * POST /tenants/:tenantId/webhook/generate
@@ -42,22 +195,30 @@ export const onboardingWebhookRoutes = new Elysia()
         const invoiceIdKey =
           body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;
 
+        const { lifespan, expiresAt } = calculateWebhookExpiry(body?.lifespan);
+
         await tenantService.updateTenant(
           params.tenantId,
           {
             webhookUrl,
             webhookEnabled: true,
+            webhookExpiresAt: expiresAt,
+            webhookLifespan: lifespan,
             config: {
               ...tenantObj.config,
               webhookUrl,
               webhookEnabled: true,
               webhookAuth: webhookSecret,
+              webhookExpiresAt: expiresAt,
+              webhookLifespan: lifespan,
               invoiceIdKey,
             },
             metadata: {
               ...tenantObj.metadata,
               webhookUrl,
               webhookPath,
+              webhookExpiresAt: expiresAt,
+              webhookLifespan: lifespan,
               webhookSecretHash: crypto
                 .createHash("sha256")
                 .update(webhookSecret)
@@ -89,6 +250,8 @@ export const onboardingWebhookRoutes = new Elysia()
             webhookUrl,
             webhookSecret,
             webhookPath,
+            lifespan,
+            expiresAt: expiresAt ? expiresAt.toISOString() : null,
             invoiceIdKey: invoiceIdKey ?? null,
             instructions:
               "Save the webhook secret securely. It will not be shown again.",
@@ -192,6 +355,16 @@ export const onboardingWebhookRoutes = new Elysia()
           );
         }
 
+        const expiresAt =
+          tenant.metadata?.webhookExpiresAt || tenant.config?.webhookExpiresAt;
+        if (isWebhookExpired(expiresAt)) {
+          set.status = 400;
+          return ResponseBuilder.error(
+            "Webhook credentials have expired. Generate new credentials first.",
+            400,
+          );
+        }
+
         const testPayload = body?.testPayload || {
           event: "webhook.test",
           tenantId: params.tenantId,
@@ -203,12 +376,9 @@ export const onboardingWebhookRoutes = new Elysia()
         };
 
         const payloadString = JSON.stringify(testPayload);
-        const legacySignature = crypto
-          .createHmac("sha256", secret)
-          .update(payloadString)
-          .digest("hex");
         const now = Math.floor(Date.now() / 1000);
         const signature = signWebhookPayload(secret, now, payloadString);
+        const secureKey = `t=${now},v1=${signature}`;
 
         let testResult: any = {
           success: false,
@@ -226,8 +396,8 @@ export const onboardingWebhookRoutes = new Elysia()
             {
               headers: {
                 "Content-Type": "application/json",
-                "X-Webhook-Key": legacySignature,
-                "X-Webhook-Signature": `t=${now},v1=${signature}`,
+                "X-Webhook-Key": secureKey,
+                "X-Webhook-Signature": secureKey,
                 "X-Webhook-Event": "webhook.test",
               },
               timeout: 10000,

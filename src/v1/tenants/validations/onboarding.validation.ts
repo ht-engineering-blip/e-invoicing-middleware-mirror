@@ -55,6 +55,19 @@ export const updateCredentialsValidation = {
   },
 };
 
+export const getWebhookConfigValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  detail: {
+    tags: ["Onboarding"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
+    summary: "Get Webhook Configuration & Expiry Status",
+    description:
+      "Retrieve current webhook URL, enabled status, invoiceIdKey, lifespan, and expiration date for a tenant.",
+  },
+};
+
 export const generateWebhookValidation = {
   params: t.Object({
     tenantId: t.String(),
@@ -67,6 +80,27 @@ export const generateWebhookValidation = {
             'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
         }),
       ),
+      lifespan: t.Optional(
+        t.Union(
+          [
+            t.Literal("30_DAYS"),
+            t.Literal("90_DAYS"),
+            t.Literal("180_DAYS"),
+            t.Literal("1_YEAR"),
+            t.Literal("NO_EXPIRATION"),
+            t.Literal("30d"),
+            t.Literal("90d"),
+            t.Literal("180d"),
+            t.Literal("1y"),
+            t.Literal("never"),
+          ],
+          {
+            description:
+              "Lifespan / expiration duration for the webhook URL and secret (30_DAYS, 90_DAYS, 180_DAYS, 1_YEAR, NO_EXPIRATION)",
+            default: "NO_EXPIRATION",
+          },
+        ),
+      ),
     }),
   ),
   detail: {
@@ -74,7 +108,7 @@ export const generateWebhookValidation = {
     security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
     summary: "Generate Webhook URL",
     description:
-      "Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.",
+      "Generate a unique webhook URL for receiving inbound invoices with configurable lifespan (30 days, 90 days, 180 days, 1 year, or no expiration). Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.",
   },
 };
 

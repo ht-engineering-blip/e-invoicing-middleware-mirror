@@ -25,6 +25,7 @@ import {
   verifyWebhookSignature,
   webhookBus,
 } from "../utils/webhook-signature.helper";
+import { isWebhookExpired } from "../utils/webhook-lifespan.helper";
 
 export const inboundWebhookRoutes = new Elysia()
   .decorate("tenantRepo", new TenantRepository())
@@ -62,6 +63,16 @@ export const inboundWebhookRoutes = new Elysia()
         return ResponseBuilder.error(
           "Webhook is not enabled for this tenant",
           403,
+        );
+      }
+
+      const expiresAt =
+        tenant.metadata?.webhookExpiresAt || tenant.config?.webhookExpiresAt;
+      if (isWebhookExpired(expiresAt)) {
+        set.status = 401;
+        return ResponseBuilder.error(
+          "Webhook credentials have expired. Please regenerate your webhook credentials.",
+          401,
         );
       }
 

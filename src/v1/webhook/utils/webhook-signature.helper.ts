@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { EventEmitter } from "events";
 import { WebhookNonceRepository } from "../repos/webhook-nonce.repo";
+import { isWebhookExpired } from "./webhook-lifespan.helper";
 
 const webhookNonceRepo = new WebhookNonceRepository();
 
@@ -22,6 +23,7 @@ export function signWebhookPayload(
   return crypto.createHmac("sha256", secret).update(dataToSign).digest("hex");
 }
 
+
 /**
  * Verifies the inbound webhook signature.
  * Returns an object indicating success or failure.
@@ -35,16 +37,46 @@ export async function verifyWebhookSignature({
   rawBody: string;
   tenant: {
     tenantId: string;
-    config?: { webhookAuth?: string };
-    metadata?: { webhookSecretHash?: string };
+    config?: {
+      webhookAuth?: string;
+      webhookExpiresAt?: Date;
+      webhookLifespan?: string;
+    };
+    metadata?: {
+      webhookSecretHash?: string;
+      webhookExpiresAt?: Date;
+      webhookLifespan?: string;
+    };
   };
 }): Promise<
   { success: true } | { success: false; status: number; error: string }
 > {
-  const webhookKey = headers["x-webhook-key"];
+  const secret = tenant.config?.webhookAuth;
   const webhookKeyHash = tenant.metadata?.webhookSecretHash;
 
-  if (webhookKeyHash && !webhookKey) {
+  // Reject requests when no signing secret is configured so verification cannot pass by default
+  if (!secret || !webhookKeyHash) {
+    return {
+      success: false,
+      status: 401,
+      error: "Webhook signing secret is not configured for this tenant",
+    };
+  }
+
+  // Enforce lifespan / expiration verification
+  const expiresAt =
+    tenant.metadata?.webhookExpiresAt || tenant.config?.webhookExpiresAt;
+  if (isWebhookExpired(expiresAt)) {
+    return {
+      success: false,
+      status: 401,
+      error:
+        "Webhook credentials have expired. Please regenerate your webhook credentials.",
+    };
+  }
+
+  const webhookKey = headers["x-webhook-key"];
+  if (!webhookKey) {
     return {
       success: false,
       status: 401,
@@ -52,113 +84,83 @@ export async function verifyWebhookSignature({
     };
   }
 
-  if (!webhookKeyHash) {
-    return { success: true };
-  }
-
   const isSecureFormat =
-    webhookKey!.includes("t=") && webhookKey!.includes("v1=");
+    webhookKey.includes("t=") && webhookKey.includes("v1=");
 
-  if (isSecureFormat) {
-    const parts = webhookKey!.split(",");
-    let tStr = "";
-    let v1 = "";
-    for (const part of parts) {
-      const [key, val] = part.split("=");
-      if (key === "t") tStr = val;
-      if (key === "v1") v1 = val;
-    }
-
-    if (!tStr || !v1) {
-      return {
-        success: false,
-        status: 401,
-        error: "Invalid X-Webhook-Key format (missing t or v1)",
-      };
-    }
-
-    const t = parseInt(tStr, 10);
-    const now = Math.floor(Date.now() / 1000);
-    if (isNaN(t) || Math.abs(now - t) > 300) {
-      return {
-        success: false,
-        status: 401,
-        error: "Webhook request expired or timestamp invalid",
-      };
-    }
-
-    const isReplay = await webhookNonceRepo.findOne({
-      tenantId: tenant.tenantId,
-      t,
-      v1,
-    });
-    if (isReplay) {
-      return {
-        success: false,
-        status: 401,
-        error: "Duplicate webhook request detected (replay prevention)",
-      };
-    }
-
-    const secret = tenant.config?.webhookAuth;
-    if (!secret) {
-      return {
-        success: false,
-        status: 401,
-        error: "Webhook secret not configured for this tenant in config",
-      };
-    }
-
-    const computedSignature = signWebhookPayload(secret, tStr, rawBody);
-    let isValid = false;
-    try {
-      isValid = crypto.timingSafeEqual(
-        Buffer.from(v1, "hex"),
-        Buffer.from(computedSignature, "hex"),
-      );
-    } catch {
-      isValid = false;
-    }
-
-    if (!isValid) {
-      return {
-        success: false,
-        status: 401,
-        error: "Invalid webhook signature",
-      };
-    }
-
-    await webhookNonceRepo.create({
-      tenantId: tenant.tenantId,
-      t,
-      v1,
-    });
-
-    return { success: true };
-  }
-
-  const incomingHash = crypto
-    .createHash("sha256")
-    .update(webhookKey!)
-    .digest("hex");
-
-  let matches = false;
-  try {
-    matches = crypto.timingSafeEqual(
-      Buffer.from(incomingHash, "hex"),
-      Buffer.from(webhookKeyHash, "hex"),
-    );
-  } catch {
-    matches = false;
-  }
-
-  if (!matches) {
+  if (!isSecureFormat) {
     return {
       success: false,
       status: 401,
-      error: "Invalid webhook key",
+      error:
+        "Invalid X-Webhook-Key format. Requests must be signed with timestamp (t) and signature (v1)",
     };
   }
 
+  const parts = webhookKey.split(",");
+  let tStr = "";
+  let v1 = "";
+  for (const part of parts) {
+    const [key, val] = part.split("=");
+    if (key === "t") tStr = val;
+    if (key === "v1") v1 = val;
+  }
+
+  if (!tStr || !v1) {
+    return {
+      success: false,
+      status: 401,
+      error: "Invalid X-Webhook-Key format (missing t or v1)",
+    };
+  }
+
+  const t = parseInt(tStr, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (isNaN(t) || Math.abs(now - t) > 300) {
+    return {
+      success: false,
+      status: 401,
+      error: "Webhook request expired or timestamp invalid",
+    };
+  }
+
+  const isReplay = await webhookNonceRepo.findOne({
+    tenantId: tenant.tenantId,
+    t,
+    v1,
+  });
+  if (isReplay) {
+    return {
+      success: false,
+      status: 401,
+      error: "Duplicate webhook request detected (replay prevention)",
+    };
+  }
+
+  const computedSignature = signWebhookPayload(secret, tStr, rawBody);
+  let isValid = false;
+  try {
+    isValid = crypto.timingSafeEqual(
+      Buffer.from(v1, "hex"),
+      Buffer.from(computedSignature, "hex"),
+    );
+  } catch {
+    isValid = false;
+  }
+
+  if (!isValid) {
+    return {
+      success: false,
+      status: 401,
+      error: "Invalid webhook signature",
+    };
+  }
+
+  await webhookNonceRepo.create({
+    tenantId: tenant.tenantId,
+    t,
+    v1,
+  });
+
   return { success: true };
 }
+

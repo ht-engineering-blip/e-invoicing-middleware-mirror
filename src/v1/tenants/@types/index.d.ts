@@ -22,6 +22,8 @@ interface UpdateTenantInput {
     erpApiKey?: string;
     webhookUrl?: string;
     webhookEnabled?: boolean;
+    webhookExpiresAt?: Date;
+    webhookLifespan?: string;
     features?: {
         autoFix?: boolean;
         maxRetries?: number;
