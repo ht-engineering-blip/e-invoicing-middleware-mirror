@@ -85,13 +85,13 @@ export class FIRSInvoiceTransformer {
   constructor(
     apiKey: string,
     apiEndpoint: string = "https://api.openai.com/v1/chat/completions",
-    provider: string = "gemini",
+    provider: string = "openai",
     model: string = "gpt-4o-mini",
   ) {
     this.apiKey = apiKey;
-    this.apiEndpoint = apiEndpoint;
-    this.provider = provider;
-    this.model = model;
+    this.apiEndpoint = apiEndpoint || "https://api.openai.com/v1/chat/completions";
+    this.provider = provider || "openai";
+    this.model = model || "gpt-4o-mini";
   }
 
   /**

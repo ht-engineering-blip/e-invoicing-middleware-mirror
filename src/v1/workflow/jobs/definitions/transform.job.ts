@@ -37,7 +37,11 @@ export function registerTransformJob(): void {
             (context.source as OutboundInvoiceSource) ??
             OutboundInvoiceSource.API,
           erpInvoiceId: context.erpInvoiceId,
-          metadata: { ...(result.metadata ?? {}), transformedInvoice: result },
+          metadata: {
+            ...(result.metadata ?? {}),
+            originalPayload: context.originalPayload,
+            transformedInvoice: result,
+          },
         };
         await outboundRepo.upsertByIrn(upsertPayload);
         await outboundRepo.updateWorkflowState(irn, { transformed: true });

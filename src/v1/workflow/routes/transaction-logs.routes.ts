@@ -487,7 +487,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const workflowState = invoice.workflowState;
         let startAction: string | undefined = body?.fromStep;
         if (!startAction) {
-          if (!workflowState?.validated) {
+          if (!workflowState?.transformed || !invoice.metadata?.transformedInvoice) {
+            startAction = WorkflowAction.TRANSFORM;
+          } else if (!workflowState?.validated) {
             startAction = WorkflowAction.VALIDATE;
           } else if (!workflowState?.signed) {
             startAction = WorkflowAction.SIGN;
@@ -517,10 +519,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
 
         const transformedInvoice =
           body?.invoice ||
-          invoice.metadata?.transformedInvoice ||
-          (startAction === WorkflowAction.TRANSFORM
-            ? undefined
-            : incomingPayload);
+          invoice.metadata?.transformedInvoice;
 
         // If retrying from validate or later but no transformed invoice exists, start from transform
         if (
@@ -573,9 +572,13 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           irn: params.irn,
           erpInvoiceId: invoice.erpInvoiceId,
           initialContext: {
-            transformedInvoice: transformedInvoice || undefined,
-            originalPayload: incomingPayload,
+            transformedInvoice:
+              startAction === WorkflowAction.TRANSFORM
+                ? undefined
+                : transformedInvoice || undefined,
+            originalPayload: invoice.metadata?.originalPayload || incomingPayload,
             source: invoice.source,
+            irn: params.irn,
           },
         });
 
@@ -651,7 +654,9 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const workflowState = invoice.workflowState;
         let restartFrom: WorkflowAction = WorkflowAction.VALIDATE;
 
-        if (!workflowState?.validated) {
+        if (!workflowState?.transformed || !invoice.metadata?.transformedInvoice) {
+          restartFrom = WorkflowAction.TRANSFORM;
+        } else if (!workflowState?.validated) {
           restartFrom = WorkflowAction.VALIDATE;
         } else if (!workflowState?.signed) {
           restartFrom = WorkflowAction.SIGN;
@@ -664,7 +669,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         // Update status to allow retry
         await outboundRepo.updateStatus(
           params.irn,
-          OutboundInvoiceStatus.VALIDATED,
+          OutboundInvoiceStatus.RETRYING,
         );
 
         let business_id = auth!.businessId;
