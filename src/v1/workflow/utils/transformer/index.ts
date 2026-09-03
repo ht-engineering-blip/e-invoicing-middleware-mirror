@@ -24,7 +24,7 @@ export { normalizeInvoicePayload } from "./payload-normalizer";
 
 import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
 
-const ALLOWED_LLM_FIELDS = new Set([
+export const ALLOWED_LLM_FIELDS = new Set([
   "business_id",
   "irn",
   "issue_date",
@@ -54,7 +54,7 @@ const ALLOWED_LLM_FIELDS = new Set([
   "notes",
 ]);
 
-function filterAllowedLLMFields(
+export function filterAllowedLLMFields(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
   const filtered: Record<string, unknown> = {};
