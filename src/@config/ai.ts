@@ -28,7 +28,7 @@ const aiConfigSchema = z
       .default(
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       ),
-    geminiModel: z.string().default("gemini-3.6-flash"),
+    geminiModel: z.string().default("gemini-2.0-flash"),
     enabled: z.boolean().default(true),
     openaiEnabled: z.boolean().default(true),
   })
@@ -90,7 +90,7 @@ const parseAiConfig = (): AiProviderConfig | undefined => {
       inferenceModel: process.env.OPENAI_API_MODEL || "gpt-4o-mini",
       geminiApiKey: process.env.GEMINI_API_KEY || "",
       geminiApiEndpoint: process.env.GEMINI_API_ENDPOINT,
-      geminiModel: process.env.GEMINI_API_MODEL || "gemini-3.6-flash",
+      geminiModel: process.env.GEMINI_API_MODEL || "gemini-2.0-flash",
       enabled: overallAiEnabled,
       openaiEnabled,
     });
