@@ -1,11 +1,26 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { DeterministicCompleter } from "../src/v1/workflow/utils/transformer/deterministic-completer";
 import { TransformerCircuitBreaker, isRateLimitError } from "../src/v1/workflow/utils/transformer/circuit-breaker";
-import { CircuitBreakerState } from "../src/v1/workflow/models/circuit-breaker-state.model";
+import {
+  CircuitBreakerState,
+  CircuitBreakerStateModel,
+} from "../src/v1/workflow/models/circuit-breaker-state.model";
 import { FIRSInvoiceTransformerV2 } from "../src/v1/workflow/utils/transformer/v2";
 import { FIRSInvoiceSchema } from "../src/v1/workflow/utils/transformer/schema-validator";
 
 describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
+  // The breaker persists through mongoose's default connection, which another
+  // test file may have opened against a real database — clean up after us.
+  afterAll(async () => {
+    try {
+      await CircuitBreakerStateModel.deleteMany({
+        key: { $regex: "^transformer:(tenant-a|noisy-tenant|quiet-tenant):" },
+      });
+    } catch {
+      // no connection in this run; nothing was written
+    }
+  });
+
   it("should auto-complete missing fields and self-heal mathematical totals without LLM", () => {
     const rawInvoice = {
       invoice_reference: "INV-2026-001",
