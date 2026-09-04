@@ -323,16 +323,22 @@ export const generateTransformPrompt = async (
   let invoiceTypes: InvoiceType[] = [];
 
   try {
-    const [taxCatRes, invoiceTypeRes] = await Promise.all([
-      firsService.getResource<TaxCategory>("tax-categories"),
-      firsService.getResource<InvoiceType>("invoice-types"),
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("FIRS resources prompt timeout")), 1000)
+    );
+    const [taxCatRes, invoiceTypeRes] = await Promise.race([
+      Promise.all([
+        firsService.getResource<TaxCategory>("tax-categories"),
+        firsService.getResource<InvoiceType>("invoice-types"),
+      ]),
+      timeoutPromise,
     ]);
     taxCategories = taxCatRes || [];
     invoiceTypes = invoiceTypeRes || [];
   } catch (error) {
-    console.error(
-      "Error fetching FIRS resources for prompt generation:",
-      error,
+    console.warn(
+      "Using offline defaults for prompt generation:",
+      (error as any)?.message || error,
     );
   }
 

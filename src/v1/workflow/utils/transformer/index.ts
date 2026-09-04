@@ -21,6 +21,8 @@ export {
 } from "./schema-validator";
 export type { FIRSInvoice } from "./schema-validator";
 export { normalizeInvoicePayload } from "./payload-normalizer";
+export { DeterministicCompleter } from "./deterministic-completer";
+export { TransformerCircuitBreaker } from "./circuit-breaker";
 
 import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
 

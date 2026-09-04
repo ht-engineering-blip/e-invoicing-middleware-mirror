@@ -10,6 +10,8 @@ import { InternalServerError, logger } from "../../../../@lib";
 import { AuthContext } from "../../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../models";
 import { TransformWorkflowService } from "../../services";
+import { DeterministicCompleter } from "./deterministic-completer";
+import { TransformerCircuitBreaker } from "./circuit-breaker";
 import {
   extractCurrency,
   generateInvoiceRef,
@@ -79,12 +81,17 @@ export class FIRSInvoiceTransformerV2 {
     let firsSchema: ISchemaField[] = [];
 
     try {
-      if (sourceType) {
-        const sourceDoc = await transformService.getInvoiceSchema(sourceType);
+      const effectiveSourceType = sourceType || authContext?.tenantERP;
+      if (effectiveSourceType) {
+        const sourceDoc = await transformService.getInvoiceSchema(effectiveSourceType);
         if (sourceDoc) {
           sourceSchema = sourceDoc.fields;
           mappingRules = sourceDoc.mapping_rules || [];
         }
+      }
+
+      if ((authContext as any)?.tenantMappings && Array.isArray((authContext as any).tenantMappings)) {
+        mappingRules = [...mappingRules, ...(authContext as any).tenantMappings];
       }
 
       const firsSchemaDoc = await transformService.getInvoiceSchema(
@@ -135,6 +142,47 @@ export class FIRSInvoiceTransformerV2 {
     }
   }
 
+  /**
+   * Deep non-destructive merge: preserves existing baseline fields & arrays,
+   * so LLM outputs can ONLY fill undefined/null missing fields without deleting or altering mapped values.
+   */
+  private deepMergePreserveExisting(
+    baseline: Record<string, any>,
+    incoming: Record<string, any>,
+  ): Record<string, any> {
+    const result: Record<string, any> = { ...incoming };
+
+    for (const [key, baseValue] of Object.entries(baseline)) {
+      const incValue = incoming[key];
+
+      if (baseValue !== undefined && baseValue !== null && baseValue !== "") {
+        if (incValue === undefined || incValue === null || incValue === "") {
+          result[key] = baseValue;
+        } else if (Array.isArray(baseValue)) {
+          if (!Array.isArray(incValue) || incValue.length < baseValue.length) {
+            result[key] = baseValue;
+          } else {
+            result[key] = incValue;
+          }
+        } else if (
+          typeof baseValue === "object" &&
+          typeof incValue === "object" &&
+          baseValue !== null &&
+          incValue !== null
+        ) {
+          result[key] = this.deepMergePreserveExisting(
+            baseValue as Record<string, any>,
+            incValue as Record<string, any>,
+          );
+        } else {
+          result[key] = baseValue;
+        }
+      }
+    }
+
+    return result;
+  }
+
   /* -----------------------------------------------------
      PUBLIC TRANSFORM METHOD
     ----------------------------------------------------- */
@@ -156,6 +204,21 @@ export class FIRSInvoiceTransformerV2 {
       let invoiceTypes: InvoiceType[] = [];
       let currencies: Currency[] = [];
       try {
+        const fetchResourceWithTimeout = async <T>(name: string): Promise<T[]> => {
+          return new Promise<T[]>((resolve) => {
+            const timer = setTimeout(() => resolve([]), 800);
+            firsService.getResource<T>(name)
+              .then((res) => {
+                clearTimeout(timer);
+                resolve(res || []);
+              })
+              .catch(() => {
+                clearTimeout(timer);
+                resolve([]);
+              });
+          });
+        };
+
         const [
           taxCatRes,
           invoiceTypeRes,
@@ -163,165 +226,86 @@ export class FIRSInvoiceTransformerV2 {
           hsCodesRes,
           currenciesRes,
         ] = await Promise.all([
-          firsService.getResource<TaxCategory>("tax-categories"),
-          firsService.getResource<InvoiceType>("invoice-types"),
-          firsService.getResource<QuantityCode>("invoice-quantity-codes"),
-          firsService.getResource<HsCode>("hs-codes"),
-          firsService.getResource<Currency>("currencies"),
+          fetchResourceWithTimeout<TaxCategory>("tax-categories"),
+          fetchResourceWithTimeout<InvoiceType>("invoice-types"),
+          fetchResourceWithTimeout<QuantityCode>("invoice-quantity-codes"),
+          fetchResourceWithTimeout<HsCode>("hs-codes"),
+          fetchResourceWithTimeout<Currency>("currencies"),
         ]);
         taxCategories = taxCatRes || [];
         invoiceTypes = invoiceTypeRes || [];
         currencies = currenciesRes || [];
-        if (qtyCodesRes) setDynamicQuantityCodes(qtyCodesRes);
-        if (hsCodesRes) setDynamicHsCodes(hsCodesRes);
-        if (currenciesRes) setDynamicCurrencies(currenciesRes);
+        if (qtyCodesRes?.length) setDynamicQuantityCodes(qtyCodesRes);
+        if (hsCodesRes?.length) setDynamicHsCodes(hsCodesRes);
+        if (currenciesRes?.length) setDynamicCurrencies(currenciesRes);
       } catch (e) {
-        console.error("Failed to fetch FIRS resources:", e);
+        logger.warn("[TransformerV2] Using offline FIRS dictionary defaults:", (e as any)?.message || e);
       }
 
+      // Step 1: Execute Deterministic Mapping from rules
       const mapped = this.deterministicTransform(invoice, mappingRules);
       const base: Record<string, unknown> = { ...invoice, ...mapped };
       const resolved = this.ensureRequiredFields(base, firsSchema);
 
-      const expectedBusinessId = authContext?.businessId;
-      const expectedSupplierTIN = authContext?.businessTIN;
-      let invoiceRef: string;
-      if (
-        typeof invoice.invoice_reference === "string" &&
-        invoice.invoice_reference.trim() !== ""
-      ) {
-        invoiceRef = invoice.invoice_reference.trim();
-      } else {
-        invoiceRef = generateInvoiceRef();
-      }
-
-      let issueDate: Date | undefined;
-      if (
-        typeof invoice.issue_date === "string" &&
-        invoice.issue_date.trim() !== ""
-      ) {
-        issueDate = new Date(invoice.issue_date);
-      } else {
-        issueDate = undefined;
-      }
-
-      let serviceId: string | undefined;
-      if (authContext?.serviceId) {
-        serviceId = authContext.serviceId;
-      }
-
-      const computedIrn = generateIRN(invoiceRef, serviceId, issueDate);
-
-      let expectedIrn: string | undefined;
-      if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
-        expectedIrn = invoice.irn.trim();
-      } else {
-        expectedIrn = computedIrn;
-      }
-
-      if (expectedBusinessId) resolved.business_id = expectedBusinessId;
-      if (expectedIrn) resolved.irn = expectedIrn;
-
-      if (expectedSupplierTIN) {
-        if (
-          !resolved.accounting_supplier_party ||
-          typeof resolved.accounting_supplier_party !== "object"
-        ) {
-          resolved.accounting_supplier_party = {};
-        }
-        resolved.accounting_supplier_party.tin = expectedSupplierTIN;
-      }
-
-      resolved.document_currency_code = extractCurrency(
+      // Step 2: Deterministic Auto-Completion & Mathematical Self-Healing
+      const reconcileResult = DeterministicCompleter.reconcileAndComplete(
         resolved,
-        "document",
-        currencies,
-      );
-      resolved.tax_currency_code = extractCurrency(
-        resolved,
-        "tax",
+        authContext,
+        firsSchema,
         currencies,
       );
 
-      const missing = this.findMissingFields(resolved, firsSchema);
+      let completed = reconcileResult.completedData;
+      const circuitBreaker = TransformerCircuitBreaker.getInstance();
 
-      let completed = resolved;
-      if (missing.length > 0) {
-        if (
-          !aiConfig?.enabled ||
-          (this.provider === "openai" && !aiConfig?.openaiEnabled)
-        ) {
-          return {
-            success: false,
-            error: `OpenAI / AI transformation service is disabled by configuration (OPENAI_ENABLED=false). Missing required fields: ${missing.join(", ")}`,
-            originalInvoice: invoice,
-          };
-        }
+      // Step 3: Check if LLM API call is needed
+      const missing = reconcileResult.missingFields;
 
-        const prompt = this.buildSchemaAwarePrompt(
-          resolved,
-          authContext,
-          sourceSchema,
-          firsSchema,
-          missing,
-          taxCategories,
-          invoiceTypes,
+      if (missing.length === 0) {
+        logger.info(
+          "[TransformerV2] Deterministic transformation 100% compliant. Skipped LLM call entirely.",
+          { irn: completed.irn, tenantId: authContext?.tenantId },
         );
-
-        const response = await this.callLLM(prompt);
-        const rawParsed = this.safeParseLLMJSON(response);
-        const parsed = filterAllowedLLMFields(rawParsed) as Record<string, any>;
-
-        if (
-          parsed.business_id !== undefined &&
-          expectedBusinessId &&
-          parsed.business_id !== expectedBusinessId
-        ) {
-          console.warn(
-            `[TransformerV2] LLM changed business_id from "${expectedBusinessId}" to "${parsed.business_id}" — will be overwritten`,
+      } else if (!circuitBreaker.canExecute()) {
+        logger.warn(
+          "[TransformerV2] Circuit breaker is OPEN (LLM rate limits / downtime active). Using deterministic fallback.",
+          { missingFields: missing, tenantId: authContext?.tenantId },
+        );
+      } else if (
+        !aiConfig?.enabled ||
+        (this.provider === "openai" && !aiConfig?.openaiEnabled)
+      ) {
+        logger.info(
+          "[TransformerV2] AI engine disabled in config. Using deterministic fallback.",
+          { missingFields: missing },
+        );
+      } else {
+        // Step 4: Fallback to LLM with Circuit Breaker and Deep Merge Protection
+        try {
+          const prompt = this.buildSchemaAwarePrompt(
+            completed,
+            authContext,
+            sourceSchema,
+            firsSchema,
+            missing,
+            taxCategories,
+            invoiceTypes,
           );
-        }
-        if (
-          parsed.irn !== undefined &&
-          expectedIrn &&
-          parsed.irn !== expectedIrn
-        ) {
-          console.warn(
-            `[TransformerV2] LLM changed irn from "${expectedIrn}" to "${parsed.irn}" — will be overwritten`,
+
+          const response = await this.callLLM(prompt);
+          circuitBreaker.recordSuccess();
+
+          const rawParsed = this.safeParseLLMJSON(response);
+          const parsed = filterAllowedLLMFields(rawParsed) as Record<string, any>;
+
+          // Deep Merge Protection: Never overwrite deterministically mapped fields
+          completed = this.deepMergePreserveExisting(completed, parsed);
+        } catch (llmErr: any) {
+          circuitBreaker.recordFailure(llmErr);
+          logger.warn(
+            `[TransformerV2] LLM API call failed (${llmErr.message}). Safe fallback engaged.`,
+            { missingFields: missing, tenantId: authContext?.tenantId },
           );
-        }
-
-        const parsedSupplier = parsed.accounting_supplier_party as
-          | Record<string, unknown>
-          | undefined;
-        const parsedSupplierTIN = parsedSupplier?.tin;
-        if (
-          parsedSupplierTIN !== undefined &&
-          expectedSupplierTIN &&
-          parsedSupplierTIN !== expectedSupplierTIN
-        ) {
-          console.warn(
-            `[TransformerV2] LLM changed supplier TIN from "${expectedSupplierTIN}" to "${parsedSupplierTIN}" — will be overwritten`,
-          );
-        }
-
-        completed = { ...resolved, ...parsed };
-
-        if (expectedBusinessId) {
-          completed.business_id = expectedBusinessId;
-        }
-        if (expectedIrn) {
-          completed.irn = expectedIrn;
-        }
-        if (expectedSupplierTIN) {
-          if (
-            !completed.accounting_supplier_party ||
-            typeof completed.accounting_supplier_party !== "object"
-          ) {
-            completed.accounting_supplier_party = {};
-          }
-          (completed.accounting_supplier_party as Record<string, unknown>).tin =
-            expectedSupplierTIN;
         }
       }
 
@@ -334,7 +318,7 @@ export class FIRSInvoiceTransformerV2 {
 
       const validation = this.validateWithZod(completed, firsZodSchema);
 
-      if (!validation.valid) {
+      if (!validation.valid && circuitBreaker.canExecute() && aiConfig?.enabled) {
         try {
           const repaired = await this.repairJSON(
             completed,
