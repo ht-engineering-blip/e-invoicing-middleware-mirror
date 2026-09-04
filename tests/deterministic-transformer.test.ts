@@ -1,10 +1,26 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { DeterministicCompleter } from "../src/v1/workflow/utils/transformer/deterministic-completer";
-import { TransformerCircuitBreaker } from "../src/v1/workflow/utils/transformer/circuit-breaker";
+import { TransformerCircuitBreaker, isRateLimitError } from "../src/v1/workflow/utils/transformer/circuit-breaker";
+import {
+  CircuitBreakerState,
+  CircuitBreakerStateModel,
+} from "../src/v1/workflow/models/circuit-breaker-state.model";
 import { FIRSInvoiceTransformerV2 } from "../src/v1/workflow/utils/transformer/v2";
 import { FIRSInvoiceSchema } from "../src/v1/workflow/utils/transformer/schema-validator";
 
 describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
+  // The breaker persists through mongoose's default connection, which another
+  // test file may have opened against a real database — clean up after us.
+  afterAll(async () => {
+    try {
+      await CircuitBreakerStateModel.deleteMany({
+        key: { $regex: "^transformer:(tenant-a|noisy-tenant|quiet-tenant):" },
+      });
+    } catch {
+      // no connection in this run; nothing was written
+    }
+  });
+
   it("should auto-complete missing fields and self-heal mathematical totals without LLM", () => {
     const rawInvoice = {
       invoice_reference: "INV-2026-001",
@@ -57,21 +73,53 @@ describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
     expect(result.completedData.invoice_line[0].price.price_unit).toBe("H87");
   });
 
-  it("should trip circuit breaker on LLM rate limit (429) and recover", () => {
+  it("should trip circuit breaker after repeated LLM failures and recover", async () => {
     const circuitBreaker = TransformerCircuitBreaker.getInstance();
-    circuitBreaker.reset();
+    const key = { tenantId: "tenant-a", provider: "openai" };
+    await circuitBreaker.reset(key);
 
-    expect(circuitBreaker.canExecute()).toBe(true);
+    expect(await circuitBreaker.canExecute(key)).toBe(true);
 
-    // Simulate 429 Rate Limit
-    circuitBreaker.recordFailure(new Error("429 Too Many Requests: Rate limit exceeded"));
+    // A single rate limit must NOT trip the breaker on its own — that is what
+    // made an immediate retry reuse the degraded path instead of calling out.
+    await circuitBreaker.recordFailure(
+      new Error("429 Too Many Requests: Rate limit exceeded"),
+      key,
+    );
+    expect(await circuitBreaker.getState(key)).toBe(CircuitBreakerState.CLOSED);
+    expect(await circuitBreaker.canExecute(key)).toBe(true);
 
-    expect(circuitBreaker.getState()).toBe("OPEN");
-    expect(circuitBreaker.canExecute()).toBe(false);
+    // It trips once the failure threshold (3) is reached.
+    await circuitBreaker.recordFailure(new Error("429 Too Many Requests"), key);
+    await circuitBreaker.recordFailure(new Error("429 Too Many Requests"), key);
 
-    // Reset circuit breaker
-    circuitBreaker.reset();
-    expect(circuitBreaker.canExecute()).toBe(true);
+    expect(await circuitBreaker.getState(key)).toBe(CircuitBreakerState.OPEN);
+    expect(await circuitBreaker.canExecute(key)).toBe(false);
+    expect(await circuitBreaker.cooldownRemainingSeconds(key)).toBeGreaterThan(0);
+
+    await circuitBreaker.reset(key);
+    expect(await circuitBreaker.canExecute(key)).toBe(true);
+  });
+
+  it("should scope breaker state per tenant so one tenant cannot block another", async () => {
+    const circuitBreaker = TransformerCircuitBreaker.getInstance();
+    const noisy = { tenantId: "noisy-tenant", provider: "openai" };
+    const quiet = { tenantId: "quiet-tenant", provider: "openai" };
+    await circuitBreaker.reset(noisy);
+    await circuitBreaker.reset(quiet);
+
+    for (let i = 0; i < 3; i++) {
+      await circuitBreaker.recordFailure(new Error("429 rate limit"), noisy);
+    }
+
+    expect(await circuitBreaker.canExecute(noisy)).toBe(false);
+    expect(await circuitBreaker.canExecute(quiet)).toBe(true);
+  });
+
+  it("should not treat an amount containing 429 as a rate limit", () => {
+    expect(isRateLimitError(new Error("Invalid amount 1429.00 on line 2"))).toBe(false);
+    expect(isRateLimitError(new Error("429 Too Many Requests"))).toBe(true);
+    expect(isRateLimitError({ response: { status: 429 } })).toBe(true);
   });
 
   it("should transform mapped ERP payload with 0 LLM calls", async () => {
