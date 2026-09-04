@@ -44,6 +44,7 @@ export class DeterministicCompleter {
     for (const key of keys) {
       if (current == null || typeof current !== "object") return undefined;
       if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
     return current;
@@ -69,6 +70,7 @@ export class DeterministicCompleter {
       if (current[key] == null || typeof current[key] !== "object") {
         current[key] = /^\d+$/.test(nextKey) ? [] : {};
       }
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
 

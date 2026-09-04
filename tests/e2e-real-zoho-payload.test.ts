@@ -817,7 +817,7 @@ describe("Comprehensive Realistic End-to-End Test Suite for Real Zoho Books Payl
 
     // 6. Rejected Bad Secret
     const badRes = await verifyWebhookSignature({
-      headers: { "x-webhook-secret": "invalid_secret" },
+      headers: { "x-webhook-secret": "invalid_secret" }, // gitleaks:allow
       rawBody,
       tenant: mockTenant as any,
       query: {},

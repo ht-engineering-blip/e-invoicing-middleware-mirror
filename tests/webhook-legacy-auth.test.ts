@@ -395,7 +395,7 @@ describe("Multi-Strategy Webhook Authentication & Legacy Support", () => {
 
     it("Rejects invalid secret with 401", async () => {
       const res = await verifyWebhookSignature({
-        headers: { "x-webhook-secret": "wrong_secret_12345" },
+        headers: { "x-webhook-secret": "wrong_secret_12345" }, // gitleaks:allow
         rawBody,
         tenant: mockTenant,
       });

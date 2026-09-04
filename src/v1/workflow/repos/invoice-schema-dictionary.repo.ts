@@ -489,8 +489,10 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       // Unset any existing default for this source type
+      const escapedSourceType = (schema.source_type || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       await this.model.updateMany(
-        { source_type: { $regex: new RegExp(`^${schema.source_type}$`, 'i') }, is_default: true },
+        { source_type: { $regex: new RegExp(`^${escapedSourceType}$`, 'i') }, is_default: true },
         { $set: { is_default: false } },
       );
 
