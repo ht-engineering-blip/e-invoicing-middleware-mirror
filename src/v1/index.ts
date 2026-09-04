@@ -12,14 +12,14 @@ import openapi from "@elysiajs/openapi";
 import qrMgmtRoutes from "./invoicing/routes/qr.routes";
 import resourcesRoutes from "./invoicing/routes/resources.routes";
 
-export const v1Routes = new Elysia({ prefix: "/v1" })
+export const v1Core = new Elysia()
   .use(
     openapi({
       documentation: {
         info: {
           title: "E-Invoicing Middleware API",
           description:
-            "Middleware for HT Invoicing - NRS SI & APP connection.\\n\\n**IMPORTANT NOTICES**:\\n- **Taxpayer Credentials**: Taxpayers must configure their own FIRS API Key and Secret via their Tenant configuration. The system no longer falls back to the System Integrator credentials for invoice-specific operations (e.g., validate, sign, transmit).",
+            "Middleware for HT Invoicing - NRS SI & APP connection.\n\n**IMPORTANT NOTICES**:\n- **Taxpayer Credentials**: Taxpayers must configure their own FIRS API Key and Secret via their Tenant configuration. The system no longer falls back to the System Integrator credentials for invoice-specific operations (e.g., validate, sign, transmit).",
           version: "1.0.1",
         },
         components: {
@@ -61,3 +61,9 @@ export const v1Routes = new Elysia({ prefix: "/v1" })
   .use(auditRoutes)
   .use(qrMgmtRoutes)
   .use(resourcesRoutes);
+
+export const v1Routes = new Elysia()
+  .use(new Elysia({ prefix: "/v1" }).use(v1Core))
+  .use(new Elysia({ prefix: "/api/v1" }).use(v1Core))
+  .use(new Elysia({ prefix: "/api" }).use(v1Core))
+  .use(v1Core);
