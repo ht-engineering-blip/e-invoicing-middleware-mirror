@@ -20,7 +20,11 @@ export const docsAuthMiddleware = (app: Elysia) =>
       pathname === "/openapi" ||
       pathname.startsWith("/openapi/") ||
       pathname === "/docs" ||
-      pathname.startsWith("/docs/");
+      pathname.startsWith("/docs/") ||
+      pathname === "/v1/docs" ||
+      pathname.startsWith("/v1/docs/") ||
+      pathname === "/v1/openapi" ||
+      pathname.startsWith("/v1/openapi/");
 
     if (!isDocsPath) {
       return;
