@@ -1,8 +1,10 @@
 import type { FIRSInvoice } from "./schema-validator";
 import {
+  extractCurrency,
   generateDatestamp,
   generateInvoiceRef,
   generateIRN,
+  resolveCurrencyCode,
   sanitizeInvoiceIRNs,
   sanitizePriceUnit,
 } from "./utils";
@@ -122,33 +124,8 @@ export function normalizeInvoicePayload(
   }
 
   // 7. Resolve Document & Tax Currency Codes
-  let documentCurrencyCode = "NGN";
-  if (
-    typeof rawInvoice.document_currency_code === "string" &&
-    rawInvoice.document_currency_code.trim() !== ""
-  ) {
-    documentCurrencyCode = rawInvoice.document_currency_code.trim();
-  } else if (
-    typeof rawInvoice.documentCurrencyCode === "string" &&
-    rawInvoice.documentCurrencyCode.trim() !== ""
-  ) {
-    documentCurrencyCode = rawInvoice.documentCurrencyCode.trim();
-  }
-
-  let taxCurrencyCode = "NGN";
-  if (
-    typeof rawInvoice.tax_currency_code === "string" &&
-    rawInvoice.tax_currency_code.trim() !== ""
-  ) {
-    taxCurrencyCode = rawInvoice.tax_currency_code.trim();
-  } else if (
-    typeof rawInvoice.taxCurrencyCode === "string" &&
-    rawInvoice.taxCurrencyCode.trim() !== ""
-  ) {
-    taxCurrencyCode = rawInvoice.taxCurrencyCode.trim();
-  } else {
-    taxCurrencyCode = documentCurrencyCode;
-  }
+  const documentCurrencyCode = extractCurrency(rawInvoice, "document");
+  const taxCurrencyCode = extractCurrency(rawInvoice, "tax");
 
   // 8. Resolve Payment Status
   let paymentStatus = "PENDING";

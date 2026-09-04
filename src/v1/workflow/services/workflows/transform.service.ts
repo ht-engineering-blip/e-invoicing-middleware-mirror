@@ -234,6 +234,7 @@ export class TransformWorkflowService {
         tenant_id: schemaPayload.tenant_id,
         metadata: schemaPayload.metadata || {},
         created_by: schemaPayload.created_by || "system",
+        mapping_rules: schemaPayload.mapping_rules || [],
       };
 
       const created = await this.invoiceRepo.create(createPayload);
@@ -260,6 +261,8 @@ export class TransformWorkflowService {
     let normalizedErp = erpType.toUpperCase().replace(/[-\s]/g, "_");
     const key = normalizedErp as keyof typeof SchemaSourceType;
     const sourceType = SchemaSourceType[key] || normalizedErp;
+    const mappingRules =
+      options?.mapping_rules || options?.metadata?.mapping_rules || [];
 
     return this.upsertInvoiceSchema(sourceType, {
       schema_id: `${normalizedErp}_INVOICE_SCHEMA`,
@@ -273,8 +276,9 @@ export class TransformWorkflowService {
       metadata: {
         erp_type: erpType,
         ...options?.metadata,
+        mapping_rules: mappingRules,
       },
-      mapping_rules: options?.mapping_rules || [],
+      mapping_rules: mappingRules,
     });
   };
 

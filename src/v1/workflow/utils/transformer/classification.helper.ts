@@ -164,14 +164,12 @@ export function resolveCurrencyCode(
   if (!input || typeof input !== "string") return defaultCurrency;
 
   const trimmed = input.trim();
+  if (trimmed === "") return defaultCurrency;
   const upper = trimmed.toUpperCase();
 
   if (!currencies || currencies.length === 0) {
-    if (upper !== "") {
-      return upper;
-    } else {
-      return defaultCurrency;
-    }
+    if (/^[A-Z]{3}$/.test(upper)) return upper;
+    return defaultCurrency;
   }
 
   // 1. Direct code match (e.g. "USD", "ngn", "EUR")
@@ -217,6 +215,45 @@ export function resolveCurrencyCode(
   if (/^[A-Z]{3}$/.test(upper)) return upper;
 
   return defaultCurrency;
+}
+
+const DOC_CURRENCY_KEYS = [
+  "document_currency_code",
+  "documentCurrencyCode",
+  "currency",
+  "currency_code",
+  "currencyCode",
+] as const;
+
+const TAX_CURRENCY_KEYS = [
+  "tax_currency_code",
+  "taxCurrencyCode",
+  "tax_currency",
+  "taxCurrency",
+  ...DOC_CURRENCY_KEYS,
+] as const;
+
+/**
+ * Extract and resolve currency code from an invoice object cleanly without manual chaining
+ */
+export function extractCurrency(
+  source?: Record<string, unknown>,
+  target: "document" | "tax" = "document",
+  availableCurrencies?: Currency[] | null,
+): string {
+  if (!source || typeof source !== "object") {
+    return resolveCurrencyCode("NGN", availableCurrencies);
+  }
+
+  const keys = target === "tax" ? TAX_CURRENCY_KEYS : DOC_CURRENCY_KEYS;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return resolveCurrencyCode(value, availableCurrencies);
+    }
+  }
+
+  return resolveCurrencyCode("NGN", availableCurrencies);
 }
 
 /**

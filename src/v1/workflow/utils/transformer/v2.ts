@@ -11,8 +11,10 @@ import { AuthContext } from "../../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../models";
 import { TransformWorkflowService } from "../../services";
 import {
+  extractCurrency,
   generateInvoiceRef,
   generateIRN,
+  resolveCurrencyCode,
   sanitizeInvoiceIRNs,
   setDynamicCurrencies,
   setDynamicHsCodes,
@@ -230,6 +232,17 @@ export class FIRSInvoiceTransformerV2 {
         resolved.accounting_supplier_party.tin = expectedSupplierTIN;
       }
 
+      resolved.document_currency_code = extractCurrency(
+        resolved,
+        "document",
+        currencies,
+      );
+      resolved.tax_currency_code = extractCurrency(
+        resolved,
+        "tax",
+        currencies,
+      );
+
       const missing = this.findMissingFields(resolved, firsSchema);
 
       let completed = resolved;
@@ -340,6 +353,34 @@ export class FIRSInvoiceTransformerV2 {
             repairErr,
           );
         }
+      }
+
+      if (!completed.document_currency_code) {
+        completed.document_currency_code = resolveCurrencyCode(
+          String(resolved.document_currency_code || "NGN"),
+          currencies,
+        );
+      } else {
+        completed.document_currency_code = resolveCurrencyCode(
+          String(completed.document_currency_code),
+          currencies,
+        );
+      }
+
+      if (!completed.tax_currency_code) {
+        completed.tax_currency_code = resolveCurrencyCode(
+          String(
+            resolved.tax_currency_code ||
+              completed.document_currency_code ||
+              "NGN",
+          ),
+          currencies,
+        );
+      } else {
+        completed.tax_currency_code = resolveCurrencyCode(
+          String(completed.tax_currency_code),
+          currencies,
+        );
       }
 
       const toFloat = (val: unknown, fallback: number = 0): number => {

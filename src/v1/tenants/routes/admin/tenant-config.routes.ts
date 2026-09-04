@@ -349,36 +349,31 @@ export const adminTenantConfigRoutes = new Elysia()
    * PUT /api/v1/tenants/:tenantId/key-map
    * Legacy endpoint: updates idKeyMap
    */
+  /**
+   * PUT /api/v1/tenants/:tenantId/key-map & /api/v1/tenants/:tenantId/id-key-map
+   * Update event ID key mapping
+   */
   .put(
     "/:tenantId/key-map",
     async ({ auth, params, body, tenantService, set }) => {
       try {
         onlyTenantAdmin(auth!, params.tenantId);
 
-        const idKeyMap = (body as any)?.idKeyMap ?? body;
-        if (!idKeyMap || typeof idKeyMap !== "object") {
-          set.status = 400;
-          return ResponseBuilder.error(
-            "Invalid request: idKeyMap object is required",
-            400,
-          );
-        }
+        const payload = (body || {}) as Record<string, unknown>;
+        let mapToApply: Record<string, string> = {};
 
-        const invalidKeys = Object.keys(idKeyMap).filter(
-          (k) => !VALID_EVENT_IDS.includes(k),
-        );
-        if (invalidKeys.length > 0) {
-          set.status = 400;
-          return ResponseBuilder.error(
-            `Invalid event type(s): ${invalidKeys.join(", ")}. Valid event types: ${VALID_EVENT_IDS.join(", ")}`,
-            400,
-          );
+        if (typeof payload.eventType === "string" && typeof payload.idKey === "string") {
+          mapToApply[payload.eventType] = payload.idKey;
+        } else if (payload.idKeyMap && typeof payload.idKeyMap === "object") {
+          mapToApply = payload.idKeyMap as Record<string, string>;
+        } else {
+          mapToApply = payload as Record<string, string>;
         }
 
         const tenant = await tenantService.getTenantById(params.tenantId);
-        const existingConfig = (tenant.config as any) || {};
+        const existingConfig = (tenant.config || {}) as Record<string, unknown>;
         const existingMap = parseMapToRecord(existingConfig.idKeyMap);
-        const mergedMap = { ...existingMap, ...idKeyMap };
+        const mergedMap = { ...existingMap, ...mapToApply };
 
         const updatedTenant = await tenantService.updateTenant(
           params.tenantId,
@@ -394,20 +389,78 @@ export const adminTenantConfigRoutes = new Elysia()
         return ResponseBuilder.success(
           {
             tenantId: updatedTenant.tenantId,
-            idKeyMap: (updatedTenant.config as any)?.idKeyMap,
+            idKeyMap: (updatedTenant.config as Record<string, unknown> | undefined)?.idKeyMap,
           },
           undefined,
           "Key map updated successfully",
         );
-      } catch (error: any) {
-        set.status = error.statusCode || 500;
+      } catch (error: unknown) {
+        const err = error as { statusCode?: number; message?: string };
+        set.status = err.statusCode || 500;
         logger.error("Error updating key map", {
           tenantId: params.tenantId,
-          error: error.message,
+          error: err.message,
         });
         return ResponseBuilder.error(
-          error.message || "Failed to update key map",
-          error.statusCode || 500,
+          err.message || "Failed to update key map",
+          err.statusCode || 500,
+        );
+      }
+    },
+    updateKeyMapValidation,
+  )
+
+  .put(
+    "/:tenantId/id-key-map",
+    async ({ auth, params, body, tenantService, set }) => {
+      try {
+        onlyTenantAdmin(auth!, params.tenantId);
+
+        const payload = (body || {}) as Record<string, unknown>;
+        let mapToApply: Record<string, string> = {};
+
+        if (typeof payload.eventType === "string" && typeof payload.idKey === "string") {
+          mapToApply[payload.eventType] = payload.idKey;
+        } else if (payload.idKeyMap && typeof payload.idKeyMap === "object") {
+          mapToApply = payload.idKeyMap as Record<string, string>;
+        } else {
+          mapToApply = payload as Record<string, string>;
+        }
+
+        const tenant = await tenantService.getTenantById(params.tenantId);
+        const existingConfig = (tenant.config || {}) as Record<string, unknown>;
+        const existingMap = parseMapToRecord(existingConfig.idKeyMap);
+        const mergedMap = { ...existingMap, ...mapToApply };
+
+        const updatedTenant = await tenantService.updateTenant(
+          params.tenantId,
+          {
+            config: {
+              ...existingConfig,
+              idKeyMap: mergedMap,
+            },
+          },
+          getActor(auth),
+        );
+
+        return ResponseBuilder.success(
+          {
+            tenantId: updatedTenant.tenantId,
+            idKeyMap: (updatedTenant.config as Record<string, unknown> | undefined)?.idKeyMap,
+          },
+          undefined,
+          "ID key map updated successfully",
+        );
+      } catch (error: unknown) {
+        const err = error as { statusCode?: number; message?: string };
+        set.status = err.statusCode || 500;
+        logger.error("Error updating ID key map", {
+          tenantId: params.tenantId,
+          error: err.message,
+        });
+        return ResponseBuilder.error(
+          err.message || "Failed to update ID key map",
+          err.statusCode || 500,
         );
       }
     },

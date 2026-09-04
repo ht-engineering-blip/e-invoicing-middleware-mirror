@@ -9,6 +9,7 @@ import { TransformWorkflowService } from "../../workflow/services";
 import { SystemConfigService } from "../services/system-config.service";
 import { AuditService } from "../../audit/services/audit.service";
 import { AuditEventType, AuditEventSeverity } from "../../audit/models";
+import { SchemaStatus } from "../../workflow/models";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
@@ -76,19 +77,35 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           };
         }
 
+        let erpDoc = erp;
+        if (erp && "toObject" in erp && typeof erp.toObject === "function") {
+          erpDoc = erp.toObject();
+        }
+
+        if (erpDoc) {
+          const rules =
+            erpDoc.mapping_rules || erpDoc.metadata?.mapping_rules || [];
+          erpDoc.mapping_rules = rules;
+          erpDoc.metadata = {
+            ...(erpDoc.metadata || {}),
+            mapping_rules: rules,
+          };
+        }
+
         return {
           success: true,
-          data: erp,
+          data: erpDoc,
         };
-      } catch (error: any) {
-        set.status = error.statusCode || 500;
+      } catch (error: unknown) {
+        const err = error as { statusCode?: number; message?: string };
+        set.status = err.statusCode || 500;
         logger.error("Failed to fetch ERP configuration", {
-          error: error.message,
+          error: err.message,
         });
         return {
           success: false,
-          error: error.message || "Failed to fetch ERP configuration",
-          statusCode: error.statusCode || 500,
+          error: err.message || "Failed to fetch ERP configuration",
+          statusCode: err.statusCode || 500,
         };
       }
     },
@@ -111,19 +128,33 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
     }) => {
       try {
         onlyAdmin(auth!);
-        let { erp, invoice, metadata }: any = body;
+        const payload = body as {
+          erp: string;
+          invoice: Record<string, unknown>;
+          metadata?: Record<string, unknown> & {
+            status?: SchemaStatus;
+            mapping_rules?: Array<Record<string, unknown>>;
+            source_invoice_sample?: Record<string, unknown>;
+          };
+          mapping_rules?: Array<Record<string, unknown>>;
+        };
+
+        const { erp, invoice, metadata } = payload;
         if (auth && auth.tenantId) {
           invoice.business_id = auth.businessId;
         }
 
         // Flatten the invoice for field extraction
-        let flatInvoice = jsonSpread(invoice)[0];
-        let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined;
-        let mapping_rules =
-          metadata && metadata.mapping_rules ? metadata.mapping_rules : [];
+        const flatInvoice = jsonSpread(invoice)[0] as Record<string, unknown>;
+        let flatMetadata: Record<string, unknown> | undefined = undefined;
+        if (metadata) {
+          flatMetadata = jsonSpread(metadata)[0] as Record<string, unknown>;
+        }
+        const mapping_rules =
+          metadata?.mapping_rules || payload.mapping_rules || [];
 
         // Generate invoice dictionary using LLM
-        let generatedFields = await llmService.generateInvoiceDictionary(
+        const generatedFields = await llmService.generateInvoiceDictionary(
           erp,
           flatInvoice,
           flatMetadata,
@@ -136,13 +167,12 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || "system",
-            status: metadata.status,
+            status: metadata?.status,
             metadata: {
               ...(metadata || {}),
+              mapping_rules,
               source_invoice_sample:
-                metadata && metadata.source_invoice_sample
-                  ? metadata.source_invoice_sample
-                  : flatInvoice,
+                metadata?.source_invoice_sample || flatInvoice,
               generated_at: new Date().toISOString(),
             },
             mapping_rules,
@@ -164,9 +194,14 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           metadata: {
             erp,
             schema_id: savedSchema.schema_id,
-            payload: body,
+            payload: body as Record<string, unknown>,
           },
         });
+
+        const effectiveMappingRules =
+          savedSchema.mapping_rules ||
+          savedSchema.metadata?.mapping_rules ||
+          mapping_rules;
 
         return {
           success: true,
@@ -176,14 +211,20 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             fields_count: generatedFields.length,
             fields: generatedFields,
             status: savedSchema.status,
+            mapping_rules: effectiveMappingRules,
+            metadata: {
+              ...(savedSchema.metadata || {}),
+              mapping_rules: effectiveMappingRules,
+            },
           },
         };
-      } catch (error: any) {
-        set.status = error.statusCode || 500;
+      } catch (error: unknown) {
+        const err = error as { statusCode?: number; message?: string };
+        set.status = err.statusCode || 500;
         return {
           success: false,
-          error: error.message,
-          statusCode: error.statusCode || 500,
+          error: err.message || "Failed to configure ERP dictionary",
+          statusCode: err.statusCode || 500,
         };
       }
     },
