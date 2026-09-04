@@ -5,3 +5,4 @@ e4294b7d9c52a7f9c15e4548cb5fe77a2d31c723:tests/docs-auth.test.ts:generic-api-key
 e4294b7d9c52a7f9c15e4548cb5fe77a2d31c723:tests/docs-auth.test.ts:generic-api-key:119
 e4294b7d9c52a7f9c15e4548cb5fe77a2d31c723:tests/docs-auth.test.ts:generic-api-key:131
 e4294b7d9c52a7f9c15e4548cb5fe77a2d31c723:tests/docs-auth.test.ts:generic-api-key:138
+e0243c851cfb03f732d1e0e7114e4608f98e21f8:tests/webhook-legacy-auth.test.ts:generic-api-key:398

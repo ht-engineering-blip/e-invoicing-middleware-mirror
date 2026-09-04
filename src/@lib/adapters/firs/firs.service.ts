@@ -433,6 +433,7 @@ export class FIRSService {
     const client = this.appClient;
     const response: any = await client.get(
       `api/v1/invoice/resources/${resourceName}`,
+      { timeout: 1000 },
     );
     const body = response?.data ?? response;
     const data: T[] = Array.isArray(body) ? body : (body?.data ?? body);

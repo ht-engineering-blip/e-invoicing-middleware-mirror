@@ -165,6 +165,7 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const sourceStr = String(sourceType || "");
       const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const regex = new RegExp(`^${escaped}$`, "i");
 
       let doc = await this.model
@@ -215,6 +216,7 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const sourceStr = String(sourceType || "");
       const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const regex = new RegExp(`^${escaped}$`, "i");
 
       const query: Record<string, unknown> = { source_type: { $regex: regex } };
@@ -489,8 +491,10 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       // Unset any existing default for this source type
+      const escapedSourceType = (schema.source_type || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const sourceTypeRegex = new RegExp(`^${escapedSourceType}$`, 'i'); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       await this.model.updateMany(
-        { source_type: { $regex: new RegExp(`^${schema.source_type}$`, 'i') }, is_default: true },
+        { source_type: { $regex: sourceTypeRegex }, is_default: true },
         { $set: { is_default: false } },
       );
 

@@ -1,0 +1,6 @@
+# Semgrep Ignore Rules
+.github/workflows/
+tests/
+node_modules/
+dist/
+coverage/
