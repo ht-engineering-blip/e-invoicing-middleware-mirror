@@ -9,12 +9,40 @@ import { TransformWorkflowService } from "../../workflow/services";
 import { SystemConfigService } from "../services/system-config.service";
 import { AuditService } from "../../audit/services/audit.service";
 import { AuditEventType, AuditEventSeverity } from "../../audit/models";
-import { SchemaStatus } from "../../workflow/models";
+import { SchemaStatus, ISchemaField } from "../../workflow/models";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
   listSupportedERPsValidation,
 } from "../validations/erp-config.validation";
+
+function extractFieldsFromSample(
+  flatSample: Record<string, unknown>,
+): Array<ISchemaField> {
+  const fields: Array<ISchemaField> = [];
+  for (const [key, value] of Object.entries(flatSample)) {
+    if (!key) continue;
+    let dataType = "String";
+    if (typeof value === "number") {
+      dataType = "Number";
+    } else if (typeof value === "boolean") {
+      dataType = "Boolean";
+    } else if (Array.isArray(value)) {
+      dataType = "Array";
+    } else if (value && typeof value === "object") {
+      dataType = "Object";
+    }
+    fields.push({
+      field_id: key.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase(),
+      field_path: key,
+      data_type: dataType,
+      is_required: false,
+      is_array: Array.isArray(value),
+      example_value: value !== undefined ? String(value) : undefined,
+    });
+  }
+  return fields;
+}
 
 /**
  * ERP Configuration Routes
@@ -32,7 +60,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
    */
   .get(
     "/",
-    async ({ transformWorkflowService, set }): Promise<any> => {
+    async ({ transformWorkflowService, set }) => {
       try {
         const erps = await transformWorkflowService.getSupportedERPTypes();
 
@@ -41,15 +69,16 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           data: erps,
           count: erps.length,
         };
-      } catch (error: any) {
-        set.status = error.statusCode || 500;
+      } catch (error: unknown) {
+        const err = error as { statusCode?: number; message?: string };
+        set.status = err.statusCode || 500;
         logger.error("Failed to fetch supported ERPs", {
-          error: error.message,
+          error: err.message,
         });
         return {
           success: false,
-          error: error.message || "Failed to fetch supported ERPs",
-          statusCode: error.statusCode || 500,
+          error: err.message || "Failed to fetch supported ERPs",
+          statusCode: err.statusCode || 500,
         };
       }
     },
@@ -83,13 +112,19 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
         }
 
         if (erpDoc) {
-          const rules =
-            erpDoc.mapping_rules || erpDoc.metadata?.mapping_rules || [];
+          let rules = erpDoc.mapping_rules;
+          if (!rules && erpDoc.metadata && Array.isArray(erpDoc.metadata.mapping_rules)) {
+            rules = erpDoc.metadata.mapping_rules;
+          }
+          if (!rules) {
+            rules = [];
+          }
           erpDoc.mapping_rules = rules;
-          erpDoc.metadata = {
-            ...(erpDoc.metadata || {}),
-            mapping_rules: rules,
-          };
+          const currentMeta: Record<string, unknown> = erpDoc.metadata
+            ? { ...erpDoc.metadata }
+            : {};
+          currentMeta.mapping_rules = rules;
+          erpDoc.metadata = currentMeta;
         }
 
         return {
@@ -137,6 +172,8 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             source_invoice_sample?: Record<string, unknown>;
           };
           mapping_rules?: Array<Record<string, unknown>>;
+          fields?: Array<ISchemaField>;
+          regenerate_fields?: boolean;
         };
 
         const { erp, invoice, metadata } = payload;
@@ -153,12 +190,39 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
         const mapping_rules =
           metadata?.mapping_rules || payload.mapping_rules || [];
 
-        // Generate invoice dictionary using LLM
-        const generatedFields = await llmService.generateInvoiceDictionary(
-          erp,
-          flatInvoice,
-          flatMetadata,
-        );
+        // Check if schema already exists to avoid slow redundant LLM calls on update
+        const existingSchema = await transformWorkflowService.getInvoiceSchema(erp);
+
+        let generatedFields: Array<ISchemaField> = [];
+        if (payload.fields && Array.isArray(payload.fields) && payload.fields.length > 0) {
+          generatedFields = payload.fields;
+        } else if (
+          existingSchema &&
+          Array.isArray(existingSchema.fields) &&
+          existingSchema.fields.length > 0 &&
+          !payload.regenerate_fields
+        ) {
+          // Fast path: preserve existing schema fields on updates
+          generatedFields = existingSchema.fields;
+        } else if (flatInvoice && Object.keys(flatInvoice).length > 0) {
+          try {
+            generatedFields = await Promise.race([
+              llmService.generateInvoiceDictionary(erp, flatInvoice, flatMetadata),
+              new Promise<Array<ISchemaField>>((_, reject) =>
+                setTimeout(() => reject(new Error("LLM generation timeout")), 5000),
+              ),
+            ]);
+          } catch (llmErr: unknown) {
+            const err = llmErr as { message?: string };
+            logger.warn("LLM dictionary generation timed out/failed, falling back to direct field extraction", {
+              erp,
+              error: err.message,
+            });
+            generatedFields = extractFieldsFromSample(flatInvoice);
+          }
+        } else {
+          generatedFields = [];
+        }
 
         // Upsert the schema to database
         const savedSchema = await transformWorkflowService.upsertERPSchema(

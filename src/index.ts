@@ -58,6 +58,30 @@ const openapiPlugin = docsConfig.enabled
           { name: "Tenants", description: "Tenant & Onboarding Operations" },
           { name: "Admin", description: "Super Admin & Event Routing" },
         ],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: "http",
+              scheme: "bearer",
+              bearerFormat: "JWT",
+            },
+            adminKey: {
+              type: "apiKey",
+              description: "Admin Key",
+              name: "x-admin-key",
+              in: "header",
+            },
+            apiKey: {
+              type: "apiKey",
+              description: "API Key",
+              name: "x-api-key",
+              in: "header",
+            },
+          },
+        },
+      },
+      scalar: {
+        tagsSorter: "alpha",
       },
     })
   : new Elysia();
@@ -140,6 +164,16 @@ const app = new Elysia()
   .use(openapiPlugin)
   .use(errorHandlerMiddleware)
   .use(v1Routes)
+  .get(
+    "/docs",
+    ({ redirect }) => redirect("/openapi"),
+    { detail: { hide: true } },
+  )
+  .get(
+    "/swagger",
+    ({ redirect }) => redirect("/openapi"),
+    { detail: { hide: true } },
+  )
   .get(
     "/",
     () => ({

@@ -22,8 +22,8 @@ export interface CreateSchemaDictionaryInput {
   is_default?: boolean;
   tenant_id?: string;
   fields: ISchemaField[];
-  mapping_rules?: Array<Record<string, any>>;
-  metadata?: Record<string, any>;
+  mapping_rules?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
   tags?: string[];
   created_by: string;
 }
@@ -39,8 +39,8 @@ export interface UpdateSchemaDictionaryInput {
   status?: SchemaStatus;
   is_default?: boolean;
   fields?: ISchemaField[];
-  mapping_rules?: Array<Record<string, any>>;
-  metadata?: Record<string, any>;
+  mapping_rules?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
   tags?: string[];
   updated_by: string;
 }
@@ -72,10 +72,10 @@ export class InvoiceSchemaDictionaryRepository {
   /**
    * Build MongoDB query from filters
    */
-  private buildQuery(filters?: SchemaDictionaryFilters): any {
+  private buildQuery(filters?: SchemaDictionaryFilters): Record<string, unknown> {
     if (!filters) return {};
 
-    const query: any = {};
+    const query: Record<string, unknown> = {};
 
     if (filters.source_type) query.source_type = filters.source_type;
     if (filters.status) query.status = filters.status;
@@ -118,9 +118,10 @@ export class InvoiceSchemaDictionaryRepository {
       });
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating schema dictionary:", error);
-      if (error.code === 11000) {
+      const err = error as { code?: number };
+      if (err.code === 11000) {
         throw new AppError(409, "Schema with this ID already exists");
       }
       throw new AppError(500, "Failed to create schema dictionary");
@@ -134,9 +135,9 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const doc = await this.model.findById(id).exec();
       return doc;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error finding schema by ID:", error);
-      throw new AppError(500, "Failed to fetch schema dictionary");
+      return null;
     }
   }
 
@@ -149,9 +150,9 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const doc = await this.model.findOne({ schema_id: schemaId }).exec();
       return doc;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error finding schema by schema_id:", error);
-      throw new AppError(500, "Failed to fetch schema dictionary");
+      return null;
     }
   }
 
@@ -162,17 +163,45 @@ export class InvoiceSchemaDictionaryRepository {
     sourceType: SchemaSourceType | string,
   ): Promise<InvoiceSchemaDictionaryDocument | null> {
     try {
-      const doc = await this.model
+      const sourceStr = String(sourceType || "");
+      const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      const regex = new RegExp(`^${escaped}$`, "i");
+
+      let doc = await this.model
         .findOne({
-          source_type: sourceType,
+          source_type: { $regex: regex },
           is_default: true,
           status: SchemaStatus.ACTIVE,
         })
         .exec();
+
+      if (doc) {
+        return doc;
+      }
+
+      doc = await this.model
+        .findOne({
+          source_type: { $regex: regex },
+          status: SchemaStatus.ACTIVE,
+        })
+        .sort({ is_default: -1, createdAt: -1 })
+        .exec();
+
+      if (doc) {
+        return doc;
+      }
+
+      doc = await this.model
+        .findOne({
+          source_type: { $regex: regex },
+        })
+        .sort({ is_default: -1, createdAt: -1 })
+        .exec();
+
       return doc;
-    } catch (error) {
-      console.error("Error finding default schema:", error);
-      throw new AppError(500, "Failed to fetch default schema");
+    } catch (error: unknown) {
+      console.error("Error finding default schema for source type:", sourceType, error);
+      return null;
     }
   }
 
@@ -184,7 +213,11 @@ export class InvoiceSchemaDictionaryRepository {
     includeInactive: boolean = false,
   ): Promise<InvoiceSchemaDictionaryDocument[]> {
     try {
-      const query: any = { source_type: sourceType };
+      const sourceStr = String(sourceType || "");
+      const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      const regex = new RegExp(`^${escaped}$`, "i");
+
+      const query: Record<string, unknown> = { source_type: { $regex: regex } };
       if (!includeInactive) {
         query.status = SchemaStatus.ACTIVE;
       }
@@ -194,9 +227,9 @@ export class InvoiceSchemaDictionaryRepository {
         .sort({ is_default: -1, createdAt: -1 })
         .exec();
       return docs;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error finding schemas by source type:", error);
-      throw new AppError(500, "Failed to fetch schemas");
+      return [];
     }
   }
 
@@ -207,7 +240,7 @@ export class InvoiceSchemaDictionaryRepository {
     filters?: SchemaDictionaryFilters,
     limit: number = 20,
     page: number = 1,
-  ): Promise<{ data: InvoiceSchemaDictionaryDocument[]; meta: any }> {
+  ): Promise<{ data: InvoiceSchemaDictionaryDocument[]; meta: { total: number; page: number; limit: number; pages: number } }> {
     try {
       const offset = (page - 1) * limit;
       const query = this.buildQuery(filters);
@@ -230,7 +263,7 @@ export class InvoiceSchemaDictionaryRepository {
       };
 
       return { data: docs, meta };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error finding schemas:", error);
       throw new AppError(500, "Failed to fetch schemas");
     }
@@ -272,7 +305,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating schema:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to update schema dictionary");
@@ -304,7 +337,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error adding fields:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to add fields");
@@ -321,7 +354,7 @@ export class InvoiceSchemaDictionaryRepository {
     updatedBy: string,
   ): Promise<InvoiceSchemaDictionaryDocument> {
     try {
-      const updateFields: any = { updated_by: updatedBy };
+      const updateFields: Record<string, unknown> = { updated_by: updatedBy };
 
       Object.keys(fieldUpdate).forEach((key) => {
         updateFields[`fields.$.${key}`] =
@@ -341,7 +374,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating field:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to update field");
@@ -373,7 +406,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error removing field:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to remove field");
@@ -385,7 +418,7 @@ export class InvoiceSchemaDictionaryRepository {
    */
   async addMappingRules(
     schemaId: string,
-    rules: Array<Record<string, any>>,
+    rules: Array<Record<string, unknown>>,
     updatedBy: string,
   ): Promise<InvoiceSchemaDictionaryDocument> {
     try {
@@ -405,7 +438,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error adding mapping rules:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to add mapping rules");
@@ -434,7 +467,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error setting status:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to set status");
@@ -457,7 +490,7 @@ export class InvoiceSchemaDictionaryRepository {
 
       // Unset any existing default for this source type
       await this.model.updateMany(
-        { source_type: schema.source_type, is_default: true },
+        { source_type: { $regex: new RegExp(`^${schema.source_type}$`, 'i') }, is_default: true },
         { $set: { is_default: false } },
       );
 
@@ -471,7 +504,7 @@ export class InvoiceSchemaDictionaryRepository {
         .exec();
 
       return doc!;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error setting as default:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to set as default");
@@ -487,7 +520,7 @@ export class InvoiceSchemaDictionaryRepository {
         .findOneAndDelete({ schema_id: schemaId })
         .exec();
       return result !== null;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error deleting schema:", error);
       throw new AppError(500, "Failed to delete schema dictionary");
     }
@@ -504,8 +537,9 @@ export class InvoiceSchemaDictionaryRepository {
       const schema = await this.findBySchemaId(schemaId);
       if (!schema) return null;
 
-      return schema.fields.find((f) => f.field_id === fieldId) || null;
-    } catch (error) {
+      const field = schema.fields.find((f) => f.field_id === fieldId);
+      return field || null;
+    } catch (error: unknown) {
       console.error("Error getting field:", error);
       throw new AppError(500, "Failed to get field");
     }
@@ -515,7 +549,7 @@ export class InvoiceSchemaDictionaryRepository {
    * Get all supported source types (excluding FIRS_UBL)
    */
   async getSourceTypesSummary(): Promise<
-    Array<{ id: string; source_type: string; last_updated: Date }>
+    Array<{ id: string; source_type: string; status?: SchemaStatus; last_updated: Date }>
   > {
     try {
       const result = await this.model.aggregate([
@@ -524,32 +558,75 @@ export class InvoiceSchemaDictionaryRepository {
             source_type: { $ne: "FIRS_UBL" },
           },
         },
-        { $sort: { source_type: 1, updatedAt: -1 } },
+        { $sort: { source_type: 1, updatedAt: -1, createdAt: -1 } },
         {
           $group: {
-            _id: "$source_type",
+            _id: { $toLower: "$source_type" },
             id: { $first: "$_id" },
+            schema_id: { $first: "$schema_id" },
             source_type: { $first: "$source_type" },
             status: { $first: "$status" },
             last_updated: { $first: "$updatedAt" },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            id: { $toString: "$id" },
-            source_type: 1,
-            status: 1,
-            last_updated: 1,
+            created_at: { $first: "$createdAt" },
           },
         },
         { $sort: { source_type: 1 } },
       ]);
 
-      return result;
-    } catch (error) {
-      console.error("Error getting source types summary:", error);
-      throw new AppError(500, "Failed to get source types summary");
+      if (Array.isArray(result) && result.length > 0) {
+        return result.map((item: Record<string, unknown>) => ({
+          id: String(item.id || item.schema_id || item._id || ""),
+          source_type: String(item.source_type || item._id || ""),
+          status: (item.status as SchemaStatus) || SchemaStatus.DRAFT,
+          last_updated: (item.last_updated as Date) || (item.created_at as Date) || new Date(),
+        }));
+      }
+
+      // Fallback query if aggregation returns empty or fails
+      const docs = await this.model.find({ source_type: { $ne: "FIRS_UBL" } }).sort({ updatedAt: -1 }).exec();
+      const seen = new Set<string>();
+      const summary: Array<{ id: string; source_type: string; status?: SchemaStatus; last_updated: Date }> = [];
+
+      for (const doc of docs) {
+        const type = String(doc.source_type || "");
+        const lowerType = type.toLowerCase();
+        if (type && !seen.has(lowerType)) {
+          seen.add(lowerType);
+          summary.push({
+            id: String(doc._id || doc.schema_id || ""),
+            source_type: type,
+            status: doc.status || SchemaStatus.DRAFT,
+            last_updated: doc.updatedAt || doc.createdAt || new Date(),
+          });
+        }
+      }
+
+      return summary;
+    } catch (error: unknown) {
+      console.error("Error getting source types summary, attempting fallback:", error);
+      try {
+        const docs = await this.model.find({ source_type: { $ne: "FIRS_UBL" } }).sort({ updatedAt: -1 }).exec();
+        const seen = new Set<string>();
+        const summary: Array<{ id: string; source_type: string; status?: SchemaStatus; last_updated: Date }> = [];
+
+        for (const doc of docs) {
+          const type = String(doc.source_type || "");
+          const lowerType = type.toLowerCase();
+          if (type && !seen.has(lowerType)) {
+            seen.add(lowerType);
+            summary.push({
+              id: String(doc._id || doc.schema_id || ""),
+              source_type: type,
+              status: doc.status || SchemaStatus.DRAFT,
+              last_updated: doc.updatedAt || doc.createdAt || new Date(),
+            });
+          }
+        }
+        return summary;
+      } catch (fallbackError: unknown) {
+        console.error("Fallback getSourceTypesSummary failed:", fallbackError);
+        return [];
+      }
     }
   }
 
@@ -584,7 +661,7 @@ export class InvoiceSchemaDictionaryRepository {
       });
 
       return cloned;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error cloning schema:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to clone schema");
@@ -601,7 +678,7 @@ export class InvoiceSchemaDictionaryRepository {
     updatedBy: string,
   ): Promise<InvoiceSchemaDictionaryDocument> {
     try {
-      let updateQuery: any;
+      let updateQuery: Record<string, unknown>;
 
       if (replaceExisting) {
         updateQuery = { $set: { fields, updated_by: updatedBy } };
@@ -621,7 +698,7 @@ export class InvoiceSchemaDictionaryRepository {
       }
 
       return doc;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error bulk importing fields:", error);
       if (error instanceof AppError) throw error;
       throw new AppError(500, "Failed to bulk import fields");
