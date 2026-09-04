@@ -18,6 +18,54 @@ import {
   testWebhookValidation,
 } from "../../validations/onboarding.validation";
 
+function buildIntegrationExamples(
+  webhookUrl: string | null,
+  webhookSecret?: string | null,
+) {
+  const url = webhookUrl || "https://api.yourdomain.com/v1/webhook/inbound/<YOUR_WEBHOOK_PATH>";
+  const secret = webhookSecret || "<YOUR_WEBHOOK_SECRET>";
+
+  return {
+    modernHmac: {
+      description: "Modern Dynamic HMAC-SHA256 Signature (Recommended for custom codebases)",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Key": "t={UNIX_TIMESTAMP},v1={HMAC_SHA256_HEX}",
+      },
+      curlExample: `TIMESTAMP=$(date +%s)\nSIGNATURE=$(printf "$TIMESTAMP.{\\"event\\":\\"invoice.received\\",\\"invoiceId\\":\\"INV-1001\\"}" | openssl dgst -sha256 -hmac "${secret}" | sed 's/^.* //')\ncurl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Webhook-Key: t=$TIMESTAMP,v1=$SIGNATURE" \\\n  -d '{"event":"invoice.received","invoiceId":"INV-1001","totalAmount":150000}'`,
+    },
+    legacyStaticHeader: {
+      description: "Legacy Static Secret Header (For standard ERPs and off-the-shelf webhook plugins)",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Secret": secret,
+      },
+      curlExample: `curl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Webhook-Secret: ${secret}" \\\n  -d '{"invoiceId":"INV-1001","totalAmount":150000}'`,
+    },
+    legacyBearerAuth: {
+      description: "Authorization Bearer Token Header",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${secret}`,
+      },
+      curlExample: `curl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${secret}" \\\n  -d '{"invoiceId":"INV-1001","totalAmount":150000}'`,
+    },
+    legacyQueryParam: {
+      description: "URL Query Parameter (For systems that cannot modify HTTP headers)",
+      url: `${url}?secret=${secret}`,
+      curlExample: `curl -X POST "${url}?secret=${secret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoiceId":"INV-1001","totalAmount":150000}'`,
+    },
+    legacyXmlTally: {
+      description: "Legacy Tally / XML Payload",
+      headers: {
+        "Content-Type": "application/xml",
+        "X-Webhook-Secret": secret,
+      },
+      curlExample: `curl -X POST "${url}" \\\n  -H "Content-Type: application/xml" \\\n  -H "X-Webhook-Secret: ${secret}" \\\n  -d '<ENVELOPE><BODY><DATA><TALLYMESSAGE><VOUCHER><VOUCHERNUMBER>INV-1001</VOUCHERNUMBER><AMOUNT>150000</AMOUNT></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>'`,
+    },
+  };
+}
+
 export const onboardingWebhookRoutes = new Elysia()
   .use(requireAuth)
   .decorate("tenantService", new TenantService())
@@ -43,6 +91,12 @@ export const onboardingWebhookRoutes = new Elysia()
         const webhookPath = tenantObj.metadata?.webhookPath || null;
         const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
         const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const webhookAuthMode =
+          tenantObj.config?.webhookAuthMode ||
+          tenantObj.metadata?.webhookAuthMode ||
+          "auto";
+        const defaultEventType =
+          tenantObj.config?.defaultEventType || "invoice.received";
         const lifespan =
           tenantObj.metadata?.webhookLifespan ||
           tenantObj.config?.webhookLifespan ||
@@ -69,18 +123,26 @@ export const onboardingWebhookRoutes = new Elysia()
           );
         }
 
+        const integrationExamples = buildIntegrationExamples(
+          webhookUrl,
+          tenantObj.config?.webhookAuth ? "••••••••" : undefined,
+        );
+
         return ResponseBuilder.success({
           tenantId: params.tenantId,
           configured: Boolean(webhookUrl && hasSecret),
           webhookUrl,
           webhookPath,
           webhookEnabled,
+          webhookAuthMode,
+          defaultEventType,
           invoiceIdKey,
           lifespan,
           expiresAt: expiresAt ? expiresAt.toISOString() : null,
           isExpired: expired,
           hasSecret,
           remainingDays,
+          integrationExamples,
         });
       } catch (error: any) {
         set.status = error.statusCode || 500;
@@ -117,6 +179,12 @@ export const onboardingWebhookRoutes = new Elysia()
         const webhookPath = tenantObj.metadata?.webhookPath || null;
         const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
         const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const webhookAuthMode =
+          tenantObj.config?.webhookAuthMode ||
+          tenantObj.metadata?.webhookAuthMode ||
+          "auto";
+        const defaultEventType =
+          tenantObj.config?.defaultEventType || "invoice.received";
         const lifespan =
           tenantObj.metadata?.webhookLifespan ||
           tenantObj.config?.webhookLifespan ||
@@ -143,18 +211,26 @@ export const onboardingWebhookRoutes = new Elysia()
           );
         }
 
+        const integrationExamples = buildIntegrationExamples(
+          webhookUrl,
+          tenantObj.config?.webhookAuth ? "••••••••" : undefined,
+        );
+
         return ResponseBuilder.success({
           tenantId: params.tenantId,
           configured: Boolean(webhookUrl && hasSecret),
           webhookUrl,
           webhookPath,
           webhookEnabled,
+          webhookAuthMode,
+          defaultEventType,
           invoiceIdKey,
           lifespan,
           expiresAt: expiresAt ? expiresAt.toISOString() : null,
           isExpired: expired,
           hasSecret,
           remainingDays,
+          integrationExamples,
         });
       } catch (error: any) {
         set.status = error.statusCode || 500;
@@ -194,6 +270,10 @@ export const onboardingWebhookRoutes = new Elysia()
 
         const invoiceIdKey =
           body?.invoiceIdKey ?? tenantObj.config?.invoiceIdKey;
+        const webhookAuthMode =
+          body?.webhookAuthMode ?? tenantObj.config?.webhookAuthMode ?? "auto";
+        const defaultEventType =
+          body?.defaultEventType ?? tenantObj.config?.defaultEventType ?? "invoice.received";
 
         const { lifespan, expiresAt } = calculateWebhookExpiry(body?.lifespan);
 
@@ -204,11 +284,15 @@ export const onboardingWebhookRoutes = new Elysia()
             webhookEnabled: true,
             webhookExpiresAt: expiresAt,
             webhookLifespan: lifespan,
+            webhookAuthMode,
+            defaultEventType,
             config: {
               ...tenantObj.config,
               webhookUrl,
               webhookEnabled: true,
               webhookAuth: webhookSecret,
+              webhookAuthMode,
+              defaultEventType,
               webhookExpiresAt: expiresAt,
               webhookLifespan: lifespan,
               invoiceIdKey,
@@ -217,6 +301,8 @@ export const onboardingWebhookRoutes = new Elysia()
               ...tenantObj.metadata,
               webhookUrl,
               webhookPath,
+              webhookAuthMode,
+              defaultEventType,
               webhookExpiresAt: expiresAt,
               webhookLifespan: lifespan,
               webhookSecretHash: crypto
@@ -245,14 +331,22 @@ export const onboardingWebhookRoutes = new Elysia()
           });
         }
 
+        const integrationExamples = buildIntegrationExamples(
+          webhookUrl,
+          webhookSecret,
+        );
+
         return ResponseBuilder.success(
           {
             webhookUrl,
             webhookSecret,
             webhookPath,
+            webhookAuthMode,
+            defaultEventType,
             lifespan,
             expiresAt: expiresAt ? expiresAt.toISOString() : null,
             invoiceIdKey: invoiceIdKey ?? null,
+            integrationExamples,
             instructions:
               "Save the webhook secret securely. It will not be shown again.",
           },
@@ -326,7 +420,7 @@ export const onboardingWebhookRoutes = new Elysia()
 
   /**
    * POST /tenants/:tenantId/webhook/test
-   * Test webhook connectivity
+   * Test webhook connectivity with configurable authentication strategy
    */
   .post(
     "/:tenantId/webhook/test",
@@ -365,20 +459,46 @@ export const onboardingWebhookRoutes = new Elysia()
           );
         }
 
-        const testPayload = body?.testPayload || {
-          event: "webhook.test",
-          tenantId: params.tenantId,
-          timestamp: new Date().toISOString(),
-          data: {
-            message: "This is a test webhook from E-Invoicing Platform",
-            irn: "TEST-IRN-" + Date.now(),
-          },
-        };
+        const testPayload: Record<string, any> = body?.testPayload
+          ? { ...body.testPayload }
+          : {
+              event: "webhook.test",
+              tenantId: params.tenantId,
+              timestamp: new Date().toISOString(),
+              data: {
+                message: "This is a test webhook from E-Invoicing Platform",
+                irn: "TEST-IRN-" + Date.now(),
+              },
+            };
 
-        const payloadString = JSON.stringify(testPayload);
-        const now = Math.floor(Date.now() / 1000);
-        const signature = signWebhookPayload(secret, now, payloadString);
-        const secureKey = `t=${now},v1=${signature}`;
+        const authStrategy = body?.authStrategy || "hmac";
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Webhook-Event": "webhook.test",
+        };
+        let targetUrl = tenant.metadata.webhookUrl;
+
+        if (authStrategy === "static_secret") {
+          headers["X-Webhook-Secret"] = secret;
+        } else if (authStrategy === "bearer") {
+          headers["Authorization"] = `Bearer ${secret}`;
+        } else if (authStrategy === "query") {
+          const separator = targetUrl.includes("?") ? "&" : "?";
+          targetUrl = `${targetUrl}${separator}secret=${encodeURIComponent(secret)}`;
+        } else if (authStrategy === "body") {
+          testPayload.secret = secret;
+        } else if (authStrategy === "secret_url") {
+          // No special headers or secrets required
+        } else {
+          // Default: dynamic HMAC-SHA256
+          const payloadString = JSON.stringify(testPayload);
+          const now = Math.floor(Date.now() / 1000);
+          const signature = signWebhookPayload(secret, now, payloadString);
+          const secureKey = `t=${now},v1=${signature}`;
+          headers["X-Webhook-Key"] = secureKey;
+          headers["X-Webhook-Signature"] = secureKey;
+        }
 
         let testResult: any = {
           success: false,
@@ -391,15 +511,10 @@ export const onboardingWebhookRoutes = new Elysia()
 
         try {
           const response = await axios.post(
-            tenant.metadata.webhookUrl,
+            targetUrl,
             testPayload,
             {
-              headers: {
-                "Content-Type": "application/json",
-                "X-Webhook-Key": secureKey,
-                "X-Webhook-Signature": secureKey,
-                "X-Webhook-Event": "webhook.test",
-              },
+              headers,
               timeout: 10000,
             },
           );
@@ -443,6 +558,7 @@ export const onboardingWebhookRoutes = new Elysia()
             webhookUrl: tenant.metadata.webhookUrl,
             testResult,
             payload: testPayload,
+            authStrategy,
           },
           undefined,
           testResult.success
