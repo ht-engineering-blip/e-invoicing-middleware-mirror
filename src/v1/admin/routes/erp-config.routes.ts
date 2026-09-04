@@ -76,9 +76,19 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           };
         }
 
+        const erpDoc = erp ? (typeof (erp as any).toObject === "function" ? (erp as any).toObject() : erp) : null;
+        if (erpDoc) {
+          const rules = erpDoc.mapping_rules || erpDoc.metadata?.mapping_rules || [];
+          erpDoc.mapping_rules = rules;
+          erpDoc.metadata = {
+            ...(erpDoc.metadata || {}),
+            mapping_rules: rules,
+          };
+        }
+
         return {
           success: true,
-          data: erp,
+          data: erpDoc,
         };
       } catch (error: any) {
         set.status = error.statusCode || 500;
@@ -120,7 +130,9 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
         let flatInvoice = jsonSpread(invoice)[0];
         let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined;
         let mapping_rules =
-          metadata && metadata.mapping_rules ? metadata.mapping_rules : [];
+          metadata && metadata.mapping_rules
+            ? metadata.mapping_rules
+            : (body as any).mapping_rules || [];
 
         // Generate invoice dictionary using LLM
         let generatedFields = await llmService.generateInvoiceDictionary(
@@ -136,9 +148,10 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || "system",
-            status: metadata.status,
+            status: metadata?.status,
             metadata: {
               ...(metadata || {}),
+              mapping_rules,
               source_invoice_sample:
                 metadata && metadata.source_invoice_sample
                   ? metadata.source_invoice_sample
@@ -168,6 +181,11 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         });
 
+        const effectiveMappingRules =
+          savedSchema.mapping_rules ||
+          savedSchema.metadata?.mapping_rules ||
+          mapping_rules;
+
         return {
           success: true,
           data: {
@@ -176,6 +194,11 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             fields_count: generatedFields.length,
             fields: generatedFields,
             status: savedSchema.status,
+            mapping_rules: effectiveMappingRules,
+            metadata: {
+              ...(savedSchema.metadata || {}),
+              mapping_rules: effectiveMappingRules,
+            },
           },
         };
       } catch (error: any) {

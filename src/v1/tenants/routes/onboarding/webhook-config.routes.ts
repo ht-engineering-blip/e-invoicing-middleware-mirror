@@ -22,12 +22,15 @@ function buildIntegrationExamples(
   webhookUrl: string | null,
   webhookSecret?: string | null,
 ) {
-  const url = webhookUrl || "https://api.yourdomain.com/v1/webhook/inbound/<YOUR_WEBHOOK_PATH>";
+  const url =
+    webhookUrl ||
+    "https://api.yourdomain.com/v1/webhook/inbound/<YOUR_WEBHOOK_PATH>";
   const secret = webhookSecret || "<YOUR_WEBHOOK_SECRET>";
 
   return {
     modernHmac: {
-      description: "Modern Dynamic HMAC-SHA256 Signature (Recommended for custom codebases)",
+      description:
+        "Modern Dynamic HMAC-SHA256 Signature (Recommended for custom codebases)",
       headers: {
         "Content-Type": "application/json",
         "X-Webhook-Key": "t={UNIX_TIMESTAMP},v1={HMAC_SHA256_HEX}",
@@ -35,7 +38,8 @@ function buildIntegrationExamples(
       curlExample: `TIMESTAMP=$(date +%s)\nSIGNATURE=$(printf "$TIMESTAMP.{\\"event\\":\\"invoice.received\\",\\"invoiceId\\":\\"INV-1001\\"}" | openssl dgst -sha256 -hmac "${secret}" | sed 's/^.* //')\ncurl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Webhook-Key: t=$TIMESTAMP,v1=$SIGNATURE" \\\n  -d '{"event":"invoice.received","invoiceId":"INV-1001","totalAmount":150000}'`,
     },
     legacyStaticHeader: {
-      description: "Legacy Static Secret Header (For standard ERPs and off-the-shelf webhook plugins)",
+      description:
+        "Legacy Static Secret Header (For standard ERPs and off-the-shelf webhook plugins)",
       headers: {
         "Content-Type": "application/json",
         "X-Webhook-Secret": secret,
@@ -46,12 +50,13 @@ function buildIntegrationExamples(
       description: "Authorization Bearer Token Header",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${secret}`,
+        Authorization: `Bearer ${secret}`,
       },
       curlExample: `curl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${secret}" \\\n  -d '{"invoiceId":"INV-1001","totalAmount":150000}'`,
     },
     legacyQueryParam: {
-      description: "URL Query Parameter (For systems that cannot modify HTTP headers)",
+      description:
+        "URL Query Parameter (For systems that cannot modify HTTP headers)",
       url: `${url}?secret=${secret}`,
       curlExample: `curl -X POST "${url}?secret=${secret}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"invoiceId":"INV-1001","totalAmount":150000}'`,
     },
@@ -83,34 +88,24 @@ export const onboardingWebhookRoutes = new Elysia()
         const tenant = await tenantService.getTenantById(params.tenantId);
         const isObject = typeof tenant.toObject === "function";
         const tenantObj = isObject ? tenant.toObject() : tenant;
+        const config = tenantObj.config;
+        const metadata = tenantObj.metadata;
 
-        const webhookUrl =
-          tenantObj.metadata?.webhookUrl ||
-          tenantObj.config?.webhookUrl ||
-          null;
-        const webhookPath = tenantObj.metadata?.webhookPath || null;
+        const webhookUrl = metadata?.webhookUrl || config?.webhookUrl || null;
+        const webhookPath = metadata?.webhookPath || null;
         const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
-        const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const invoiceIdKey = config?.invoiceIdKey || "invoiceId";
         const webhookAuthMode =
-          tenantObj.config?.webhookAuthMode ||
-          tenantObj.metadata?.webhookAuthMode ||
-          "auto";
-        const defaultEventType =
-          tenantObj.config?.defaultEventType || "invoice.received";
-        const lifespan =
-          tenantObj.metadata?.webhookLifespan ||
-          tenantObj.config?.webhookLifespan ||
-          null;
+          config?.webhookAuthMode || metadata?.webhookAuthMode || "auto";
+        const defaultEventType = config?.defaultEventType;
+        const lifespan = metadata?.webhookLifespan || config?.webhookLifespan;
         const expiresAtRaw =
-          tenantObj.metadata?.webhookExpiresAt ||
-          tenantObj.config?.webhookExpiresAt ||
-          null;
+          metadata?.webhookExpiresAt || config?.webhookExpiresAt || null;
 
         const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
         const expired = expiresAt ? isWebhookExpired(expiresAt) : false;
         const hasSecret = Boolean(
-          tenantObj.metadata?.webhookSecretHash ||
-            tenantObj.config?.webhookAuth,
+          metadata?.webhookSecretHash || config?.webhookAuth,
         );
 
         let remainingDays: number | null = null;
@@ -125,7 +120,7 @@ export const onboardingWebhookRoutes = new Elysia()
 
         const integrationExamples = buildIntegrationExamples(
           webhookUrl,
-          tenantObj.config?.webhookAuth ? "••••••••" : undefined,
+          config?.webhookAuth ? "••••••••" : undefined,
         );
 
         return ResponseBuilder.success({
@@ -171,34 +166,24 @@ export const onboardingWebhookRoutes = new Elysia()
         const tenant = await tenantService.getTenantById(params.tenantId);
         const isObject = typeof tenant.toObject === "function";
         const tenantObj = isObject ? tenant.toObject() : tenant;
+        const config = tenantObj.config;
+        const metadata = tenantObj.metadata;
 
-        const webhookUrl =
-          tenantObj.metadata?.webhookUrl ||
-          tenantObj.config?.webhookUrl ||
-          null;
-        const webhookPath = tenantObj.metadata?.webhookPath || null;
-        const webhookEnabled = Boolean(tenantObj.config?.webhookEnabled);
-        const invoiceIdKey = tenantObj.config?.invoiceIdKey || "invoiceId";
+        const webhookUrl = metadata?.webhookUrl || config?.webhookUrl;
+        const webhookPath = metadata?.webhookPath || config?.webhookPath;
+        const webhookEnabled = Boolean(config?.webhookEnabled);
+        const invoiceIdKey = config?.invoiceIdKey || "invoiceId";
         const webhookAuthMode =
-          tenantObj.config?.webhookAuthMode ||
-          tenantObj.metadata?.webhookAuthMode ||
-          "auto";
-        const defaultEventType =
-          tenantObj.config?.defaultEventType || "invoice.received";
-        const lifespan =
-          tenantObj.metadata?.webhookLifespan ||
-          tenantObj.config?.webhookLifespan ||
-          null;
+          config?.webhookAuthMode || metadata?.webhookAuthMode;
+        const defaultEventType = config?.defaultEventType;
+        const lifespan = metadata?.webhookLifespan || config?.webhookLifespan;
         const expiresAtRaw =
-          tenantObj.metadata?.webhookExpiresAt ||
-          tenantObj.config?.webhookExpiresAt ||
-          null;
+          metadata?.webhookExpiresAt || config?.webhookExpiresAt;
 
         const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
         const expired = expiresAt ? isWebhookExpired(expiresAt) : false;
         const hasSecret = Boolean(
-          tenantObj.metadata?.webhookSecretHash ||
-            tenantObj.config?.webhookAuth,
+          metadata?.webhookSecretHash || config?.webhookAuth,
         );
 
         let remainingDays: number | null = null;
@@ -273,7 +258,9 @@ export const onboardingWebhookRoutes = new Elysia()
         const webhookAuthMode =
           body?.webhookAuthMode ?? tenantObj.config?.webhookAuthMode ?? "auto";
         const defaultEventType =
-          body?.defaultEventType ?? tenantObj.config?.defaultEventType ?? "invoice.received";
+          body?.defaultEventType ??
+          tenantObj.config?.defaultEventType ??
+          "invoice.received";
 
         const { lifespan, expiresAt } = calculateWebhookExpiry(body?.lifespan);
 
@@ -510,14 +497,10 @@ export const onboardingWebhookRoutes = new Elysia()
         const startTime = Date.now();
 
         try {
-          const response = await axios.post(
-            targetUrl,
-            testPayload,
-            {
-              headers,
-              timeout: 10000,
-            },
-          );
+          const response = await axios.post(targetUrl, testPayload, {
+            headers,
+            timeout: 10000,
+          });
 
           testResult = {
             success: true,

@@ -32,7 +32,7 @@ export const addERPDictionaryValidation = {
       t.String(),
     ]),
     invoice: t.Any({ default: {} }),
-    metadata: t.Optional(t.Union([TenantSchema, t.Record(t.String(), t.Any())])),
+    metadata: t.Optional(t.Record(t.String(), t.Any())),
   }),
   
   detail: {
