@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { FIRSInvoiceTransformerV2 } from "../src/v1/workflow/utils/transformer/v2";
 import { DeterministicCompleter } from "../src/v1/workflow/utils/transformer/deterministic-completer";
 import { TransformerCircuitBreaker } from "../src/v1/workflow/utils/transformer/circuit-breaker";
+import { CircuitBreakerState } from "../src/v1/workflow/models/circuit-breaker-state.model";
 import { FIRSInvoiceSchema } from "../src/v1/workflow/utils/transformer";
 import { verifyWebhookSignature, signWebhookPayload } from "../src/v1/webhook/utils/webhook-signature.helper";
 import { parseXmlToJson, isXmlPayload } from "../src/v1/webhook/utils/xml-parser.helper";
@@ -900,13 +901,17 @@ describe("Comprehensive Realistic End-to-End Test Suite for Real Zoho Books Payl
 
   test("Scenario 5: Circuit Breaker Failure Recovery on 429 LLM Rate Limit", async () => {
     const circuitBreaker = TransformerCircuitBreaker.getInstance();
-    circuitBreaker.reset();
+    const breakerKey = { tenantId: "zoho-e2e", provider: "openai" };
+    await circuitBreaker.reset(breakerKey);
 
     const rateLimitError = new Error("429 Too Many Requests: Rate limit reached");
-    circuitBreaker.recordFailure(rateLimitError);
+    // Threshold is 3 — a single 429 no longer latches the breaker open.
+    for (let i = 0; i < 3; i++) {
+      await circuitBreaker.recordFailure(rateLimitError, breakerKey);
+    }
 
-    expect(circuitBreaker.getState()).toBe("OPEN");
-    expect(circuitBreaker.canExecute()).toBe(false);
+    expect(await circuitBreaker.getState(breakerKey)).toBe(CircuitBreakerState.OPEN);
+    expect(await circuitBreaker.canExecute(breakerKey)).toBe(false);
 
     // Call transformer when circuit breaker is open
     const transformer = new FIRSInvoiceTransformerV2("fake_key");

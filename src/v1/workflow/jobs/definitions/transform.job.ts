@@ -27,15 +27,27 @@ export function registerTransformJob(): void {
         const tenantDoc = await tenantRepo.findByTenantId(tenantId);
         if (tenantDoc) {
           const tenantObj = typeof tenantDoc.toObject === "function" ? tenantDoc.toObject() : tenantDoc;
-          effectiveAuthContext = {
+          const hydrated: Record<string, any> = {
             tenantId: tenantObj.tenantId,
             businessId: tenantObj.businessId || tenantObj.tenantId,
             businessTIN: tenantObj.metadata?.tin || tenantObj.config?.tin || tenantObj.tin,
             businessName: tenantObj.name,
             tenantERP: tenantObj.config?.erpSystem || tenantObj.metadata?.erpSystem || effectiveSourceType,
             tenantMappings: tenantObj.metadata?.webhookFieldMappings || tenantObj.config?.mappingRules || [],
-            ...effectiveAuthContext,
           };
+
+          // Merge per key instead of spreading the job's authContext last.
+          // The orchestrator always emits tenantERP as an explicit key, and
+          // Agenda's Mongo round-trip turns an undefined value into null, so a
+          // trailing spread put that empty value straight back over the value
+          // we just loaded and the hydration never took effect.
+          const merged: Record<string, any> = { ...hydrated };
+          for (const [key, value] of Object.entries(effectiveAuthContext)) {
+            if (value !== undefined && value !== null && value !== "") {
+              merged[key] = value;
+            }
+          }
+          effectiveAuthContext = merged;
           if (!effectiveSourceType) {
             effectiveSourceType = effectiveAuthContext.tenantERP;
           }
@@ -58,9 +70,9 @@ export function registerTransformJob(): void {
       if (irn) {
         const upsertPayload: Partial<OutboundInvoiceDocument> = {
           irn,
-          tenantId: authContext?.tenantId ?? tenantId,
-          erpSystem: authContext?.tenantERP,
-          createdBy: authContext?.tenantId ?? tenantId,
+          tenantId: effectiveAuthContext?.tenantId ?? tenantId,
+          erpSystem: effectiveAuthContext?.tenantERP ?? effectiveSourceType,
+          createdBy: effectiveAuthContext?.tenantId ?? tenantId,
           source:
             (context.source as OutboundInvoiceSource) ??
             OutboundInvoiceSource.API,
