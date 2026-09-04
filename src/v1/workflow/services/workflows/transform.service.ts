@@ -51,13 +51,13 @@ export class TransformWorkflowService {
     defaultTtlMs: 600_000,
   });
 
-  constructor(dep?: {
+  constructor(_?: {
     tenantService?: TenantService;
     invoiceRepo?: InvoiceSchemaDictionaryRepository;
   }) {
-    this.tenantService = dep?.tenantService ?? new TenantService();
+    this.tenantService = _?.tenantService ?? new TenantService();
     this.invoiceRepo =
-      dep?.invoiceRepo ?? new InvoiceSchemaDictionaryRepository();
+      _?.invoiceRepo ?? new InvoiceSchemaDictionaryRepository();
   }
 
   /**

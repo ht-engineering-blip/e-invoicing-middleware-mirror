@@ -26,6 +26,7 @@ import {
   webhookBus,
 } from "../utils/webhook-signature.helper";
 import { isWebhookExpired } from "../utils/webhook-lifespan.helper";
+import { parseXmlToJson, isXmlPayload } from "../utils/xml-parser.helper";
 
 export const inboundWebhookRoutes = new Elysia()
   .decorate("tenantRepo", new TenantRepository())
@@ -41,6 +42,7 @@ export const inboundWebhookRoutes = new Elysia()
     "/inbound/:webhookPath",
     async ({
       params,
+      query,
       body: rawBody,
       headers,
       set,
@@ -50,7 +52,7 @@ export const inboundWebhookRoutes = new Elysia()
       outboundRepo,
     }) => {
       const { webhookPath } = params;
-      let body: Record<string, unknown>;
+      let body: Record<string, unknown> = {};
 
       const tenant = await tenantRepo.findByWebhookPath(webhookPath);
       if (!tenant) {
@@ -79,10 +81,33 @@ export const inboundWebhookRoutes = new Elysia()
       const rawText =
         typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody || {});
 
+      // Parse payload (supports JSON and XML)
+      const contentType = (headers["content-type"] || "").toLowerCase();
+      if (typeof rawBody === "string") {
+        if (contentType.includes("xml") || isXmlPayload(rawBody)) {
+          body = parseXmlToJson(rawBody);
+        } else {
+          try {
+            body = JSON.parse(rawBody) as Record<string, unknown>;
+          } catch (err) {
+            if (isXmlPayload(rawBody)) {
+              body = parseXmlToJson(rawBody);
+            } else {
+              set.status = 400;
+              return ResponseBuilder.error("Invalid JSON or XML payload", 400);
+            }
+          }
+        }
+      } else if (typeof rawBody === "object" && rawBody !== null) {
+        body = rawBody as Record<string, unknown>;
+      }
+
       const verificationResult = await verifyWebhookSignature({
         headers,
         rawBody: rawText,
         tenant,
+        query: (query || {}) as Record<string, string | undefined>,
+        bodyObj: body,
       });
 
       if (!verificationResult.success) {
@@ -93,19 +118,12 @@ export const inboundWebhookRoutes = new Elysia()
         );
       }
 
-      try {
-        body = (
-          typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody
-        ) as Record<string, unknown>;
-      } catch (err) {
-        set.status = 400;
-        return ResponseBuilder.error("Invalid JSON payload", 400);
-      }
-
       const eventType =
         (headers["x-event-type"] as string | undefined) ||
+        (headers["x-webhook-event"] as string | undefined) ||
         (body?.event as string | undefined) ||
         (body?.eventType as string | undefined) ||
+        (tenant.config?.defaultEventType as string | undefined) ||
         WebhookEventType.INVOICE_RECEIVED;
 
       const idempotencyKey =
