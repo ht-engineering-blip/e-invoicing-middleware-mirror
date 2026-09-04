@@ -165,6 +165,7 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const sourceStr = String(sourceType || "");
       const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const regex = new RegExp(`^${escaped}$`, "i");
 
       let doc = await this.model
@@ -215,6 +216,7 @@ export class InvoiceSchemaDictionaryRepository {
     try {
       const sourceStr = String(sourceType || "");
       const escaped = sourceStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const regex = new RegExp(`^${escaped}$`, "i");
 
       const query: Record<string, unknown> = { source_type: { $regex: regex } };
