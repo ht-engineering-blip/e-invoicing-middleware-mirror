@@ -11,7 +11,7 @@ import { AuthContext } from "../../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../models";
 import { TransformWorkflowService } from "../../services";
 import { DeterministicCompleter } from "./deterministic-completer";
-import { TransformerCircuitBreaker, isRateLimitError } from "./circuit-breaker";
+import { TransformerCircuitBreaker } from "./circuit-breaker";
 import {
   extractCurrency,
   generateInvoiceRef,
@@ -257,40 +257,20 @@ export class FIRSInvoiceTransformerV2 {
 
       let completed = reconcileResult.completedData;
       const circuitBreaker = TransformerCircuitBreaker.getInstance();
-      const breakerKey = {
-        tenantId: authContext?.tenantId,
-        provider: this.provider,
-      };
 
       // Step 3: Check if LLM API call is needed
       const missing = reconcileResult.missingFields;
-      const aiAvailable =
-        !!aiConfig?.enabled &&
-        !(this.provider === "openai" && !aiConfig?.openaiEnabled);
 
       if (missing.length === 0) {
         logger.info(
           "[TransformerV2] Deterministic transformation 100% compliant. Skipped LLM call entirely.",
           { irn: completed.irn, tenantId: authContext?.tenantId },
         );
-      } else if (aiAvailable && !(await circuitBreaker.canExecute(breakerKey))) {
-        // Fail loudly instead of emitting a half-filled invoice. Previously the
-        // breaker being OPEN produced a degraded result that passed this step
-        // and then failed at validate/sign, which pointed at the wrong step and
-        // made every retry inside the cooldown look like a transform success.
-        const waitSeconds =
-          await circuitBreaker.cooldownRemainingSeconds(breakerKey);
+      } else if (!circuitBreaker.canExecute()) {
         logger.warn(
-          "[TransformerV2] Circuit breaker OPEN — refusing to emit an incomplete invoice.",
-          { missingFields: missing, tenantId: authContext?.tenantId, waitSeconds },
+          "[TransformerV2] Circuit breaker is OPEN (LLM rate limits / downtime active). Using deterministic fallback.",
+          { missingFields: missing, tenantId: authContext?.tenantId },
         );
-        return {
-          success: false,
-          error:
-            `LLM completion is temporarily unavailable (circuit breaker OPEN, retry in ~${waitSeconds}s). ` +
-            `${missing.length} required field(s) could not be resolved deterministically: ${missing.join(", ")}`,
-          originalInvoice: invoice,
-        };
       } else if (
         !aiConfig?.enabled ||
         (this.provider === "openai" && !aiConfig?.openaiEnabled)
@@ -313,7 +293,7 @@ export class FIRSInvoiceTransformerV2 {
           );
 
           const response = await this.callLLM(prompt);
-          await circuitBreaker.recordSuccess(breakerKey);
+          circuitBreaker.recordSuccess();
 
           const rawParsed = this.safeParseLLMJSON(response);
           const parsed = filterAllowedLLMFields(rawParsed) as Record<string, any>;
@@ -321,14 +301,10 @@ export class FIRSInvoiceTransformerV2 {
           // Deep Merge Protection: Never overwrite deterministically mapped fields
           completed = this.deepMergePreserveExisting(completed, parsed);
         } catch (llmErr: any) {
-          await circuitBreaker.recordFailure(llmErr, breakerKey);
+          circuitBreaker.recordFailure(llmErr);
           logger.warn(
             `[TransformerV2] LLM API call failed (${llmErr.message}). Safe fallback engaged.`,
-            {
-              missingFields: missing,
-              tenantId: authContext?.tenantId,
-              rateLimited: isRateLimitError(llmErr),
-            },
+            { missingFields: missing, tenantId: authContext?.tenantId },
           );
         }
       }
@@ -342,14 +318,7 @@ export class FIRSInvoiceTransformerV2 {
 
       const validation = this.validateWithZod(completed, firsZodSchema);
 
-      // Gated on a fresh breaker read rather than the primary call's result:
-      // when the breaker is OPEN we have already returned above, so this can
-      // no longer be silently disabled at the same time as the main LLM path.
-      if (
-        !validation.valid &&
-        aiAvailable &&
-        (await circuitBreaker.canExecute(breakerKey))
-      ) {
+      if (!validation.valid && circuitBreaker.canExecute() && aiConfig?.enabled) {
         try {
           const repaired = await this.repairJSON(
             completed,
