@@ -9,23 +9,14 @@ import { eventRoutingRoutes } from "./routes/event-routing.routes";
  * Admin Module Routes
  * All routes require admin authentication via x-admin-key header
  */
-export const adminModuleRoutes = new Elysia()
-  .group("/admin", (app) =>
-    app
-      .use(firsConfigRoutes)
-      .use(erpConfigRoutes)
-      .use(sandboxRoutes)
-      .use(referenceRoutes)
-      .use(eventRoutingRoutes),
-  )
-  .group("/v1/admin", (app) =>
-    app
-      .use(firsConfigRoutes)
-      .use(erpConfigRoutes)
-      .use(sandboxRoutes)
-      .use(referenceRoutes)
-      .use(eventRoutingRoutes),
-  );
+export const adminModuleRoutes = new Elysia().group("/admin", (app) =>
+  app
+    .use(firsConfigRoutes)
+    .use(erpConfigRoutes)
+    .use(sandboxRoutes)
+    .use(referenceRoutes)
+    .use(eventRoutingRoutes),
+);
 
 // Export models and services for use elsewhere
 export * from "./models";
