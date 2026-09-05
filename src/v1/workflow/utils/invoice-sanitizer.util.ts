@@ -1,4 +1,5 @@
 import { generateUniqueHsnCode } from "./transformer/classification.helper";
+import { ValidationError } from "../../../@lib/errors";
 
 /**
  * Sanitizes and normalizes an invoice payload before dispatching to FIRS or validation services.
@@ -773,7 +774,9 @@ export function sanitizeInvoicePayload(
  * is already valid.
  */
 const MIN_TIN_LENGTH = 5;
-const FALLBACK_TIN = "00000000-0000";
+
+const isNonEmptyString = (v: unknown): boolean =>
+  typeof v === "string" && v.trim() !== "";
 
 /** FIRS rejects numeric fields sent as strings, so coerce rather than trust. */
 function asNumber(value: unknown, fallback = 0): number {
@@ -788,6 +791,8 @@ function asNumber(value: unknown, fallback = 0): number {
 function enforceParty(
   party: Record<string, unknown>,
   fallbackName: string,
+  label: string,
+  missing: string[],
 ): void {
   if (
     typeof party.party_name !== "string" ||
@@ -797,12 +802,15 @@ function enforceParty(
   }
   party.name = party.party_name;
 
-  // "accountingcustomerparty.tin must be at least in length or value 5"
+  // A TIN is a real tax identifier. Defaulting it would file the invoice
+  // against the wrong entity and hide a broken mapping, so it is reported
+  // rather than invented. ("accountingcustomerparty.tin must be at least in
+  // length or value 5")
   if (
     typeof party.tin !== "string" ||
     party.tin.trim().length < MIN_TIN_LENGTH
   ) {
-    party.tin = FALLBACK_TIN;
+    missing.push(`${label}.tin`);
   } else {
     party.tin = party.tin.trim();
   }
@@ -844,6 +852,25 @@ export function enforceFirsRequiredFields(
 ): Record<string, unknown> {
   if (!invoice || typeof invoice !== "object") return invoice;
 
+  // Fields that carry real-world meaning are collected and reported together,
+  // rather than defaulted. Reporting them in one error matters: FIRS surfaces
+  // only the first field it rejects, which is what turned this into a
+  // one-fix-per-deploy loop in the first place.
+  const missing: string[] = [];
+
+  // ── Identity ─────────────────────────────────────────────────────────────
+  // business_id is injected upstream from the tenant profile, not supplied by
+  // the field mapping, so it is backstopped rather than treated as a mapping
+  // error. tenant_id is the same identifier on the job payload.
+  if (!isNonEmptyString(invoice.business_id) && isNonEmptyString(invoice.tenant_id)) {
+    invoice.business_id = (invoice.tenant_id as string).trim();
+  }
+  if (!isNonEmptyString(invoice.irn)) {
+    // Never invent an IRN — it is the document's identity, and a fabricated
+    // one risks colliding with a real submission.
+    missing.push("irn");
+  }
+
   // ── Parties ──────────────────────────────────────────────────────────────
   if (!invoice.accounting_supplier_party || typeof invoice.accounting_supplier_party !== "object") {
     invoice.accounting_supplier_party = {};
@@ -851,6 +878,8 @@ export function enforceFirsRequiredFields(
   enforceParty(
     invoice.accounting_supplier_party as Record<string, unknown>,
     "Supplier Party",
+    "accounting_supplier_party",
+    missing,
   );
 
   if (!invoice.accounting_customer_party || typeof invoice.accounting_customer_party !== "object") {
@@ -859,6 +888,8 @@ export function enforceFirsRequiredFields(
   enforceParty(
     invoice.accounting_customer_party as Record<string, unknown>,
     "Customer Party",
+    "accounting_customer_party",
+    missing,
   );
 
   // ── Invoice lines ────────────────────────────────────────────────────────
@@ -949,6 +980,14 @@ export function enforceFirsRequiredFields(
     lmt.payable_amount,
     lmt.tax_inclusive_amount as number,
   );
+
+  if (missing.length > 0) {
+    throw new ValidationError(
+      `Invoice cannot be submitted: ${missing.join(", ")} ` +
+        `${missing.length === 1 ? "is" : "are"} required and cannot be safely defaulted. ` +
+        `Check the tenant's field mapping for ${missing.join(", ")}.`,
+    );
+  }
 
   return invoice;
 }

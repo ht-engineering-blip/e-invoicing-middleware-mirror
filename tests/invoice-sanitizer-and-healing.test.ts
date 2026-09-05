@@ -105,6 +105,9 @@ describe("FIRS Schema 1.1 Sanitizer & Self-Healing Engine Unit Tests", () => {
   it("should auto-heal FIRS rejection errors with autoFixInvoiceFromFIRSError", () => {
     const invalidInvoice = {
       irn: "INV001-8593BD6E-20260830",
+      business_id: "BIZ-TEST",
+      accounting_supplier_party: { party_name: "Sup", tin: "01621734-0001" },
+      accounting_customer_party: { party_name: "Cust", tin: "01621734-0002" },
       tax_total: [
         {
           tax_amount: 75,
@@ -158,6 +161,9 @@ describe("FIRS Schema 1.1 Sanitizer & Self-Healing Engine Unit Tests", () => {
     let attempts = 0;
     const testInvoice = {
       irn: "INV-TEST-8593BD6E-20260830",
+      business_id: "BIZ-TEST",
+      accounting_supplier_party: { party_name: "Sup", tin: "01621734-0001" },
+      accounting_customer_party: { party_name: "Cust", tin: "01621734-0002" },
       invoice_line: [
         {
           item: { name: "Software Subscription", description: "" },
