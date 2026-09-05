@@ -40,6 +40,25 @@ import {
  CLASS
 ----------------------------------------------------- */
 
+/**
+ * Removes source-envelope wrappers from a finished FIRS payload.
+ *
+ * The transform result is built as { ...sourcePayload, ...mapped }, so an ERP
+ * webhook body shaped { invoice: {...} } leaves an `invoice` key behind. The
+ * deterministic completer reads raw source fields out of that object while it
+ * fills gaps, so it can only be dropped once the payload is finished. If it
+ * survives, downstream sanitisation treats the whole payload as an envelope and
+ * unwraps to the raw ERP object — which FIRS rejects with
+ * "invoicerequest.invoice.taxcurrencycode is required".
+ */
+function stripEnvelopeKeys(
+  payload: Record<string, any>,
+): Record<string, any> {
+  if (!payload || typeof payload !== "object") return payload;
+  const { invoice: _envelope, data: _data, ...rest } = payload;
+  return rest;
+}
+
 export class FIRSInvoiceTransformerV2 {
   private apiKey: string;
   private apiEndpoint: string;
@@ -587,7 +606,7 @@ export class FIRSInvoiceTransformerV2 {
 
       return {
         success: true,
-        data: completed,
+        data: stripEnvelopeKeys(completed),
       };
     } catch (err: unknown) {
       const errorMessage =

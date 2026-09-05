@@ -4,14 +4,49 @@ import { generateUniqueHsnCode } from "./transformer/classification.helper";
  * Sanitizes and normalizes an invoice payload before dispatching to FIRS or validation services.
  * Implements full FIRS/NRS Schema 1.1 compliance for all required and optional structures.
  */
+/**
+ * Fields that only ever appear on an already-transformed FIRS invoice. Their
+ * presence means the object IS the invoice, not an envelope wrapping one.
+ */
+const FIRS_INVOICE_MARKERS = [
+  "irn",
+  "invoice_line",
+  "accounting_supplier_party",
+  "accounting_customer_party",
+  "legal_monetary_total",
+  "invoice_reference",
+  "tax_currency_code",
+] as const;
+
 export function sanitizeInvoicePayload(
   rawInvoice: Record<string, any>,
 ): Record<string, unknown> {
   if (!rawInvoice || typeof rawInvoice !== "object") return rawInvoice;
 
-  // Handle nested envelopes if passed
+  // Handle nested envelopes if passed.
+  //
+  // Only unwrap when the payload is NOT already a FIRS invoice. The
+  // transformer builds its result as { ...sourcePayload, ...mapped }, so when
+  // the ERP webhook body is shaped { invoice: {...} } the result carries a
+  // leftover `invoice` key. Unwrapping on that key discarded every field the
+  // transformer had produced — tax_currency_code, invoice_line, payment_means,
+  // payment_status, invoice_reference — and handed FIRS the raw ERP object,
+  // which it rejected with "invoicerequest.invoice.taxcurrencycode is
+  // required".
+  const looksLikeFirsInvoice = (o: unknown): boolean => {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return false;
+    const rec = o as Record<string, unknown>;
+    return FIRS_INVOICE_MARKERS.some((k) => rec[k] !== undefined);
+  };
+
   let invoice: Record<string, unknown>;
-  if (rawInvoice.data && typeof rawInvoice.data === "object") {
+  if (looksLikeFirsInvoice(rawInvoice)) {
+    invoice = rawInvoice;
+    // Drop any leftover envelope wrapper so the raw ERP object is not shipped
+    // to FIRS alongside the mapped fields.
+    delete invoice.invoice;
+    delete invoice.data;
+  } else if (rawInvoice.data && typeof rawInvoice.data === "object") {
     invoice = rawInvoice.data as Record<string, unknown>;
   } else if (rawInvoice.invoice && typeof rawInvoice.invoice === "object") {
     invoice = rawInvoice.invoice as Record<string, unknown>;
@@ -49,6 +84,18 @@ export function sanitizeInvoicePayload(
     invoice.document_currency_code = invoice.document_currency_code
       .trim()
       .toUpperCase();
+  }
+
+  // FIRS requires taxcurrencycode. document_currency_code was defaulted above
+  // but this one was not, so any payload that lost it failed validation.
+  if (
+    !invoice.tax_currency_code ||
+    typeof invoice.tax_currency_code !== "string" ||
+    invoice.tax_currency_code.trim() === ""
+  ) {
+    invoice.tax_currency_code = invoice.document_currency_code as string;
+  } else {
+    invoice.tax_currency_code = invoice.tax_currency_code.trim().toUpperCase();
   }
 
   if (
