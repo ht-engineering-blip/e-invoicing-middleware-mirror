@@ -7,6 +7,7 @@ import {
   resolveCurrencyCode,
   sanitizePriceUnit,
 } from "./utils";
+import { ensureBusinessDescription } from "../invoice-sanitizer.util";
 
 export interface ReconcileResult {
   completedData: Record<string, any>;
@@ -123,6 +124,12 @@ export class DeterministicCompleter {
     supplier.party_name = supplier.party_name || supplier.name || expectedSupplierName;
     supplier.name = supplier.party_name;
     supplier.email = defaultEmail(supplier.email, "supplier@business.com");
+    // FIRS requires businessdescription to be at least 5 characters on both
+    // parties. Nothing upstream supplies one, so derive it from the party name.
+    supplier.business_description = ensureBusinessDescription(
+      supplier,
+      supplier.party_name,
+    );
     supplier.postal_address = defaultAddress(supplier.postal_address);
 
     // 2. Customer Party Auto-Completion
@@ -154,6 +161,10 @@ export class DeterministicCompleter {
       }
     }
     customer.email = defaultEmail(customer.email, "customer@domain.com");
+    customer.business_description = ensureBusinessDescription(
+      customer,
+      customer.party_name,
+    );
     customer.postal_address = defaultAddress(customer.postal_address);
 
     // 3. IRN & Invoice Reference Resolution

@@ -68,7 +68,13 @@ describe("sanitizeInvoicePayload — envelope handling", () => {
 
   it("still unwraps a genuine envelope", () => {
     const out: any = sanitizeInvoicePayload({
-      invoice: { irn: "X", tax_currency_code: "USD", customer_name: "C" },
+      invoice: {
+        irn: "X",
+        business_id: "BIZ",
+        tax_currency_code: "USD",
+        accounting_supplier_party: { party_name: "S", tin: "00364075-0001" },
+        accounting_customer_party: { party_name: "C", tin: "00364075-0002" },
+      },
     });
     expect(out.irn).toBe("X");
     expect(out.tax_currency_code).toBe("USD");
@@ -76,7 +82,13 @@ describe("sanitizeInvoicePayload — envelope handling", () => {
 
   it("still unwraps a { data } envelope", () => {
     const out: any = sanitizeInvoicePayload({
-      data: { irn: "D1", tax_currency_code: "EUR" },
+      data: {
+        irn: "D1",
+        business_id: "BIZ",
+        tax_currency_code: "EUR",
+        accounting_supplier_party: { party_name: "S", tin: "00364075-0001" },
+        accounting_customer_party: { party_name: "C", tin: "00364075-0002" },
+      },
     });
     expect(out.irn).toBe("D1");
   });
@@ -84,21 +96,21 @@ describe("sanitizeInvoicePayload — envelope handling", () => {
 
 describe("sanitizeInvoicePayload — tax_currency_code is always present", () => {
   it("falls back to the document currency", () => {
-    const out: any = sanitizeInvoicePayload({ irn: "Y", document_currency_code: "USD" });
+    const out: any = sanitizeInvoicePayload({ irn: "Y", business_id: "BIZ", accounting_supplier_party: { party_name: "S", tin: "00364075-0001" }, accounting_customer_party: { party_name: "C", tin: "00364075-0002" }, document_currency_code: "USD" });
     expect(out.tax_currency_code).toBe("USD");
   });
 
   it("falls back to NGN when neither is supplied", () => {
-    expect((sanitizeInvoicePayload({ irn: "Z" }) as any).tax_currency_code).toBe("NGN");
+    expect((sanitizeInvoicePayload({ irn: "Z", business_id: "BIZ", accounting_supplier_party: { party_name: "S", tin: "00364075-0001" }, accounting_customer_party: { party_name: "C", tin: "00364075-0002" }, }) as any).tax_currency_code).toBe("NGN");
   });
 
   it("normalises a supplied value", () => {
-    const out: any = sanitizeInvoicePayload({ irn: "A", tax_currency_code: " ngn " });
+    const out: any = sanitizeInvoicePayload({ irn: "A", business_id: "BIZ", accounting_supplier_party: { party_name: "S", tin: "00364075-0001" }, accounting_customer_party: { party_name: "C", tin: "00364075-0002" }, tax_currency_code: " ngn " });
     expect(out.tax_currency_code).toBe("NGN");
   });
 
   it("replaces a blank value", () => {
-    const out: any = sanitizeInvoicePayload({ irn: "B", tax_currency_code: "   " });
+    const out: any = sanitizeInvoicePayload({ irn: "B", business_id: "BIZ", accounting_supplier_party: { party_name: "S", tin: "00364075-0001" }, accounting_customer_party: { party_name: "C", tin: "00364075-0002" }, tax_currency_code: "   " });
     expect(out.tax_currency_code).toBe("NGN");
   });
 });
