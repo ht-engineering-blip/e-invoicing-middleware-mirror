@@ -198,7 +198,10 @@ export class DeterministicCompleter {
 
     // 5. Invoice Type Code & Kind
     if (!res.invoice_type_code) {
-      res.invoice_type_code = res.invoiceTypeCode || "396";
+      // 380 = Commercial Invoice (UNCL1001/UBL). A standard sales invoice is
+      // not an "Invoice Request" (396); that default was misclassifying every
+      // ordinary invoice. An explicitly supplied code still wins.
+      res.invoice_type_code = res.invoiceTypeCode || "380";
     }
     if (!res.invoice_kind) {
       res.invoice_kind = res.invoiceKind || "B2B";

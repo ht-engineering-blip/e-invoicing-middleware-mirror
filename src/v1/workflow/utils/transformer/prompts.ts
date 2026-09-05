@@ -4,7 +4,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
     "issue_date": "2024-05-14",
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
-    "invoice_type_code": "396",
+    "invoice_type_code": "380",
     "invoice_kind": "B2B",
     "payment_status": "PENDING",
     "note": "dummy_note (will be encryted in storage)",
@@ -169,7 +169,7 @@ MANDATORY FIELDS (MUST BE PRESENT):
 - business_id: Use "{{TEST_BUSINESS_ID}}" if not provided
 - irn: Generate a unique invoice reference if not provided (format: INVYYYYMMDDXXX)
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, default to "396" if not specified
+- invoice_type_code: REQUIRED, default to "380" (Commercial Invoice) if not specified
 - invoice_kind: REQUIRED, default to "B2B" if not specified
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address

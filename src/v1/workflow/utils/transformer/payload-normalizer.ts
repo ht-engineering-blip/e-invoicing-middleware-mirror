@@ -96,7 +96,8 @@ export function normalizeInvoicePayload(
   }
 
   // 5. Resolve Invoice Type Code
-  let invoiceTypeCode = "396";
+  // 380 = Commercial Invoice (UNCL1001/UBL); see deterministic-completer.
+  let invoiceTypeCode = "380";
   if (
     typeof rawInvoice.invoice_type_code === "string" &&
     rawInvoice.invoice_type_code.trim() !== ""

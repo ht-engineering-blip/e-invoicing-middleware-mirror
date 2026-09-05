@@ -119,7 +119,7 @@ export const FIRSInvoiceSchema = z.object({
   issue_date: DateSchema,
   due_date: DateSchema.optional(),
   issue_time: TimeSchema.optional(),
-  invoice_type_code: z.string().default("396"),
+  invoice_type_code: z.string().default("380"),
   invoice_kind: z.string().default("B2B"),
   payment_status: z.string().default("PENDING"),
   note: z.string().optional(),

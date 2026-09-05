@@ -312,7 +312,7 @@ export class FIRSInvoiceTransformer {
           if (original === "381" || original === "380" || original === "384") {
             fixed.invoice_type_code = original;
           } else {
-            fixed.invoice_type_code = "396";
+            fixed.invoice_type_code = "380";
           }
         } else if (path === "document_currency_code") {
           fixed.document_currency_code = "NGN";
