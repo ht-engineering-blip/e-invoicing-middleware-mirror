@@ -185,6 +185,35 @@ export function formatJobError(error: any): string {
  * - Records the last failure on the OutboundInvoice (best-effort)
  * - Marks the webhook event as FAILED and stops the chain
  */
+/**
+ * Pulls the provider's structured error off a thrown error, wherever it sits.
+ * Job steps wrap upstream failures to varying depths, so check the common
+ * carriers rather than assuming one shape.
+ */
+export function extractProviderError(
+  error: any,
+): Record<string, unknown> | undefined {
+  const candidate =
+    error?.providerError ??
+    error?.cause?.providerError ??
+    error?.originalError?.providerError;
+
+  if (candidate && typeof candidate === "object") {
+    return candidate as Record<string, unknown>;
+  }
+
+  // Fall back to the raw upstream response body if one is reachable.
+  const body = error?.response?.data ?? error?.cause?.response?.data;
+  if (body && typeof body === "object") {
+    return {
+      httpStatus: error?.response?.status ?? error?.cause?.response?.status,
+      raw: body,
+    };
+  }
+
+  return undefined;
+}
+
 export async function chainFail(
   job: Job<JobChainData>,
   error: Error | any,
@@ -192,21 +221,26 @@ export async function chainFail(
   const data = job.attrs.data;
   const action = data.actions[data.stepIndex];
   const errorMessage = formatJobError(error);
+  const providerError = extractProviderError(error);
 
   logger.error("[Job] Step failed — chain halted", {
     jobChainId: data.jobChainId,
     step: data.stepIndex,
     action,
     error: errorMessage,
+    providerError,
   });
 
-  // Append structured job error to the webhook event
+  // Append structured job error to the webhook event. providerError is stored
+  // alongside the flattened message because the message keeps only what the
+  // upstream API put in its `details` field, which is often generic.
   await webhookEventRepo.appendJobError(data.webhookEventId, {
     step: data.stepIndex,
     action,
     jobChainId: data.jobChainId,
     agendaJobId: job.attrs._id?.toString(),
     error: errorMessage,
+    ...(providerError ? { providerError } : {}),
     failedAt: new Date(),
   });
 
