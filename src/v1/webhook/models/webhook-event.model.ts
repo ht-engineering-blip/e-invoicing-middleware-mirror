@@ -51,6 +51,12 @@ export interface IJobError {
   jobChainId: string;
   agendaJobId?: string;
   error: string;
+  /**
+   * The provider's structured error, when the failure came from an upstream
+   * API. Kept because the flattened `error` string routinely loses the only
+   * field that identifies the cause.
+   */
+  providerError?: Record<string, unknown>;
   failedAt: Date;
 }
 
@@ -196,6 +202,7 @@ const WebhookEventSchema = new Schema<WebhookEventDocument>(
         jobChainId: { type: String, required: true },
         agendaJobId: { type: String },
         error: { type: String, required: true },
+        providerError: { type: Schema.Types.Mixed },
         failedAt: { type: Date, default: Date.now },
       },
     ],
