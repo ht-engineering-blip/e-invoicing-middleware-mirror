@@ -1,4 +1,5 @@
 import { generateUniqueHsnCode } from "./transformer/classification.helper";
+import { DEFAULT_INVOICE_TYPE_CODE } from "./invoice-type";
 
 /**
  * Sanitizes and normalizes an invoice payload before dispatching to FIRS or validation services.
@@ -139,7 +140,7 @@ export function sanitizeInvoicePayload(
     typeof invoice.invoice_type_code !== "string" ||
     invoice.invoice_type_code.trim() === ""
   ) {
-    invoice.invoice_type_code = "380";
+    invoice.invoice_type_code = DEFAULT_INVOICE_TYPE_CODE;
   } else {
     invoice.invoice_type_code = invoice.invoice_type_code.trim();
   }
