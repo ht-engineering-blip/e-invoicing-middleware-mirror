@@ -5,6 +5,7 @@ import { chainNext, chainFail } from "../chain";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { TransformWorkflowService } from "../../services";
 import { getNestedValue } from "../../../../@lib";
+import { InvoiceTypeCode } from "../../utils/invoice-type";
 
 const outboundRepo = new OutboundInvoiceRepository();
 const transformService = new TransformWorkflowService();
@@ -155,7 +156,7 @@ export function registerProcessCreditNoteJob(): void {
         const resolvedInvoiceTypeCode =
           payload.data?.invoice_type_code ??
           payload.invoice_type_code ??
-          (hasLines ? creditNotePayload.invoice_type_code : "380");
+          (hasLines ? creditNotePayload.invoice_type_code : InvoiceTypeCode.CREDIT_NOTE);
 
         creditNotePayload.invoice_type_code = String(
           resolvedInvoiceTypeCode,

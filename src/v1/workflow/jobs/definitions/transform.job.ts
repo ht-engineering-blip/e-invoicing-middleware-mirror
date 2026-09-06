@@ -6,18 +6,31 @@ import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceDocument, OutboundInvoiceSource } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { TenantRepository } from "../../../tenants/repos/tenant.repo";
+import { resolveInvoiceTypeFromEvent } from "../../utils/invoice-type";
 
 const transformService = new TransformWorkflowService();
 
 export function registerTransformJob(): void {
   agenda.define("workflow:transform", async (job: Job<JobChainData>) => {
-    const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+    const { tenantId, authContext, context, jobChainId, eventType } =
+      job.attrs.data;
     const outboundRepo = new OutboundInvoiceRepository();
     logger.info("[Job:transform] Starting", { jobChainId, tenantId });
     console.log({ context: context.irn });
     if (context.irn) {
       context.originalPayload.irn = context.irn;
     }
+    // The document type follows the event: erp.invoice.submitted is a
+    // commercial invoice, erp.creditnote.issued is a credit note. Stamped on
+    // the payload before transforming, so the completer's own default never
+    // has to guess. A type already present on the payload is left alone.
+    if (context.originalPayload && typeof context.originalPayload === "object") {
+      const payload = context.originalPayload as Record<string, unknown>;
+      if (!payload.invoice_type_code) {
+        payload.invoice_type_code = resolveInvoiceTypeFromEvent(eventType);
+      }
+    }
+
     const tenantRepo = new TenantRepository();
     let effectiveAuthContext = (authContext || {}) as any;
     let effectiveSourceType = context.sourceType;

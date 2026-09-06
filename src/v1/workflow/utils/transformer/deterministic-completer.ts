@@ -8,6 +8,7 @@ import {
   sanitizePriceUnit,
 } from "./utils";
 import { ensureBusinessDescription } from "../invoice-sanitizer.util";
+import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
 
 export interface ReconcileResult {
   completedData: Record<string, any>;
@@ -198,10 +199,9 @@ export class DeterministicCompleter {
 
     // 5. Invoice Type Code & Kind
     if (!res.invoice_type_code) {
-      // 380 = Commercial Invoice (UNCL1001/UBL). A standard sales invoice is
-      // not an "Invoice Request" (396); that default was misclassifying every
-      // ordinary invoice. An explicitly supplied code still wins.
-      res.invoice_type_code = res.invoiceTypeCode || "380";
+      // Last resort only — the transform job normally stamps the
+      // event-derived type onto the payload before this runs.
+      res.invoice_type_code = res.invoiceTypeCode || DEFAULT_INVOICE_TYPE_CODE;
     }
     if (!res.invoice_kind) {
       res.invoice_kind = res.invoiceKind || "B2B";
