@@ -6,6 +6,7 @@ import { TransformWorkflowService } from "../../workflow/services";
 import { generateIRN } from "../../workflow/utils/transformer/utils";
 import { generateRandomString, logger, ResponseBuilder } from "../../../@lib";
 import { scheduleJobChain } from "../../workflow/jobs/orchestrator";
+import { INVOICE_TYPE_LABELS } from "../../workflow/utils/invoice-type";
 import {
   generateIrnValidation,
   transformInvoiceValidation,
@@ -398,28 +399,19 @@ const invoiceMgmtRoutes = new Elysia()
   .get(
     "/document-types",
     () => {
-      return ResponseBuilder.success([
-        { code: "380", value: "Credit Note" },
-        { code: "381", value: "Commercial Invoice" },
-        { code: "384", value: "Debit Note" },
-        { code: "385", value: "Self Billed Invoice" },
-        { code: "386", value: "Factored Invoice" },
-        { code: "388", value: "Statement of Account" },
-        { code: "389", value: "Purchase Order" },
-        { code: "390", value: "Proforma Invoice" },
-        { code: "392", value: "Consignment Invoice" },
-        { code: "393", value: "Self-billed Credit Note" },
-        { code: "394", value: "Self-billed Invoice" },
-        { code: "395", value: "Credit Note Request" },
-        { code: "396", value: "Invoice Request" },
-        { code: "397", value: "Final Settlement" },
-        { code: "399", value: "Bill of Lading" },
-        { code: "400", value: "Waybill" },
-        { code: "402", value: "Shipping Instructions" },
-        { code: "404", value: "Certificate of Origin" },
-        { code: "406", value: "Customs Declaration" },
-        { code: "408", value: "Packing List" },
-      ]);
+      // Derived from the shared invoice-type authority so this reference list
+      // can never drift from the codes the pipeline actually stamps.
+      //
+      // The list this replaced was wrong against UNCL1001 in every row — most
+      // damagingly it had 380 and 381 inverted (Credit Note / Commercial
+      // Invoice) and called 384 a Debit Note when it is a Corrected Invoice.
+      // Those entries are the likely origin of invoices going out as 396.
+      return ResponseBuilder.success(
+        Object.entries(INVOICE_TYPE_LABELS).map(([code, value]) => ({
+          code,
+          value,
+        })),
+      );
     },
     getDocumentTypesValidation,
   );

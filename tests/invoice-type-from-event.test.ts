@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   resolveInvoiceTypeFromEvent,
   InvoiceTypeCode,
+  INVOICE_TYPE_LABELS,
 } from "../src/v1/workflow/utils/invoice-type";
 import { resolveInvoiceTypeCode } from "../src/v1/workflow/jobs/definitions/sync-erp.job";
 
@@ -35,8 +36,19 @@ describe("document type follows the event", () => {
     );
   });
 
-  it("maps a debit note event", () => {
-    expect(resolveInvoiceTypeFromEvent("erp.debitnote.issued")).toBe("384");
+  it("maps a debit note event to 383, not 384", () => {
+    // UNCL1001: 383 is Debit note; 384 is Corrected invoice. The old
+    // document-types list conflated the two.
+    expect(resolveInvoiceTypeFromEvent("erp.debitnote.issued")).toBe("383");
+    expect(InvoiceTypeCode.DEBIT_NOTE).toBe("383");
+    expect(InvoiceTypeCode.CORRECTED_INVOICE).toBe("384");
+  });
+
+  it("uses UNCL1001 codes throughout", () => {
+    expect(InvoiceTypeCode.COMMERCIAL_INVOICE).toBe("380");
+    expect(InvoiceTypeCode.CREDIT_NOTE).toBe("381");
+    expect(InvoiceTypeCode.SELF_BILLED_INVOICE).toBe("389");
+    expect(InvoiceTypeCode.FACTORED_INVOICE).toBe("393");
   });
 
   it("defaults an unrecognised event to a commercial invoice", () => {
@@ -55,6 +67,7 @@ describe("the ERP callback agrees with the invoice", () => {
     "invoice.submitted",
     "erp.creditnote.issued",
     "erp.debitnote.issued",
+    "erp.selfbill.issued",
     "unknown.event",
   ];
 
@@ -77,5 +90,24 @@ describe("the ERP callback agrees with the invoice", () => {
     // note event onto the same code a commercial invoice uses.
     expect(resolveInvoiceTypeCode("erp.creditnote.issued", LIST)).toBe("381");
     expect(resolveInvoiceTypeCode("erp.invoice.submitted", LIST)).toBe("380");
+  });
+});
+
+describe("the /document-types reference list", () => {
+  it("is derived from the same constants the pipeline stamps", () => {
+    for (const code of Object.values(InvoiceTypeCode)) {
+      expect(INVOICE_TYPE_LABELS[code]).toBeTruthy();
+    }
+  });
+
+  it("no longer inverts commercial invoice and credit note", () => {
+    expect(INVOICE_TYPE_LABELS["380"]).toBe("Commercial Invoice");
+    expect(INVOICE_TYPE_LABELS["381"]).toBe("Credit Note");
+    expect(INVOICE_TYPE_LABELS["383"]).toBe("Debit Note");
+    expect(INVOICE_TYPE_LABELS["384"]).toBe("Corrected Invoice");
+  });
+
+  it("no longer advertises 396 as an invoice type", () => {
+    expect(INVOICE_TYPE_LABELS["396"]).toBeUndefined();
   });
 });
