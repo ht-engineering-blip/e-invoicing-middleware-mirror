@@ -8,6 +8,7 @@ import type { IERPSyncConfig } from "../../../tenants/models/tenant.model";
 import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import type { InvoiceType } from "../../../../@lib/adapters/firs/types";
 import { buildQrUrl, isSafeUrl } from "../../../../@lib";
+import { resolveInvoiceTypeFromEvent } from "../../utils/invoice-type";
 
 const tenantService = new TenantService();
 const firsService = new FIRSService();
@@ -134,59 +135,36 @@ export function resolveInvoiceTypeCode(
   invoiceTypes: InvoiceType[] = [],
   explicitCode?: string,
 ): string {
-  // 1. Direct code lookup if already present on the invoice
-  if (explicitCode) {
-    const directMatch = invoiceTypes.find(
-      (t) => (t.key || t.code) === explicitCode,
+  // The event decides the document type, via the same map the transform job
+  // uses. Previously this fuzzy-matched the event name against FIRS's
+  // invoice-types resource, which could return a different code than the one
+  // stamped on the invoice — an erp.creditnote.issued resolved to the credit
+  // note code here but the commercial invoice code there, so the ERP router
+  // and the invoice disagreed.
+  const code = resolveInvoiceTypeFromEvent(eventType, explicitCode);
+
+  // FIRS's own list is still worth consulting — but to verify, not to
+  // override. A code it does not recognise is surfaced rather than silently
+  // swapped for a fuzzy match.
+  if (invoiceTypes.length > 0) {
+    const known = invoiceTypes.some(
+      (t) => String(t.key || t.code || "") === code,
     );
-    if (directMatch) return String(directMatch.key || directMatch.code);
-  }
-
-  // 2. Normalize strings for fuzzy matching
-  const sanitize = (text: string) =>
-    text.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normalizedTarget = sanitize(eventType);
-
-  // 3. Match against FIRS invoice-types resource
-  for (const item of invoiceTypes) {
-    const key = String(item.key || item.code || "");
-    const value = item.value || item.description || "";
-    const normalizedValue = sanitize(value);
-
-    if (!key || !normalizedValue) continue;
-
-    // Full or substring match (e.g. "erp.creditnote.issued" contains "creditnote")
-    if (
-      normalizedTarget.includes(normalizedValue) ||
-      normalizedValue.includes(normalizedTarget)
-    ) {
-      return key;
-    }
-
-    // Significant keyword match (words with 4+ chars like "credit", "debit", "factor", "statement")
-    const keywords = value
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length >= 4)
-      .map(sanitize);
-
-    if (
-      keywords.length > 0 &&
-      keywords.every((kw) => normalizedTarget.includes(kw))
-    ) {
-      return key;
+    if (!known) {
+      logger.warn(
+        "[Job:sync-erp] Resolved invoice type is not in the FIRS invoice-types list",
+        {
+          eventType,
+          code,
+          available: invoiceTypes
+            .map((t) => String(t.key || t.code || ""))
+            .filter(Boolean),
+        },
+      );
     }
   }
 
-  // 4. Fallback defaults if resource is empty or no match
-  if (normalizedTarget.includes("credit")) return "380";
-  if (normalizedTarget.includes("debit")) return "384";
-  if (normalizedTarget.includes("self") && normalizedTarget.includes("bill")) {
-    return "385";
-  }
-  if (normalizedTarget.includes("factor")) return "388";
-  if (normalizedTarget.includes("statement")) return "389";
-  return explicitCode ?? "381";
+  return code;
 }
 
 // ── Job definition ────────────────────────────────────────────────────────────

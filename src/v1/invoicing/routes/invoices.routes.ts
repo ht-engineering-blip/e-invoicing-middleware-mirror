@@ -398,6 +398,13 @@ const invoiceMgmtRoutes = new Elysia()
   .get(
     "/document-types",
     () => {
+      // NRS document types, per the documentation for
+      // GET base_url/api/v1/invoice/resources/invoice-types.
+      //
+      // These are NOT the UNCL1001 codes. NRS assigns 380 to Credit Note and
+      // 381 to Commercial Invoice, the opposite of the international standard.
+      // The named constants in workflow/utils/invoice-type.ts cover the subset
+      // used for event resolution and must stay consistent with this list.
       return ResponseBuilder.success([
         { code: "380", value: "Credit Note" },
         { code: "381", value: "Commercial Invoice" },
