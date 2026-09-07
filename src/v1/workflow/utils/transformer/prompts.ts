@@ -187,7 +187,7 @@ TAX TOTAL REQUIREMENTS (VERY IMPORTANT):
 - Each tax_subtotal must contain:
   * taxable_amount: amount subject to tax
   * tax_amount: tax amount for this subtotal
-  * tax_category: object with id and percent
+  * tax_category: object with id (e.g. "STANDARD_VAT") and percent (MUST BE 7.5 for STANDARD_VAT, and 0 for ZERO_VAT / EXEMPT_VAT)
 
 DATE FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")

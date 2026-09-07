@@ -477,11 +477,28 @@ export class DeterministicCompleter {
             if (!st.tax_category || typeof st.tax_category !== "object") {
               st.tax_category = {};
             }
-            const pct = this.toFloat(st.tax_category.percent, 7.5);
-            st.tax_category.percent = pct;
-            if (!st.tax_category.id || typeof st.tax_category.id !== "string") {
-              st.tax_category.id = pct === 0 ? "ZERO_VAT" : "STANDARD_VAT";
+            let pct = this.toFloat(st.tax_category.percent, 7.5);
+            let catId =
+              typeof st.tax_category.id === "string"
+                ? st.tax_category.id.trim().toUpperCase()
+                : "";
+
+            if (catId === "STANDARD_VAT" || (!catId && pct > 0)) {
+              catId = "STANDARD_VAT";
+              pct = 7.5;
+            } else if (
+              catId === "ZERO_VAT" ||
+              catId === "EXEMPT_VAT" ||
+              pct === 0
+            ) {
+              catId = catId || "ZERO_VAT";
+              pct = 0;
+            } else if (pct === 7.5) {
+              catId = "STANDARD_VAT";
             }
+
+            st.tax_category.id = catId || "STANDARD_VAT";
+            st.tax_category.percent = pct;
           }
         }
       }

@@ -172,7 +172,35 @@ describe("FIRS required fields are guaranteed before send", () => {
       const st = out.tax_total[0].tax_subtotal[0];
       expect(st.taxable_amount).toBe(150000);
       expect(st.tax_category.percent).toBe(7.5);
-      expect(st.tax_category.id).toBeTruthy();
+      expect(st.tax_category.id).toBe("STANDARD_VAT");
+    });
+
+    it("strictly enforces percent 7.5 for STANDARD_VAT and 0 for ZERO_VAT", () => {
+      const standardVatOut: any = sanitizeInvoicePayload(base({
+        tax_total: [
+          {
+            tax_amount: 0,
+            tax_subtotal: [
+              { taxable_amount: 1000, tax_amount: 0, tax_category: { id: "STANDARD_VAT", percent: 0 } },
+            ],
+          },
+        ],
+      }));
+      expect(standardVatOut.tax_total[0].tax_subtotal[0].tax_category.id).toBe("STANDARD_VAT");
+      expect(standardVatOut.tax_total[0].tax_subtotal[0].tax_category.percent).toBe(7.5);
+
+      const zeroVatOut: any = sanitizeInvoicePayload(base({
+        tax_total: [
+          {
+            tax_amount: 0,
+            tax_subtotal: [
+              { taxable_amount: 1000, tax_amount: 0, tax_category: { id: "ZERO_VAT", percent: 7.5 } },
+            ],
+          },
+        ],
+      }));
+      expect(zeroVatOut.tax_total[0].tax_subtotal[0].tax_category.id).toBe("ZERO_VAT");
+      expect(zeroVatOut.tax_total[0].tax_subtotal[0].tax_category.percent).toBe(0);
     });
   });
 

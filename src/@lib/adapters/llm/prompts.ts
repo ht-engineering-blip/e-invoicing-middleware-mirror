@@ -90,7 +90,7 @@ ${JSON.stringify(samplePayload, null, 2)}
 - tax_total[0].tax_subtotal[0].taxable_amount: Net amount subject to tax
 - tax_total[0].tax_subtotal[0].tax_amount: Tax subtotal amount
 - tax_total[0].tax_subtotal[0].tax_category.id: Standard FIRS tax category ID (e.g. "STANDARD_VAT", "ZERO_VAT", "EXEMPT_VAT")
-- tax_total[0].tax_subtotal[0].tax_category.percent: Tax percentage rate (e.g. 7.5)
+- tax_total[0].tax_subtotal[0].tax_category.percent: Tax percentage rate (MUST be 7.5 for STANDARD_VAT, 0 for ZERO_VAT / EXEMPT_VAT)
 - invoice_line[*].item.name: Item name (string)
 - invoice_line[*].item.description: Item description (string)
 - invoice_line[*].invoiced_quantity: Quantity invoiced (number)
@@ -115,7 +115,8 @@ Return ONLY a valid JSON array of objects with the structure:
 1. "source" MUST match exact keys from the sample payload.
 2. For line item arrays, use [*] notation for both source and target (e.g. source: "invoice.line_items[*].name", target: "invoice_line[*].item.name").
 3. Map every available field from the source payload that has a corresponding FIRS field.
-4. Output ONLY valid JSON array with no markdown backticks, no markdown fencing, and no explanations.
+4. For standard VAT (7.5%), tax_category.id MUST be "STANDARD_VAT" and tax_category.percent MUST be 7.5. For zero/exempt tax, use "ZERO_VAT" or "EXEMPT_VAT" with percent 0.
+5. Output ONLY valid JSON array with no markdown backticks, no markdown fencing, and no explanations.
 `;
 
 

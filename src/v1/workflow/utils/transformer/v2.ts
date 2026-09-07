@@ -687,13 +687,21 @@ export class FIRSInvoiceTransformerV2 {
               ) {
                 if (percentNum === 0) {
                   st.tax_category.id = "ZERO_VAT";
+                  st.tax_category.percent = 0;
                 } else if (percentNum > 0 && percentNum < 7.5) {
                   st.tax_category.id = "REDUCED_VAT";
+                  st.tax_category.percent = percentNum;
                 } else {
                   st.tax_category.id = "STANDARD_VAT";
+                  st.tax_category.percent = 7.5;
                 }
               } else {
                 st.tax_category.id = rawCatId;
+                if (rawCatId === "STANDARD_VAT") {
+                  st.tax_category.percent = 7.5;
+                } else if (rawCatId === "ZERO_VAT" || rawCatId === "EXEMPT_VAT") {
+                  st.tax_category.percent = 0;
+                }
               }
             }
           }

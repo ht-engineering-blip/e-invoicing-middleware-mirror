@@ -685,13 +685,21 @@ export function sanitizeInvoicePayload(
           ) {
             if (percentNum === 0) {
               tc.id = "ZERO_VAT";
+              tc.percent = 0;
             } else if (percentNum > 0 && percentNum < 7.5) {
               tc.id = "REDUCED_VAT";
+              tc.percent = percentNum;
             } else {
               tc.id = "STANDARD_VAT";
+              tc.percent = 7.5;
             }
           } else {
             tc.id = rawCatId;
+            if (rawCatId === "STANDARD_VAT") {
+              tc.percent = 7.5;
+            } else if (rawCatId === "ZERO_VAT" || rawCatId === "EXEMPT_VAT") {
+              tc.percent = 0;
+            }
           }
 
           const stTax = toFloat(
@@ -938,10 +946,26 @@ export function enforceFirsRequiredFields(
           st.taxable_amount = asNumber(st.taxable_amount, lineTotal);
           st.tax_amount = asNumber(st.tax_amount);
           const tc = (st.tax_category as Record<string, unknown>) || {};
-          tc.percent = asNumber(tc.percent, 7.5);
-          if (typeof tc.id !== "string" || tc.id.trim() === "") {
-            tc.id = (tc.percent as number) === 0 ? "ZERO_VAT" : "STANDARD_VAT";
+          let pct = asNumber(tc.percent, 7.5);
+          let catId =
+            typeof tc.id === "string" ? tc.id.trim().toUpperCase() : "";
+
+          if (catId === "STANDARD_VAT" || (!catId && pct > 0)) {
+            catId = "STANDARD_VAT";
+            pct = 7.5;
+          } else if (
+            catId === "ZERO_VAT" ||
+            catId === "EXEMPT_VAT" ||
+            pct === 0
+          ) {
+            catId = catId || "ZERO_VAT";
+            pct = 0;
+          } else if (pct === 7.5) {
+            catId = "STANDARD_VAT";
           }
+
+          tc.id = catId || "STANDARD_VAT";
+          tc.percent = pct;
           st.tax_category = tc;
         }
       }
@@ -987,17 +1011,33 @@ export function autoFixInvoiceFromFIRSError(
 
   const target = sanitizeInvoicePayload(invoice);
 
-  // 1. Tax Category ID Fix
-  if (errString.includes("taxcategory") || errString.includes("tax category")) {
+  // 1. Tax Category ID Fix & STANDARD_VAT percent enforcement
+  if (
+    errString.includes("taxcategory") ||
+    errString.includes("tax category") ||
+    errString.includes("standard_vat") ||
+    errString.includes("7.5") ||
+    errString.includes("percent must be 7.5")
+  ) {
     if (Array.isArray(target.tax_total)) {
       for (const tt of target.tax_total as Record<string, unknown>[]) {
         if (tt && Array.isArray(tt.tax_subtotal)) {
           for (const st of tt.tax_subtotal as Record<string, unknown>[]) {
             if (st) {
               const tc = (st.tax_category as Record<string, unknown>) || {};
-              const pct = typeof tc.percent === "number" ? tc.percent : 7.5;
-              tc.id = pct === 0 ? "ZERO_VAT" : "STANDARD_VAT";
-              tc.percent = pct;
+              const catId =
+                typeof tc.id === "string" ? tc.id.trim().toUpperCase() : "";
+              if (
+                catId === "ZERO_VAT" ||
+                catId === "EXEMPT_VAT" ||
+                tc.percent === 0
+              ) {
+                tc.id = catId || "ZERO_VAT";
+                tc.percent = 0;
+              } else {
+                tc.id = "STANDARD_VAT";
+                tc.percent = 7.5;
+              }
               st.tax_category = tc;
             }
           }
