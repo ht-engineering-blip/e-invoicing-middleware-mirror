@@ -30,8 +30,6 @@ const AGENDASH_PORT = Number(process.env.AGENDASH_PORT ?? 3001);
 async function startWorker() {
   logger.info("[Worker] Starting job worker...");
 
-  console.log(aiConfig);
-
   // 1. Connect to MongoDB
   await connectMongo();
   logger.info("[Worker] MongoDB connected");

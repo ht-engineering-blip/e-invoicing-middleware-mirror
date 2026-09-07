@@ -9,10 +9,13 @@ export const TimeSchema = z
   .string()
   .regex(/^\d{2}:\d{2}:\d{2}$/, "Invalid time format. Must be HH:MM:SS");
 
-export const PhoneSchema = z
-  .string()
-  .regex(/^\+/, "Phone must start with + (country code)")
-  .optional();
+export const PhoneSchema = z.preprocess((val) => {
+  if (!val || typeof val !== "string") return undefined;
+  const trimmed = val.trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.startsWith("+")) return `+${trimmed}`;
+  return trimmed;
+}, z.string().regex(/^\+/, "Phone must start with + (country code)").optional());
 
 export const AddressSchema = z.object({
   street_name: z.string(),

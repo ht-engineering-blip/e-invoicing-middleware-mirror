@@ -104,11 +104,6 @@ export class FIRSInvoiceTransformerV2 {
       apiEndpoint || "https://api.openai.com/v1/chat/completions";
     this.provider = provider || "openai";
     this.model = model || "gpt-4o-mini";
-    console.log("[TransformerV2] Initialized with:", {
-      endpoint: this.apiEndpoint,
-      provider: this.provider,
-      model: this.model,
-    });
   }
 
   /**
