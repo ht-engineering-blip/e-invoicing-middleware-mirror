@@ -159,7 +159,112 @@ describe("One-Time LLM Mapping Learning & Zero-Cost Deterministic Execution", ()
       }
     }
 
-    // Absolutely 0 LLM calls for all 1,000 invoices
+    // Absolutely 0 LLM calls for all 100 invoices
     expect(llmCallCount).toBe(0);
+  });
+
+  it("should correctly unwrap envelope payload (data wrapper) and preserve all non-zero amounts", async () => {
+    const transformer = new FIRSInvoiceTransformerV2("fake_key");
+
+    const tallyEnvelopePayload = {
+      data: {
+        business_id: "63e829e4-0e80-42c1-8c08-29dab44b51a0",
+        irn: "882/D-701/254CN-TS-45678901-20260907",
+        issue_date: "2026-09-07",
+        invoice_type_code: "380",
+        invoice_kind: "B2B",
+        payment_status: "PENDING",
+        document_currency_code: "NGN",
+        accounting_supplier_party: {
+          tin: "TIN-9876543210",
+          email: "send.info@okeketech.com",
+          telephone: "+2348012345678",
+          party_name: "Heirs Technologies Limited",
+          postal_address: {
+            state: "Lagos",
+            country: "NG",
+            city_name: "Lagos",
+            postal_zone: "1234567",
+            street_name: "123 Business Street",
+          },
+          business_description: "Venture into wood making",
+        },
+        accounting_customer_party: {
+          tin: "00364075-0002",
+          email: "victor.adeife@heirstechnologies.com",
+          telephone: "+2347033123358",
+          party_name: "Heirs Technologies",
+          postal_address: {
+            country: "NG",
+            city_name: "Abuja",
+            postal_zone: "100011",
+            street_name: "ChurchGate Towers, CBD, Abuja.",
+          },
+          business_description: "Tech firm",
+        },
+        legal_monetary_total: {
+          line_extension_amount: 13554,
+          tax_exclusive_amount: 13554,
+          tax_inclusive_amount: 14379.2,
+          payable_amount: 14379.2,
+        },
+        invoice_line: [
+          {
+            item: {
+              name: "Premium Coffee Beans",
+              description: "",
+              sellers_item_identification: null,
+            },
+            price: {
+              price_unit: "NGN per 1",
+              price_amount: "5900",
+              base_quantity: 1,
+            },
+            invoiced_quantity: 1,
+            line_extension_amount: "5900",
+          },
+          {
+            item: {
+              name: "Test Invoice template Standard",
+              description: "Tesssssting",
+              sellers_item_identification: null,
+            },
+            price: {
+              price_unit: "NGN per 1",
+              price_amount: "7654",
+              base_quantity: 1,
+            },
+            invoiced_quantity: 1,
+            line_extension_amount: "7654",
+          },
+        ],
+      },
+    };
+
+    const result = await transformer.transformInvoice(
+      tallyEnvelopePayload,
+      authContext,
+      [],
+      [],
+      [],
+      FIRSInvoiceSchema,
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const data = result.data as any;
+      expect(data.accounting_customer_party.party_name).toBe("Heirs Technologies");
+      expect(data.legal_monetary_total.line_extension_amount).toBe(13554);
+      expect(data.legal_monetary_total.tax_exclusive_amount).toBe(13554);
+      expect(data.legal_monetary_total.tax_inclusive_amount).toBe(14379.2);
+      expect(data.legal_monetary_total.payable_amount).toBe(14379.2);
+      expect(data.invoice_line.length).toBe(2);
+      expect(data.invoice_line[0].item.name).toBe("Premium Coffee Beans");
+      expect(data.invoice_line[0].price.price_amount).toBe(5900);
+      expect(data.invoice_line[0].line_extension_amount).toBe(5900);
+      expect(data.invoice_line[1].item.name).toBe("Test Invoice template Standard");
+      expect(data.invoice_line[1].price.price_amount).toBe(7654);
+      expect(data.invoice_line[1].line_extension_amount).toBe(7654);
+    }
   });
 });
