@@ -88,6 +88,20 @@ transformInvoiceRoutes
           flatMetadata,
         );
 
+        let generatedMappingRules: Array<Record<string, any>> = [];
+        try {
+          const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(
+            "FIRS_UBL",
+          );
+          generatedMappingRules = await llmService.generateMappingRules(
+            erp,
+            flatInvoice,
+            firsSchemaDoc?.fields,
+          );
+        } catch (mErr) {
+          // Non-blocking fallback
+        }
+
         // Upsert the schema to database
         const savedSchema = await transformWorkflowService.upsertERPSchema(
           erp,
@@ -95,8 +109,10 @@ transformInvoiceRoutes
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || "system",
+            mapping_rules: generatedMappingRules,
             metadata: {
               ...metadata,
+              mapping_rules: generatedMappingRules,
               source_invoice_sample:
                 metadata && metadata.source_invoice_sample
                   ? metadata.source_invoice_sample
@@ -111,8 +127,11 @@ transformInvoiceRoutes
           erp_type: erp,
           fields_count: generatedFields.length,
           fields: generatedFields,
+          mapping_rules_count: generatedMappingRules.length,
+          mapping_rules: generatedMappingRules,
           status: savedSchema.status,
         });
+
       } catch (error: any) {
         set.status = error.statusCode || 500;
         return ResponseBuilder.error(error.message, error.statusCode || 500);
