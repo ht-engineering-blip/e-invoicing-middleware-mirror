@@ -9,7 +9,11 @@ import { TransformWorkflowService } from "../../workflow/services";
 import { SystemConfigService } from "../services/system-config.service";
 import { AuditService } from "../../audit/services/audit.service";
 import { AuditEventType, AuditEventSeverity } from "../../audit/models";
-import { SchemaStatus, ISchemaField } from "../../workflow/models";
+import {
+  SchemaStatus,
+  ISchemaField,
+  SchemaSourceType,
+} from "../../workflow/models";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
@@ -113,7 +117,11 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
 
         if (erpDoc) {
           let rules = erpDoc.mapping_rules;
-          if (!rules && erpDoc.metadata && Array.isArray(erpDoc.metadata.mapping_rules)) {
+          if (
+            !rules &&
+            erpDoc.metadata &&
+            Array.isArray(erpDoc.metadata.mapping_rules)
+          ) {
             rules = erpDoc.metadata.mapping_rules;
           }
           if (!rules) {
@@ -191,10 +199,15 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           metadata?.mapping_rules || payload.mapping_rules || [];
 
         // Check if schema already exists to avoid slow redundant LLM calls on update
-        const existingSchema = await transformWorkflowService.getInvoiceSchema(erp);
+        const existingSchema =
+          await transformWorkflowService.getInvoiceSchema(erp);
 
         let generatedFields: Array<ISchemaField> = [];
-        if (payload.fields && Array.isArray(payload.fields) && payload.fields.length > 0) {
+        if (
+          payload.fields &&
+          Array.isArray(payload.fields) &&
+          payload.fields.length > 0
+        ) {
           generatedFields = payload.fields;
         } else if (
           existingSchema &&
@@ -207,21 +220,73 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
         } else if (flatInvoice && Object.keys(flatInvoice).length > 0) {
           try {
             generatedFields = await Promise.race([
-              llmService.generateInvoiceDictionary(erp, flatInvoice, flatMetadata),
+              llmService.generateInvoiceDictionary(
+                erp,
+                flatInvoice,
+                flatMetadata,
+              ),
               new Promise<Array<ISchemaField>>((_, reject) =>
-                setTimeout(() => reject(new Error("LLM generation timeout")), 5000),
+                setTimeout(
+                  () => reject(new Error("LLM generation timeout")),
+                  5000,
+                ),
               ),
             ]);
           } catch (llmErr: unknown) {
             const err = llmErr as { message?: string };
-            logger.warn("LLM dictionary generation timed out/failed, falling back to direct field extraction", {
-              erp,
-              error: err.message,
-            });
+            logger.warn(
+              "LLM dictionary generation timed out/failed, falling back to direct field extraction",
+              {
+                erp,
+                error: err.message,
+              },
+            );
             generatedFields = extractFieldsFromSample(flatInvoice);
           }
         } else {
           generatedFields = [];
+        }
+
+        let effectiveMappingRules: Array<Record<string, any>> = [];
+        if (
+          payload.mapping_rules &&
+          Array.isArray(payload.mapping_rules) &&
+          payload.mapping_rules.length > 0
+        ) {
+          effectiveMappingRules = payload.mapping_rules;
+        } else if (
+          metadata?.mapping_rules &&
+          Array.isArray(metadata.mapping_rules) &&
+          metadata.mapping_rules.length > 0
+        ) {
+          effectiveMappingRules = metadata.mapping_rules;
+        } else if (
+          existingSchema &&
+          Array.isArray(existingSchema.mapping_rules) &&
+          existingSchema.mapping_rules.length > 0 &&
+          !payload.regenerate_fields
+        ) {
+          effectiveMappingRules = existingSchema.mapping_rules;
+        } else if (flatInvoice && Object.keys(flatInvoice).length > 0) {
+          try {
+            const firsSchemaDoc =
+              await transformWorkflowService.getInvoiceSchema(
+                SchemaSourceType.FIRS_UBL,
+              );
+            effectiveMappingRules = await llmService.generateMappingRules(
+              erp,
+              flatInvoice,
+              firsSchemaDoc?.fields,
+            );
+          } catch (mErr: unknown) {
+            logger.warn(
+              "LLM mapping rule generation failed during ERP configuration",
+              {
+                erp,
+                error: (mErr as any)?.message,
+              },
+            );
+          }
         }
 
         // Upsert the schema to database
@@ -234,12 +299,12 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             status: metadata?.status,
             metadata: {
               ...(metadata || {}),
-              mapping_rules,
+              mapping_rules: effectiveMappingRules,
               source_invoice_sample:
                 metadata?.source_invoice_sample || flatInvoice,
               generated_at: new Date().toISOString(),
             },
-            mapping_rules,
+            mapping_rules: effectiveMappingRules,
           },
         );
 
@@ -262,10 +327,10 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         });
 
-        const effectiveMappingRules =
+        const finalMappingRules =
           savedSchema.mapping_rules ||
           savedSchema.metadata?.mapping_rules ||
-          mapping_rules;
+          effectiveMappingRules;
 
         return {
           success: true,
@@ -275,10 +340,10 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
             fields_count: generatedFields.length,
             fields: generatedFields,
             status: savedSchema.status,
-            mapping_rules: effectiveMappingRules,
+            mapping_rules: finalMappingRules,
             metadata: {
               ...(savedSchema.metadata || {}),
-              mapping_rules: effectiveMappingRules,
+              mapping_rules: finalMappingRules,
             },
           },
         };

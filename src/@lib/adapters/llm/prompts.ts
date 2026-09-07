@@ -51,6 +51,74 @@ Valid ${format} list of objects with the following fields/keys: field_id,field_p
 If payload is invalid/empty: Output ${format} fields only
 `;
 
+export const MAPPING_RULES_PROMPT = (
+  erp: string,
+  samplePayload: any,
+  firsTargetSchema?: string,
+) => `
+You are an Expert Enterprise Integration & E-Invoicing Data Architect.
+Your task is to analyze a sample invoice payload from the "${erp}" ERP system and generate deterministic 1-to-1 and array field mapping rules to map source ERP fields to standard Nigerian FIRS UBL 2.1 e-invoicing schema fields.
+
+# Input ERP Payload:
+${JSON.stringify(samplePayload, null, 2)}
+
+# Target FIRS UBL Standard Schema Reference:
+- id: Invoice number / identifier (string)
+- issue_date: Invoice issue date YYYY-MM-DD (string)
+- issue_time: Invoice issue time HH:MM:SS (string)
+- due_date: Payment due date YYYY-MM-DD (string)
+- invoice_type_code: Invoice type code e.g. "396" (Tax Invoice), "381" (Credit Note), "383" (Debit Note)
+- document_currency_code: 3-letter currency code (e.g. "NGN", "USD")
+- tax_currency_code: Tax currency code (e.g. "NGN")
+- invoice_kind: "B2B", "B2C", or "B2G"
+- accounting_supplier_party.party_name: Supplier business name
+- accounting_supplier_party.party_tax_scheme.company_id: Supplier TIN
+- accounting_supplier_party.postal_address.street_name: Supplier street
+- accounting_supplier_party.postal_address.city_name: Supplier city
+- accounting_supplier_party.postal_address.country_subentity: Supplier state
+- accounting_customer_party.party_name: Customer business / person name
+- accounting_customer_party.party_tax_scheme.company_id: Customer TIN / ID
+- accounting_customer_party.postal_address.street_name: Customer street
+- accounting_customer_party.postal_address.city_name: Customer city
+- accounting_customer_party.postal_address.country_subentity: Customer state
+- legal_monetary_total.line_extension_amount: Sum of line net amounts (number)
+- legal_monetary_total.tax_exclusive_amount: Total before tax (number)
+- legal_monetary_total.tax_inclusive_amount: Total including tax (number)
+- legal_monetary_total.payable_amount: Final total payable amount (number)
+- legal_monetary_total.allowance_total_amount: Total discounts (number, optional)
+- tax_total[0].tax_amount: Total tax amount (number)
+- tax_total[0].tax_subtotal[0].taxable_amount: Net amount subject to tax
+- tax_total[0].tax_subtotal[0].tax_amount: Tax subtotal amount
+- tax_total[0].tax_subtotal[0].tax_category.id: Standard FIRS tax category ID (e.g. "STANDARD_VAT", "ZERO_VAT", "EXEMPT_VAT")
+- tax_total[0].tax_subtotal[0].tax_category.percent: Tax percentage rate (e.g. 7.5)
+- invoice_line[*].item.name: Item name (string)
+- invoice_line[*].item.description: Item description (string)
+- invoice_line[*].invoiced_quantity: Quantity invoiced (number)
+- invoice_line[*].price.price_amount: Unit price (number)
+- invoice_line[*].price.price_unit: Unit code (e.g. "H87" for piece)
+- invoice_line[*].line_extension_amount: Line net amount = quantity * unit price (number)
+- invoice_line[*].hsn_code: Harmonized system commodity code (string, optional)
+- invoice_line[*].product_category: Product or service category (string, optional)
+
+${firsTargetSchema ? `# Additional Schema Constraints:\n${firsTargetSchema}\n` : ""}
+
+# Output Format:
+Return ONLY a valid JSON array of objects with the structure:
+[
+  {
+    "source": "dot.path.or.array[*].path.in.source",
+    "target": "target.firs.field.path"
+  }
+]
+
+# CRITICAL RULES:
+1. "source" MUST match exact keys from the sample payload.
+2. For line item arrays, use [*] notation for both source and target (e.g. source: "invoice.line_items[*].name", target: "invoice_line[*].item.name").
+3. Map every available field from the source payload that has a corresponding FIRS field.
+4. Output ONLY valid JSON array with no markdown backticks, no markdown fencing, and no explanations.
+`;
+
+
 /**
  * Format schema fields into a readable mapping guide for the LLM
  */

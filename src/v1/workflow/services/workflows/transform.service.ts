@@ -1,5 +1,6 @@
 import { aiConfig } from "../../../../@config";
 import { AppError, logger } from "../../../../@lib";
+import { LLMService } from "../../../../@lib/adapters/llm/llm.service";
 import { AuthContext } from "../../../../middlewares";
 import { TTLCache } from "../../../shared/utils";
 import { TenantService } from "../../../tenants/services/tenant.service";
@@ -281,6 +282,67 @@ export class TransformWorkflowService {
       mapping_rules: mappingRules,
     });
   };
+
+  /**
+   * Learn mapping rules using LLM once and persist to schema dictionary and cache
+   */
+  learnAndPersistMappingRules = async (
+    sourceType: SchemaSourceType | string,
+    sampleInvoice: Record<string, unknown>,
+    options?: {
+      tenantId?: string;
+      createdBy?: string;
+      firsSchema?: ISchemaField[];
+    },
+  ): Promise<Array<Record<string, any>>> => {
+    if (!aiConfig?.enabled) {
+      logger.info("[TransformService] AI disabled, skipping LLM mapping rule learning");
+      return [];
+    }
+
+    try {
+      const llmService = new LLMService();
+      let firsFields = options?.firsSchema;
+      if (!firsFields || firsFields.length === 0) {
+        const firsDoc = await this.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
+        if (firsDoc) firsFields = firsDoc.fields;
+      }
+
+      logger.info(`[TransformService] Synthesizing one-time mapping rules for ${sourceType} via LLM...`);
+      const rules = await llmService.generateMappingRules(
+        String(sourceType),
+        sampleInvoice,
+        firsFields,
+      );
+
+      if (rules && rules.length > 0) {
+        const existingSchema = await this.getInvoiceSchema(sourceType);
+        const fields = existingSchema?.fields || [];
+
+        await this.upsertERPSchema(String(sourceType), fields, {
+          tenantId: options?.tenantId,
+          createdBy: options?.createdBy || "system",
+          mapping_rules: rules,
+          status: SchemaStatus.ACTIVE,
+          metadata: {
+            source_invoice_sample: sampleInvoice,
+            learned_at: new Date().toISOString(),
+          },
+        });
+
+        logger.info(
+          `[TransformService] Successfully learned and persisted ${rules.length} mapping rules for ${sourceType}. Subsequent transforms will run 100% deterministically with 0 LLM calls.`,
+        );
+        return rules;
+      }
+    } catch (err: any) {
+      logger.warn(`[TransformService] Failed to synthesize mapping rules via LLM for ${sourceType}:`, {
+        error: err.message,
+      });
+    }
+    return [];
+  };
+
 
   /**
    * Upsert FIRS UBL invoice schema

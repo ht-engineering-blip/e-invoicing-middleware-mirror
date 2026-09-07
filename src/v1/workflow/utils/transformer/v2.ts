@@ -1,21 +1,18 @@
 import { z } from "zod";
-import { aiConfig } from "../../../../@config";
 import {
+  filterAllowedLLMFields,
   FIRSInvoiceSchema,
   TransformationResult,
   TransformInvoiceInput,
-  filterAllowedLLMFields,
 } from ".";
+import { aiConfig } from "../../../../@config";
 import { InternalServerError, logger } from "../../../../@lib";
 import { AuthContext } from "../../../../middlewares";
 import { ISchemaField, SchemaSourceType } from "../../models";
 import { TransformWorkflowService } from "../../services";
-import { DeterministicCompleter } from "./deterministic-completer";
 import { TransformerCircuitBreaker } from "./circuit-breaker";
+import { DeterministicCompleter } from "./deterministic-completer";
 import {
-  extractCurrency,
-  generateInvoiceRef,
-  generateIRN,
   resolveCurrencyCode,
   sanitizeInvoiceIRNs,
   setDynamicCurrencies,
@@ -51,13 +48,18 @@ import {
  * unwraps to the raw ERP object — which FIRS rejects with
  * "invoicerequest.invoice.taxcurrencycode is required".
  */
-function stripEnvelopeKeys(
-  payload: Record<string, any>,
-): Record<string, any> {
+function stripEnvelopeKeys(payload: Record<string, any>): Record<string, any> {
   if (!payload || typeof payload !== "object") return payload;
   const { invoice: _envelope, data: _data, ...rest } = payload;
   return rest;
 }
+
+let cachedFirsResources: {
+  taxCategories: TaxCategory[];
+  invoiceTypes: InvoiceType[];
+  currencies: Currency[];
+  timestamp: number;
+} | null = null;
 
 export class FIRSInvoiceTransformerV2 {
   private apiKey: string;
@@ -72,7 +74,8 @@ export class FIRSInvoiceTransformerV2 {
     model: string = "gpt-4o-mini",
   ) {
     this.apiKey = apiKey;
-    this.apiEndpoint = apiEndpoint || "https://api.openai.com/v1/chat/completions";
+    this.apiEndpoint =
+      apiEndpoint || "https://api.openai.com/v1/chat/completions";
     this.provider = provider || "openai";
     this.model = model || "gpt-4o-mini";
     console.log("[TransformerV2] Initialized with:", {
@@ -102,15 +105,22 @@ export class FIRSInvoiceTransformerV2 {
     try {
       const effectiveSourceType = sourceType || authContext?.tenantERP;
       if (effectiveSourceType) {
-        const sourceDoc = await transformService.getInvoiceSchema(effectiveSourceType);
+        const sourceDoc =
+          await transformService.getInvoiceSchema(effectiveSourceType);
         if (sourceDoc) {
           sourceSchema = sourceDoc.fields;
           mappingRules = sourceDoc.mapping_rules || [];
         }
       }
 
-      if ((authContext as any)?.tenantMappings && Array.isArray((authContext as any).tenantMappings)) {
-        mappingRules = [...mappingRules, ...(authContext as any).tenantMappings];
+      if (
+        (authContext as any)?.tenantMappings &&
+        Array.isArray((authContext as any).tenantMappings)
+      ) {
+        mappingRules = [
+          ...mappingRules,
+          ...(authContext as any).tenantMappings,
+        ];
       }
 
       const firsSchemaDoc = await transformService.getInvoiceSchema(
@@ -118,6 +128,35 @@ export class FIRSInvoiceTransformerV2 {
       );
 
       if (firsSchemaDoc) firsSchema = firsSchemaDoc.fields;
+
+      // If no mapping rules exist for this ERP, synthesize once via LLM and persist
+      if (
+        mappingRules.length === 0 &&
+        effectiveSourceType &&
+        aiConfig?.enabled &&
+        (this.provider === "gemini" || aiConfig?.openaiEnabled)
+      ) {
+        try {
+          const learned = await transformService.learnAndPersistMappingRules(
+            effectiveSourceType,
+            invoice,
+            {
+              tenantId: authContext?.tenantId,
+              firsSchema,
+            },
+          );
+          if (learned && learned.length > 0) {
+            mappingRules = learned as MappingRuleItem[];
+          }
+        } catch (learnErr: any) {
+          logger.warn(
+            "[TransformerV2] Auto-learn mapping rules attempt warning:",
+            {
+              error: learnErr?.message,
+            },
+          );
+        }
+      }
 
       const result = await this.transformInvoice(
         invoice,
@@ -218,47 +257,70 @@ export class FIRSInvoiceTransformerV2 {
     | { success: false; error: unknown; originalInvoice: TransformInvoiceInput }
   > {
     try {
-      const firsService = new FIRSService();
       let taxCategories: TaxCategory[] = [];
       let invoiceTypes: InvoiceType[] = [];
       let currencies: Currency[] = [];
-      try {
-        const fetchResourceWithTimeout = async <T>(name: string): Promise<T[]> => {
-          return new Promise<T[]>((resolve) => {
-            const timer = setTimeout(() => resolve([]), 800);
-            firsService.getResource<T>(name)
-              .then((res) => {
-                clearTimeout(timer);
-                resolve(res || []);
-              })
-              .catch(() => {
-                clearTimeout(timer);
-                resolve([]);
-              });
-          });
-        };
 
-        const [
-          taxCatRes,
-          invoiceTypeRes,
-          qtyCodesRes,
-          hsCodesRes,
-          currenciesRes,
-        ] = await Promise.all([
-          fetchResourceWithTimeout<TaxCategory>("tax-categories"),
-          fetchResourceWithTimeout<InvoiceType>("invoice-types"),
-          fetchResourceWithTimeout<QuantityCode>("invoice-quantity-codes"),
-          fetchResourceWithTimeout<HsCode>("hs-codes"),
-          fetchResourceWithTimeout<Currency>("currencies"),
-        ]);
-        taxCategories = taxCatRes || [];
-        invoiceTypes = invoiceTypeRes || [];
-        currencies = currenciesRes || [];
-        if (qtyCodesRes?.length) setDynamicQuantityCodes(qtyCodesRes);
-        if (hsCodesRes?.length) setDynamicHsCodes(hsCodesRes);
-        if (currenciesRes?.length) setDynamicCurrencies(currenciesRes);
-      } catch (e) {
-        logger.warn("[TransformerV2] Using offline FIRS dictionary defaults:", (e as any)?.message || e);
+      if (
+        cachedFirsResources &&
+        Date.now() - cachedFirsResources.timestamp < 3600_000
+      ) {
+        taxCategories = cachedFirsResources.taxCategories;
+        invoiceTypes = cachedFirsResources.invoiceTypes;
+        currencies = cachedFirsResources.currencies;
+      } else {
+        try {
+          const firsService = new FIRSService();
+          const fetchResourceWithTimeout = async <T>(
+            name: string,
+          ): Promise<T[]> => {
+            return new Promise<T[]>((resolve) => {
+              const timer = setTimeout(() => resolve([]), 800);
+              firsService
+                .getResource<T>(name)
+                .then((res) => {
+                  clearTimeout(timer);
+                  resolve(res || []);
+                })
+                .catch(() => {
+                  clearTimeout(timer);
+                  resolve([]);
+                });
+            });
+          };
+
+          const [
+            taxCatRes,
+            invoiceTypeRes,
+            qtyCodesRes,
+            hsCodesRes,
+            currenciesRes,
+          ] = await Promise.all([
+            fetchResourceWithTimeout<TaxCategory>("tax-categories"),
+            fetchResourceWithTimeout<InvoiceType>("invoice-types"),
+            fetchResourceWithTimeout<QuantityCode>("invoice-quantity-codes"),
+            fetchResourceWithTimeout<HsCode>("hs-codes"),
+            fetchResourceWithTimeout<Currency>("currencies"),
+          ]);
+          taxCategories = taxCatRes || [];
+          invoiceTypes = invoiceTypeRes || [];
+          currencies = currenciesRes || [];
+          if (qtyCodesRes?.length) setDynamicQuantityCodes(qtyCodesRes);
+          if (hsCodesRes?.length) setDynamicHsCodes(hsCodesRes);
+          if (currenciesRes?.length) setDynamicCurrencies(currenciesRes);
+
+          cachedFirsResources = {
+            taxCategories,
+            invoiceTypes,
+            currencies,
+            timestamp: Date.now(),
+          };
+        } catch (e) {
+          logger.warn(
+            "[TransformerV2] Using offline FIRS dictionary defaults:",
+            (e as any)?.message || e,
+          );
+        }
       }
 
       // Step 1: Execute Deterministic Mapping from rules
@@ -315,7 +377,10 @@ export class FIRSInvoiceTransformerV2 {
           circuitBreaker.recordSuccess();
 
           const rawParsed = this.safeParseLLMJSON(response);
-          const parsed = filterAllowedLLMFields(rawParsed) as Record<string, any>;
+          const parsed = filterAllowedLLMFields(rawParsed) as Record<
+            string,
+            any
+          >;
 
           // Deep Merge Protection: Never overwrite deterministically mapped fields
           completed = this.deepMergePreserveExisting(completed, parsed);
@@ -337,7 +402,13 @@ export class FIRSInvoiceTransformerV2 {
 
       const validation = this.validateWithZod(completed, firsZodSchema);
 
-      if (!validation.valid && circuitBreaker.canExecute() && aiConfig?.enabled) {
+      if (
+        !validation.valid &&
+        missing.length > 0 &&
+        mappingRules.length === 0 &&
+        circuitBreaker.canExecute() &&
+        aiConfig?.enabled
+      ) {
         try {
           const repaired = await this.repairJSON(
             completed,
@@ -649,12 +720,62 @@ export class FIRSInvoiceTransformerV2 {
     return res;
   }
 
+  private getOrCreateArray(obj: Record<string, any>, path: string): any[] {
+    const keys = path
+      .replace(/\[(\d+|\*)\]/g, ".$1")
+      .split(".")
+      .filter(Boolean);
+
+    let current: any = obj;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error("Prototype pollution attempt detected");
+      }
+      if (i === keys.length - 1) {
+        if (!Array.isArray(current[key])) {
+          current[key] = [];
+        }
+        return current[key];
+      }
+      if (current[key] == null || typeof current[key] !== "object") {
+        current[key] = {};
+      }
+      current = current[key];
+    }
+    return [];
+  }
+
   private setDeepValue(
     obj: Record<string, any>,
     path: string,
     value: unknown,
   ): void {
-    if (!obj || typeof obj !== "object" || !path || typeof path !== "string") return;
+    if (!obj || typeof obj !== "object" || !path || typeof path !== "string")
+      return;
+
+    // Check if path contains array wildcard [*] in target
+    if (path.includes("[*]") || path.includes(".*.")) {
+      const parts = path.split(/\[\*\]|\.\*\./);
+      const arrayPrefix = parts[0].replace(/\.$/, "");
+      const fieldSuffix = parts.slice(1).join(".").replace(/^\./, "");
+
+      const values = Array.isArray(value) ? value : [value];
+      const targetArray = this.getOrCreateArray(obj, arrayPrefix);
+
+      for (let idx = 0; idx < values.length; idx++) {
+        if (!targetArray[idx] || typeof targetArray[idx] !== "object") {
+          targetArray[idx] = {};
+        }
+        if (fieldSuffix) {
+          this.setDeepValue(targetArray[idx], fieldSuffix, values[idx]);
+        } else {
+          targetArray[idx] = values[idx];
+        }
+      }
+      return;
+    }
+
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -671,7 +792,7 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       if (current[key] == null || typeof current[key] !== "object") {
-        current[key] = /^\d+$/.test(nextKey) ? [] : {};
+        current[key] = /^\d+$/.test(nextKey) || nextKey === "*" ? [] : {};
       }
 
       // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop

@@ -6,7 +6,12 @@ import axios, {
 import { AppError, HandleErrorResponse, RestClient } from "../rest";
 import { InboundInvoiceRepository } from "../../../v1/workflow/repos/inbound-invoice.repo";
 import { aiConfig, firsConfig } from "../../../@config";
-import { DICTIONARY_PROMPT } from "./prompts";
+import {
+  DICTIONARY_PROMPT,
+  MAPPING_RULES_PROMPT,
+  formatSchemaFields,
+} from "./prompts";
+import { ISchemaField } from "../../../v1/workflow/models";
 import { cleanAndParseJson } from "../../utils";
 
 export interface FIRSUserInfo {
@@ -193,6 +198,97 @@ export class LLMService {
         }
         throw new Error(
           `Dictionary extraction error: ${error.response?.data?.message || error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Generate Deterministic Mapping Rules (source ERP -> FIRS UBL)
+   */
+  async generateMappingRules(
+    erp: string,
+    sampleInvoice: any,
+    firsSchemaFields?: ISchemaField[],
+  ): Promise<Array<{ source: string; target: string }>> {
+    try {
+      const firsSchemaText = firsSchemaFields
+        ? formatSchemaFields(firsSchemaFields, "FIRS UBL")
+        : undefined;
+
+      const promptContent = MAPPING_RULES_PROMPT(
+        erp,
+        sampleInvoice,
+        firsSchemaText,
+      );
+
+      const isGemini = aiConfig?.provider === "gemini";
+
+      if (isGemini) {
+        const model = aiConfig?.model || "gemini-2.0-flash";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiConfig?.apiKey}`;
+        const body = {
+          contents: [{ role: "user", parts: [{ text: promptContent }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+          },
+        };
+        const geminiRes = await axios.post(url, body, {
+          headers: { "Content-Type": "application/json" },
+        });
+        const candidate = geminiRes.data?.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text || "";
+        const parsed = cleanAndParseJson(text);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (rule: any) =>
+              rule &&
+              typeof rule.source === "string" &&
+              rule.source.trim() !== "" &&
+              typeof rule.target === "string" &&
+              rule.target.trim() !== "",
+          );
+        }
+        return [];
+      }
+
+      const payload = {
+        model: aiConfig?.model || "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: promptContent,
+          },
+        ],
+        temperature: 0.1,
+      };
+
+      const response: any = await this.client.post(``, payload);
+      if (!response.choices || !response.choices[0]?.message?.content) {
+        throw new Error("Failed to generate mapping rules from LLM");
+      }
+      const rawContent = response.choices[0].message.content;
+      const parsed = cleanAndParseJson(rawContent);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (rule: any) =>
+            rule &&
+            typeof rule.source === "string" &&
+            rule.source.trim() !== "" &&
+            typeof rule.target === "string" &&
+            rule.target.trim() !== "",
+        );
+      }
+      return [];
+    } catch (error: any) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          throw new Error("Invalid or expired LLM access token");
+        }
+        throw new Error(
+          `Mapping rules generation error: ${error.response?.data?.message || error.message}`,
         );
       }
       throw error;
