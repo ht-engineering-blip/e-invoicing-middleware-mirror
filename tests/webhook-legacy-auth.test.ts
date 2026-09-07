@@ -268,6 +268,19 @@ describe("Multi-Strategy Webhook Authentication & Legacy Support", () => {
       }
     });
 
+    it("Strategy 2: Fallback X-Webhook-Key with raw static secret succeeds in auto mode", async () => {
+      const res = await verifyWebhookSignature({
+        headers: { "x-webhook-key": testSecret },
+        rawBody,
+        tenant: mockTenant,
+      });
+
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.authStrategy).toBe("legacy_static_key");
+      }
+    });
+
     it("Strategy 2: Authorization Bearer header succeeds in auto mode", async () => {
       const res = await verifyWebhookSignature({
         headers: { authorization: `Bearer ${testSecret}` },

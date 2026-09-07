@@ -88,7 +88,7 @@ export async function verifyWebhookSignature({
   const effectiveNonceRepo = nonceRepo || webhookNonceRepo;
 
   // Reject requests when no signing secret is configured so verification cannot pass by default
-  if (!secret || !webhookKeyHash) {
+  if (!secret && !webhookKeyHash) {
     return {
       success: false,
       status: 401,
@@ -153,6 +153,37 @@ export async function verifyWebhookSignature({
         (bodyObj.apiKey as string | undefined)
       : undefined;
 
+  /**
+   * Helper to verify a candidate static secret against either the raw secret
+   * or the legacy webhookSecretHash.
+   */
+  const checkSecretMatch = (candidate: string | undefined): boolean => {
+    if (!candidate || typeof candidate !== "string") return false;
+    const trimmed = candidate.trim();
+    if (secret && safeCompareSecret(trimmed, secret)) {
+      return true;
+    }
+    if (webhookKeyHash) {
+      const candidateHash = crypto
+        .createHash("sha256")
+        .update(trimmed)
+        .digest("hex");
+      try {
+        if (
+          crypto.timingSafeEqual(
+            Buffer.from(candidateHash, "hex"),
+            Buffer.from(webhookKeyHash, "hex"),
+          )
+        ) {
+          return true;
+        }
+      } catch {
+        // buffer length mismatch or invalid hex
+      }
+    }
+    return false;
+  };
+
   // Verify HMAC-SHA256 Helper
   const verifyHmac = async (keyString: string) => {
     const isSecureFormat =
@@ -207,6 +238,14 @@ export async function verifyWebhookSignature({
       };
     }
 
+    if (!secret) {
+      return {
+        success: false as const,
+        status: 401,
+        error: "Webhook secret not configured for HMAC verification",
+      };
+    }
+
     const computedSignature = signWebhookPayload(secret, tStr, rawBody);
     let isValid = false;
     try {
@@ -249,21 +288,24 @@ export async function verifyWebhookSignature({
 
   // If authMode is strictly "static_secret"
   if (authMode === "static_secret") {
-    if (staticHeader && safeCompareSecret(staticHeader, secret)) {
+    if (staticHeader && checkSecretMatch(staticHeader)) {
       return { success: true, authStrategy: "static_header" };
+    }
+    if (webhookKey && checkSecretMatch(webhookKey)) {
+      return { success: true, authStrategy: "legacy_static_key" };
     }
     if (authHeader) {
       const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
         ? authHeader.slice(7).trim()
         : authHeader.trim();
-      if (safeCompareSecret(bearerToken, secret)) {
+      if (checkSecretMatch(bearerToken)) {
         return { success: true, authStrategy: "bearer_token" };
       }
     }
-    if (querySecret && safeCompareSecret(querySecret, secret)) {
+    if (querySecret && checkSecretMatch(querySecret)) {
       return { success: true, authStrategy: "query_param" };
     }
-    if (bodySecret && typeof bodySecret === "string" && safeCompareSecret(bodySecret, secret)) {
+    if (bodySecret && typeof bodySecret === "string" && checkSecretMatch(bodySecret)) {
       return { success: true, authStrategy: "body_secret" };
     }
 
@@ -276,14 +318,19 @@ export async function verifyWebhookSignature({
 
   // Default "auto" mode: dynamically attempt all strategies
 
-  // 1. Dynamic HMAC Signature
+  // 1. Dynamic HMAC Signature (when timestamp & signature are present)
   if (webhookKey && webhookKey.includes("t=") && webhookKey.includes("v1=")) {
     return verifyHmac(webhookKey);
   }
 
-  // 2. Static Header (X-Webhook-Secret, X-Api-Key, etc.)
+  // 2. Legacy / Static X-Webhook-Key header fallback
+  if (webhookKey && checkSecretMatch(webhookKey)) {
+    return { success: true, authStrategy: "legacy_static_key" };
+  }
+
+  // 3. Static Header (X-Webhook-Secret, X-Api-Key, etc.)
   if (staticHeader) {
-    if (safeCompareSecret(staticHeader, secret)) {
+    if (checkSecretMatch(staticHeader)) {
       return { success: true, authStrategy: "static_header" };
     }
     return {
@@ -293,12 +340,12 @@ export async function verifyWebhookSignature({
     };
   }
 
-  // 3. Authorization Header (Bearer <secret>)
+  // 4. Authorization Header (Bearer <secret>)
   if (authHeader) {
     const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
       ? authHeader.slice(7).trim()
       : authHeader.trim();
-    if (safeCompareSecret(bearerToken, secret)) {
+    if (checkSecretMatch(bearerToken)) {
       return { success: true, authStrategy: "bearer_token" };
     }
     return {
@@ -308,9 +355,9 @@ export async function verifyWebhookSignature({
     };
   }
 
-  // 4. Query Parameter (?secret=..., ?token=...)
+  // 5. Query Parameter (?secret=..., ?token=...)
   if (querySecret) {
-    if (safeCompareSecret(querySecret, secret)) {
+    if (checkSecretMatch(querySecret)) {
       return { success: true, authStrategy: "query_param" };
     }
     return {
@@ -320,9 +367,9 @@ export async function verifyWebhookSignature({
     };
   }
 
-  // 5. Body Secret Token
+  // 6. Body Secret Token
   if (bodySecret && typeof bodySecret === "string") {
-    if (safeCompareSecret(bodySecret, secret)) {
+    if (checkSecretMatch(bodySecret)) {
       return { success: true, authStrategy: "body_secret" };
     }
     return {
@@ -332,13 +379,13 @@ export async function verifyWebhookSignature({
     };
   }
 
-  // If HMAC header was supplied but invalid format
+  // If X-Webhook-Key was passed but neither a valid HMAC nor matched the secret
   if (webhookKey) {
     return {
       success: false,
       status: 401,
       error:
-        "Invalid X-Webhook-Key format. Requests must be signed with timestamp (t) and signature (v1)",
+        "Invalid X-Webhook-Key format. Requests must be signed with timestamp (t) and signature (v1), or match valid webhook secret",
     };
   }
 
