@@ -930,6 +930,18 @@ export function enforceFirsRequiredFields(
       line.line_extension_amount,
       (price.price_amount as number) * (line.invoiced_quantity as number),
     );
+    if (line.discount_rate !== undefined) {
+      line.discount_rate = asNumber(line.discount_rate);
+    }
+    if (line.discount_amount !== undefined) {
+      line.discount_amount = asNumber(line.discount_amount);
+    }
+    if (line.fee_rate !== undefined) {
+      line.fee_rate = asNumber(line.fee_rate);
+    }
+    if (line.fee_amount !== undefined) {
+      line.fee_amount = asNumber(line.fee_amount);
+    }
     lineTotal += line.line_extension_amount as number;
   }
 
@@ -992,6 +1004,24 @@ export function enforceFirsRequiredFields(
     lmt.payable_amount,
     lmt.tax_inclusive_amount as number,
   );
+  if (lmt.prepaid_amount !== undefined) {
+    lmt.prepaid_amount = asNumber(lmt.prepaid_amount);
+  }
+  if (lmt.allowance_total_amount !== undefined) {
+    lmt.allowance_total_amount = asNumber(lmt.allowance_total_amount);
+  }
+  if (lmt.charge_total_amount !== undefined) {
+    lmt.charge_total_amount = asNumber(lmt.charge_total_amount);
+  }
+
+  // ── Allowance Charge ─────────────────────────────────────────────────────
+  if (Array.isArray(invoice.allowance_charge)) {
+    for (const rawAc of invoice.allowance_charge) {
+      if (!rawAc || typeof rawAc !== "object") continue;
+      const ac = rawAc as Record<string, unknown>;
+      ac.amount = asNumber(ac.amount);
+    }
+  }
 
   return invoice;
 }

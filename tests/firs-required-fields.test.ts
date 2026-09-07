@@ -202,6 +202,79 @@ describe("FIRS required fields are guaranteed before send", () => {
       expect(zeroVatOut.tax_total[0].tax_subtotal[0].tax_category.id).toBe("ZERO_VAT");
       expect(zeroVatOut.tax_total[0].tax_subtotal[0].tax_category.percent).toBe(0);
     });
+
+    it("strictly coerces all amounts, prices, fees, discounts, and charges to float numbers", () => {
+      const out: any = sanitizeInvoicePayload(base({
+        legal_monetary_total: {
+          line_extension_amount: "50000.50",
+          tax_exclusive_amount: "50000.50",
+          tax_inclusive_amount: "53750.54",
+          payable_amount: "53750.54",
+          prepaid_amount: "0.00",
+          allowance_total_amount: "100.00",
+          charge_total_amount: "50.00",
+        },
+        tax_total: [
+          {
+            tax_amount: "3750.04",
+            tax_subtotal: [
+              {
+                taxable_amount: "50000.50",
+                tax_amount: "3750.04",
+                tax_category: { id: "STANDARD_VAT", percent: "7.5" },
+              },
+            ],
+          },
+        ],
+        invoice_line: [
+          {
+            item: { name: "Service" },
+            invoiced_quantity: "2.5",
+            line_extension_amount: "50000.50",
+            price: { price_amount: "20000.20", base_quantity: "1" },
+            discount_rate: "5.0",
+            discount_amount: "1000.01",
+            fee_rate: "1.5",
+            fee_amount: "300.00",
+          },
+        ],
+        allowance_charge: [
+          {
+            charge_indicator: true,
+            amount: "50.00",
+          },
+        ],
+      }));
+
+      // Check legal_monetary_total
+      expect(typeof out.legal_monetary_total.line_extension_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.tax_exclusive_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.tax_inclusive_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.payable_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.prepaid_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.allowance_total_amount).toBe("number");
+      expect(typeof out.legal_monetary_total.charge_total_amount).toBe("number");
+
+      // Check tax_total
+      expect(typeof out.tax_total[0].tax_amount).toBe("number");
+      expect(typeof out.tax_total[0].tax_subtotal[0].taxable_amount).toBe("number");
+      expect(typeof out.tax_total[0].tax_subtotal[0].tax_amount).toBe("number");
+      expect(typeof out.tax_total[0].tax_subtotal[0].tax_category.percent).toBe("number");
+
+      // Check invoice_line
+      const line = out.invoice_line[0];
+      expect(typeof line.invoiced_quantity).toBe("number");
+      expect(typeof line.line_extension_amount).toBe("number");
+      expect(typeof line.price.price_amount).toBe("number");
+      expect(typeof line.price.base_quantity).toBe("number");
+      expect(typeof line.discount_rate).toBe("number");
+      expect(typeof line.discount_amount).toBe("number");
+      expect(typeof line.fee_rate).toBe("number");
+      expect(typeof line.fee_amount).toBe("number");
+
+      // Check allowance_charge
+      expect(typeof out.allowance_charge[0].amount).toBe("number");
+    });
   });
 
   it("is idempotent — a second pass changes nothing", () => {
