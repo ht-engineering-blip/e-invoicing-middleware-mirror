@@ -38,6 +38,32 @@ import {
 ----------------------------------------------------- */
 
 /**
+ * Unwraps source-envelope wrappers (e.g. { data: {...} } or { invoice: {...} })
+ * so nested ERP fields are promoted to root before deterministic mapping.
+ */
+export function unwrapSourcePayload(
+  payload: Record<string, any>,
+): Record<string, any> {
+  if (!payload || typeof payload !== "object") return payload;
+  let unwrapped = { ...payload };
+  if (
+    unwrapped.data &&
+    typeof unwrapped.data === "object" &&
+    !Array.isArray(unwrapped.data)
+  ) {
+    unwrapped = { ...unwrapped.data, ...unwrapped };
+  }
+  if (
+    unwrapped.invoice &&
+    typeof unwrapped.invoice === "object" &&
+    !Array.isArray(unwrapped.invoice)
+  ) {
+    unwrapped = { ...unwrapped.invoice, ...unwrapped };
+  }
+  return unwrapped;
+}
+
+/**
  * Removes source-envelope wrappers from a finished FIRS payload.
  *
  * The transform result is built as { ...sourcePayload, ...mapped }, so an ERP
@@ -129,6 +155,8 @@ export class FIRSInvoiceTransformerV2 {
 
       if (firsSchemaDoc) firsSchema = firsSchemaDoc.fields;
 
+      const effectiveInvoice = unwrapSourcePayload(invoice);
+
       // If no mapping rules exist for this ERP, synthesize once via LLM and persist
       if (
         mappingRules.length === 0 &&
@@ -139,7 +167,7 @@ export class FIRSInvoiceTransformerV2 {
         try {
           const learned = await transformService.learnAndPersistMappingRules(
             effectiveSourceType,
-            invoice,
+            effectiveInvoice,
             {
               tenantId: authContext?.tenantId,
               firsSchema,
@@ -159,7 +187,7 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       const result = await this.transformInvoice(
-        invoice,
+        effectiveInvoice,
         authContext!,
         sourceSchema,
         firsSchema,
@@ -324,8 +352,9 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       // Step 1: Execute Deterministic Mapping from rules
-      const mapped = this.deterministicTransform(invoice, mappingRules);
-      const base: Record<string, unknown> = { ...invoice, ...mapped };
+      const unwrappedInvoice = unwrapSourcePayload(invoice);
+      const mapped = this.deterministicTransform(unwrappedInvoice, mappingRules);
+      const base: Record<string, unknown> = { ...unwrappedInvoice, ...mapped };
       const resolved = this.ensureRequiredFields(base, firsSchema);
 
       // Step 2: Deterministic Auto-Completion & Mathematical Self-Healing
@@ -603,6 +632,22 @@ export class FIRSInvoiceTransformerV2 {
         for (const tt of completed.tax_total as Record<string, any>[]) {
           if (!tt) continue;
           tt.tax_amount = toFloat(tt.tax_amount);
+          if (!Array.isArray(tt.tax_subtotal) || tt.tax_subtotal.length === 0) {
+            const taxable = toFloat(
+              (completed.legal_monetary_total as any)?.line_extension_amount,
+              0,
+            );
+            tt.tax_subtotal = [
+              {
+                taxable_amount: taxable,
+                tax_amount: tt.tax_amount,
+                tax_category: {
+                  id: "STANDARD_VAT",
+                  percent: 7.5,
+                },
+              },
+            ];
+          }
           if (Array.isArray(tt.tax_subtotal)) {
             for (const st of tt.tax_subtotal as Record<string, any>[]) {
               if (!st) continue;
@@ -866,10 +911,20 @@ export class FIRSInvoiceTransformerV2 {
         .replace(/\[(\d+|\*)\]/g, ".$1")
         .replace(/^\./, "");
 
-      let value: unknown = flat[normalised] ?? flat[rule.source];
+      const strippedSource = normalised.replace(/^(data|invoice)\./, "");
+      const strippedRawSource = rule.source.replace(/^(data|invoice)\./, "");
+
+      let value: unknown =
+        flat[normalised] ??
+        flat[rule.source] ??
+        flat[strippedSource] ??
+        flat[strippedRawSource];
 
       if (value === undefined) {
-        value = this.getDeepValue(invoice, rule.source);
+        value =
+          this.getDeepValue(invoice, rule.source) ??
+          this.getDeepValue(invoice, strippedRawSource) ??
+          this.getDeepValue(invoice, strippedSource);
       }
 
       if (

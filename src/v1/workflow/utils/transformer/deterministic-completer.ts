@@ -36,7 +36,8 @@ export class DeterministicCompleter {
    * Traverses object to get nested value safely
    */
   static getDeepValue(obj: unknown, path: string): unknown {
-    if (!path || typeof path !== "string" || !obj || typeof obj !== "object") return undefined;
+    if (!path || typeof path !== "string" || !obj || typeof obj !== "object")
+      return undefined;
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -45,7 +46,8 @@ export class DeterministicCompleter {
     let current: any = obj;
     for (const key of keys) {
       if (current == null || typeof current !== "object") return undefined;
-      if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+      if (key === "__proto__" || key === "constructor" || key === "prototype")
+        return undefined;
       // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop
       current = current[key];
     }
@@ -55,8 +57,13 @@ export class DeterministicCompleter {
   /**
    * Sets nested value safely
    */
-  static setDeepValue(obj: Record<string, any>, path: string, value: unknown): void {
-    if (!obj || typeof obj !== "object" || !path || typeof path !== "string") return;
+  static setDeepValue(
+    obj: Record<string, any>,
+    path: string,
+    value: unknown,
+  ): void {
+    if (!obj || typeof obj !== "object" || !path || typeof path !== "string")
+      return;
     const keys = path
       .replace(/\[(\d+|\*)\]/g, ".$1")
       .split(".")
@@ -77,7 +84,11 @@ export class DeterministicCompleter {
     }
 
     const last = keys[keys.length - 1];
-    if (last === "__proto__" || last === "constructor" || last === "prototype") {
+    if (
+      last === "__proto__" ||
+      last === "constructor" ||
+      last === "prototype"
+    ) {
       throw new Error("Prototype pollution attempt detected");
     }
     current[last] = value;
@@ -92,7 +103,17 @@ export class DeterministicCompleter {
     firsSchema?: ISchemaField[],
     currencies: any[] = [],
   ): ReconcileResult {
-    const res: Record<string, any> = { ...data };
+    const dataObj =
+      data?.data && typeof data.data === "object" && !Array.isArray(data.data)
+        ? data.data
+        : {};
+    const invObj =
+      data?.invoice &&
+      typeof data.invoice === "object" &&
+      !Array.isArray(data.invoice)
+        ? data.invoice
+        : {};
+    const res: Record<string, any> = { ...dataObj, ...invObj, ...data };
     const adjustments: string[] = [];
     let mathHealed = false;
 
@@ -105,24 +126,40 @@ export class DeterministicCompleter {
       state: given.state || "Lagos",
     });
 
-    const defaultEmail = (given: string = "", fallback: string = "info@company.com") => {
+    const defaultEmail = (
+      given: string = "",
+      fallback: string = "info@company.com",
+    ) => {
       if (typeof given === "string" && given.includes("@")) return given.trim();
       return fallback;
     };
 
     // 1. Identity & Supplier Information
-    const expectedBusinessId = authContext?.businessId || res.business_id || "TEST_BUSINESS_ID";
-    const expectedSupplierTIN = authContext?.businessTIN || res.supplier_tin || "10000000-0001";
-    const expectedSupplierName = authContext?.businessName || (authContext as any)?.tenantName || "Supplier Company Inc";
+    const expectedBusinessId =
+      authContext?.businessId || res.business_id || "TEST_BUSINESS_ID";
+    const expectedSupplierTIN =
+      authContext?.businessTIN || res.supplier_tin || "10000000-0001";
+    const expectedSupplierName =
+      authContext?.businessName ||
+      (authContext as any)?.tenantName ||
+      "Supplier Company Inc";
 
     res.business_id = expectedBusinessId;
 
-    if (!res.accounting_supplier_party || typeof res.accounting_supplier_party !== "object") {
-      res.accounting_supplier_party = {};
+    if (
+      !res.accounting_supplier_party ||
+      typeof res.accounting_supplier_party !== "object" ||
+      Object.keys(res.accounting_supplier_party).length === 0
+    ) {
+      res.accounting_supplier_party =
+        dataObj.accounting_supplier_party ||
+        invObj.accounting_supplier_party ||
+        {};
     }
     const supplier = res.accounting_supplier_party as Record<string, any>;
     supplier.tin = expectedSupplierTIN;
-    supplier.party_name = supplier.party_name || supplier.name || expectedSupplierName;
+    supplier.party_name =
+      supplier.party_name || supplier.name || expectedSupplierName;
     supplier.name = supplier.party_name;
     supplier.email = defaultEmail(supplier.email, "supplier@business.com");
     // FIRS requires businessdescription to be at least 5 characters on both
@@ -134,8 +171,15 @@ export class DeterministicCompleter {
     supplier.postal_address = defaultAddress(supplier.postal_address);
 
     // 2. Customer Party Auto-Completion
-    if (!res.accounting_customer_party || typeof res.accounting_customer_party !== "object") {
-      res.accounting_customer_party = {};
+    if (
+      !res.accounting_customer_party ||
+      typeof res.accounting_customer_party !== "object" ||
+      Object.keys(res.accounting_customer_party).length === 0
+    ) {
+      res.accounting_customer_party =
+        dataObj.accounting_customer_party ||
+        invObj.accounting_customer_party ||
+        {};
     }
     const customer = res.accounting_customer_party as Record<string, any>;
     let custName = customer.party_name || customer.name;
@@ -144,6 +188,8 @@ export class DeterministicCompleter {
         custName = res.customer_name.trim();
       } else if (typeof res.buyer_name === "string" && res.buyer_name.trim()) {
         custName = res.buyer_name.trim();
+      } else if (typeof dataObj.customer_name === "string" && dataObj.customer_name.trim()) {
+        custName = dataObj.customer_name.trim();
       } else {
         custName = "General Customer";
         adjustments.push("Defaulted customer party_name to General Customer");
@@ -157,6 +203,8 @@ export class DeterministicCompleter {
         customer.tin = res.customer_tin.trim();
       } else if (typeof res.buyer_tin === "string" && res.buyer_tin.trim()) {
         customer.tin = res.buyer_tin.trim();
+      } else if (typeof dataObj.customer_tin === "string" && dataObj.customer_tin.trim()) {
+        customer.tin = dataObj.customer_tin.trim();
       } else {
         customer.tin = "00000000-0000";
       }
@@ -170,12 +218,20 @@ export class DeterministicCompleter {
 
     // 3. IRN & Invoice Reference Resolution
     let invoiceRef = "";
-    if (typeof res.invoice_reference === "string" && res.invoice_reference.trim()) {
+    if (
+      typeof res.invoice_reference === "string" &&
+      res.invoice_reference.trim()
+    ) {
       invoiceRef = res.invoice_reference.trim();
-    } else if (typeof res.invoiceNumber === "string" && res.invoiceNumber.trim()) {
+    } else if (
+      typeof res.invoiceNumber === "string" &&
+      res.invoiceNumber.trim()
+    ) {
       invoiceRef = res.invoiceNumber.trim();
     } else if (typeof res.invoice_id === "string" && res.invoice_id.trim()) {
       invoiceRef = res.invoice_id.trim();
+    } else if (typeof dataObj.invoice_number === "string" && dataObj.invoice_number.trim()) {
+      invoiceRef = dataObj.invoice_number.trim();
     } else {
       invoiceRef = generateInvoiceRef();
     }
@@ -188,11 +244,19 @@ export class DeterministicCompleter {
     }
 
     // 4. Dates & Times
-    if (!res.issue_date || typeof res.issue_date !== "string" || !res.issue_date.trim()) {
+    if (
+      !res.issue_date ||
+      typeof res.issue_date !== "string" ||
+      !res.issue_date.trim()
+    ) {
       res.issue_date = new Date().toISOString().slice(0, 10);
       adjustments.push("Defaulted issue_date to current date");
     }
-    if (!res.issue_time || typeof res.issue_time !== "string" || !res.issue_time.trim()) {
+    if (
+      !res.issue_time ||
+      typeof res.issue_time !== "string" ||
+      !res.issue_time.trim()
+    ) {
       res.issue_time = new Date().toTimeString().slice(0, 8);
       adjustments.push("Defaulted issue_time to current time");
     }
@@ -210,7 +274,8 @@ export class DeterministicCompleter {
     // 6. Currencies
     const docCurr = extractCurrency(res, "document", currencies) || "NGN";
     res.document_currency_code = resolveCurrencyCode(docCurr, currencies);
-    const taxCurr = extractCurrency(res, "tax", currencies) || res.document_currency_code;
+    const taxCurr =
+      extractCurrency(res, "tax", currencies) || res.document_currency_code;
     res.tax_currency_code = resolveCurrencyCode(taxCurr, currencies);
 
     // 7. Payment Status & Payment Means
@@ -237,12 +302,35 @@ export class DeterministicCompleter {
 
     // 8. Line Items Normalization & Mathematical Reconciliation
     let rawLines: any[] = [];
-    if (Array.isArray(res.invoice_line) && res.invoice_line.length > 0) rawLines = res.invoice_line;
-    else if (Array.isArray(res.invoiceLine) && res.invoiceLine.length > 0) rawLines = res.invoiceLine;
-    else if (Array.isArray(res.line_items) && res.line_items.length > 0) rawLines = res.line_items;
-    else if (Array.isArray(res.invoice?.line_items) && res.invoice.line_items.length > 0) rawLines = res.invoice.line_items;
-    else if (Array.isArray(res.items) && res.items.length > 0) rawLines = res.items;
-    else if (Array.isArray(res.lines) && res.lines.length > 0) rawLines = res.lines;
+    if (Array.isArray(res.invoice_line) && res.invoice_line.length > 0)
+      rawLines = res.invoice_line;
+    else if (Array.isArray(dataObj.invoice_line) && dataObj.invoice_line.length > 0)
+      rawLines = dataObj.invoice_line;
+    else if (Array.isArray(invObj.invoice_line) && invObj.invoice_line.length > 0)
+      rawLines = invObj.invoice_line;
+    else if (Array.isArray(res.invoiceLine) && res.invoiceLine.length > 0)
+      rawLines = res.invoiceLine;
+    else if (Array.isArray(dataObj.invoiceLine) && dataObj.invoiceLine.length > 0)
+      rawLines = dataObj.invoiceLine;
+    else if (Array.isArray(res.line_items) && res.line_items.length > 0)
+      rawLines = res.line_items;
+    else if (Array.isArray(dataObj.line_items) && dataObj.line_items.length > 0)
+      rawLines = dataObj.line_items;
+    else if (
+      Array.isArray(res.invoice?.line_items) &&
+      res.invoice.line_items.length > 0
+    )
+      rawLines = res.invoice.line_items;
+    else if (Array.isArray(invObj.line_items) && invObj.line_items.length > 0)
+      rawLines = invObj.line_items;
+    else if (Array.isArray(res.items) && res.items.length > 0)
+      rawLines = res.items;
+    else if (Array.isArray(dataObj.items) && dataObj.items.length > 0)
+      rawLines = dataObj.items;
+    else if (Array.isArray(res.lines) && res.lines.length > 0)
+      rawLines = res.lines;
+    else if (Array.isArray(dataObj.lines) && dataObj.lines.length > 0)
+      rawLines = dataObj.lines;
     else if (Array.isArray(res.invoice_line)) rawLines = res.invoice_line;
 
     let computedLineExtensionTotal = 0;
@@ -251,7 +339,8 @@ export class DeterministicCompleter {
     for (let i = 0; i < rawLines.length; i++) {
       const raw = rawLines[i] || {};
       const itemRaw = raw.item && typeof raw.item === "object" ? raw.item : {};
-      const priceRaw = raw.price && typeof raw.price === "object" ? raw.price : {};
+      const priceRaw =
+        raw.price && typeof raw.price === "object" ? raw.price : {};
 
       const qty = this.toFloat(raw.invoiced_quantity ?? raw.quantity ?? 1, 1);
       let priceAmount = this.toFloat(
@@ -277,14 +366,30 @@ export class DeterministicCompleter {
       if (priceAmount === 0 && qty > 0 && lineAmount > 0) {
         priceAmount = lineAmount / qty;
         mathHealed = true;
-        adjustments.push(`Line ${i + 1}: Back-calculated price_amount from line total`);
+        adjustments.push(
+          `Line ${i + 1}: Back-calculated price_amount from line total`,
+        );
       }
 
       computedLineExtensionTotal += lineAmount;
 
-      const itemName = (itemRaw.name || raw.name || raw.description || `Item ${i + 1}`).trim();
-      const itemDesc = (itemRaw.description || raw.description || itemName).trim();
-      const category = (raw.product_category || raw.service_category || itemName || "General Goods and Services").trim();
+      const itemName = (
+        itemRaw.name ||
+        raw.name ||
+        raw.description ||
+        `Item ${i + 1}`
+      ).trim();
+      const itemDesc = (
+        itemRaw.description ||
+        raw.description ||
+        itemName
+      ).trim();
+      const category = (
+        raw.product_category ||
+        raw.service_category ||
+        itemName ||
+        "General Goods and Services"
+      ).trim();
 
       const rawUnit = String(priceRaw.price_unit || raw.unit || "H87").trim();
       const priceUnit = sanitizePriceUnit(rawUnit);
@@ -307,10 +412,20 @@ export class DeterministicCompleter {
           base_quantity: baseQty,
           price_unit: priceUnit,
         },
-        discount_rate: raw.discount_rate !== undefined ? this.toFloat(raw.discount_rate) : undefined,
-        discount_amount: raw.discount_amount !== undefined ? this.toFloat(raw.discount_amount) : undefined,
-        fee_rate: raw.fee_rate !== undefined ? this.toFloat(raw.fee_rate) : undefined,
-        fee_amount: raw.fee_amount !== undefined ? this.toFloat(raw.fee_amount) : undefined,
+        discount_rate:
+          raw.discount_rate !== undefined
+            ? this.toFloat(raw.discount_rate)
+            : undefined,
+        discount_amount:
+          raw.discount_amount !== undefined
+            ? this.toFloat(raw.discount_amount)
+            : undefined,
+        fee_rate:
+          raw.fee_rate !== undefined ? this.toFloat(raw.fee_rate) : undefined,
+        fee_amount:
+          raw.fee_amount !== undefined
+            ? this.toFloat(raw.fee_amount)
+            : undefined,
       });
     }
 
@@ -333,6 +448,19 @@ export class DeterministicCompleter {
 
     // 9. Tax Total Calculation & Auto-Categorization
     let totalTaxAmount = 0;
+    const effectiveTaxTotal =
+      Array.isArray(res.tax_total) && res.tax_total.length > 0
+        ? res.tax_total
+        : Array.isArray(dataObj.tax_total) && dataObj.tax_total.length > 0
+          ? dataObj.tax_total
+          : Array.isArray(invObj.tax_total) && invObj.tax_total.length > 0
+            ? invObj.tax_total
+            : null;
+
+    if (effectiveTaxTotal) {
+      res.tax_total = effectiveTaxTotal;
+    }
+
     if (Array.isArray(res.tax_total) && res.tax_total.length > 0) {
       for (const tt of res.tax_total) {
         if (!tt) continue;
@@ -341,7 +469,10 @@ export class DeterministicCompleter {
         if (Array.isArray(tt.tax_subtotal)) {
           for (const st of tt.tax_subtotal) {
             if (!st) continue;
-            st.taxable_amount = this.toFloat(st.taxable_amount, computedLineExtensionTotal);
+            st.taxable_amount = this.toFloat(
+              st.taxable_amount,
+              computedLineExtensionTotal,
+            );
             st.tax_amount = this.toFloat(st.tax_amount);
             if (!st.tax_category || typeof st.tax_category !== "object") {
               st.tax_category = {};
@@ -372,13 +503,20 @@ export class DeterministicCompleter {
           ],
         },
       ];
-      adjustments.push("Auto-computed 7.5% STANDARD_VAT tax_total subtotal structure");
+      adjustments.push(
+        "Auto-computed 7.5% STANDARD_VAT tax_total subtotal structure",
+      );
     }
 
     // 10. Legal Monetary Total Mathematical Reconciliation
-    if (!res.legal_monetary_total || typeof res.legal_monetary_total !== "object") {
-      res.legal_monetary_total = {};
-    }
+    const lmtSource =
+      res.legal_monetary_total &&
+      typeof res.legal_monetary_total === "object" &&
+      Object.keys(res.legal_monetary_total).length > 0
+        ? res.legal_monetary_total
+        : (dataObj.legal_monetary_total || invObj.legal_monetary_total || {});
+
+    res.legal_monetary_total = { ...lmtSource };
     const lmt = res.legal_monetary_total as Record<string, any>;
     const rawLineExt = this.toFloat(lmt.line_extension_amount, 0);
     const lineExt = rawLineExt > 0 ? rawLineExt : computedLineExtensionTotal;
@@ -387,14 +525,17 @@ export class DeterministicCompleter {
     const taxExcl = rawTaxExcl > 0 ? rawTaxExcl : lineExt;
 
     const rawTaxIncl = this.toFloat(lmt.tax_inclusive_amount, 0);
-    const taxIncl = rawTaxIncl > 0 ? rawTaxIncl : (taxExcl + totalTaxAmount);
+    const taxIncl = rawTaxIncl > 0 ? rawTaxIncl : taxExcl + totalTaxAmount;
 
     const prepaid = this.toFloat(lmt.prepaid_amount, 0);
 
     const rawPayable = this.toFloat(lmt.payable_amount, 0);
-    const payable = rawPayable > 0 ? rawPayable : (taxIncl - prepaid);
+    const payable = rawPayable > 0 ? rawPayable : taxIncl - prepaid;
 
-    if (lmt.payable_amount !== payable || lmt.line_extension_amount !== lineExt) {
+    if (
+      lmt.payable_amount !== payable ||
+      lmt.line_extension_amount !== lineExt
+    ) {
       mathHealed = true;
       adjustments.push("Reconciled legal_monetary_total mathematical totals");
     }
