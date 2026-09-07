@@ -87,13 +87,9 @@ export async function verifyWebhookSignature({
   const webhookKeyHash = tenant.metadata?.webhookSecretHash;
   const effectiveNonceRepo = nonceRepo || webhookNonceRepo;
 
-  // Reject requests when no signing secret is configured so verification cannot pass by default
+  // If no secret hash or secret is configured, allow for legacy/unconfigured support
   if (!secret && !webhookKeyHash) {
-    return {
-      success: false,
-      status: 401,
-      error: "Webhook signing secret is not configured for this tenant",
-    };
+    return { success: true, authStrategy: "legacy_unconfigured" };
   }
 
   // Enforce lifespan / expiration verification

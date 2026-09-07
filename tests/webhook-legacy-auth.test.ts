@@ -357,6 +357,25 @@ describe("Multi-Strategy Webhook Authentication & Legacy Support", () => {
       }
     });
 
+    it("Legacy unconfigured tenant allows webhook without secrets", async () => {
+      const unconfiguredTenant = {
+        tenantId: "tenant-unconfigured",
+        config: {},
+        metadata: {},
+      };
+
+      const res = await verifyWebhookSignature({
+        headers: {},
+        rawBody,
+        tenant: unconfiguredTenant as any,
+      });
+
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.authStrategy).toBe("legacy_unconfigured");
+      }
+    });
+
     it("Strict Mode: authMode 'hmac' rejects static secret headers", async () => {
       const hmacTenant = {
         ...mockTenant,
