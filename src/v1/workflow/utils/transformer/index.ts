@@ -24,7 +24,10 @@ export { normalizeInvoicePayload } from "./payload-normalizer";
 export { DeterministicCompleter } from "./deterministic-completer";
 export { TransformerCircuitBreaker } from "./circuit-breaker";
 export { DeterministicMappingEngine } from "./deterministic-engine";
-export { NRSSchemaRegistry, type NRSSchemaVersionInfo } from "./nrs-schema-registry";
+export {
+  NRSSchemaRegistry,
+  type NRSSchemaVersionInfo,
+} from "./nrs-schema-registry";
 export * from "./mapping-spec.types";
 
 import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
@@ -94,7 +97,7 @@ export class FIRSInvoiceTransformer {
     model: string = "gpt-4o-mini",
   ) {
     this.apiKey = apiKey;
-    this.apiEndpoint = apiEndpoint || "https://api.openai.com/v1/chat/completions";
+    this.apiEndpoint = apiEndpoint;
     this.provider = provider || "openai";
     this.model = model || "gpt-4o-mini";
   }
@@ -229,14 +232,14 @@ export class FIRSInvoiceTransformer {
     let content: string | undefined;
 
     if (isGemini) {
-      const candidates = result.candidates as
-        | Array<{ content?: { parts?: Array<{ text?: string }> } }>
-        | undefined;
+      const candidates = result.candidates as Array<{
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
       content = candidates?.[0]?.content?.parts?.[0]?.text;
     } else {
-      const choices = result.choices as
-        | Array<{ message?: { content?: string } }>
-        | undefined;
+      const choices = result.choices as Array<{
+        message?: { content?: string };
+      }>;
       content = choices?.[0]?.message?.content;
     }
 
