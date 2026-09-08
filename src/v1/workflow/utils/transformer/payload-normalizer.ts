@@ -8,7 +8,7 @@ import {
   sanitizeInvoiceIRNs,
   sanitizePriceUnit,
 } from "./utils";
-import { AuthContext } from "../../../../middlewares";
+import type { AuthContext } from "./mapping-spec.types";
 
 export interface InvoiceLineItem {
   hsn_code?: string;

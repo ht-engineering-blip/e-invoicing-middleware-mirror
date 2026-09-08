@@ -47,7 +47,12 @@ export interface VerifyWebhookParams {
       webhookAuth?: string;
       webhookExpiresAt?: Date;
       webhookLifespan?: string;
-      webhookAuthMode?: "auto" | "hmac" | "static_secret" | "secret_url" | string;
+      webhookAuthMode?:
+        | "auto"
+        | "hmac"
+        | "static_secret"
+        | "secret_url"
+        | string;
       defaultEventType?: string;
     };
     metadata?: {
@@ -60,7 +65,11 @@ export interface VerifyWebhookParams {
   query?: Record<string, string | undefined>;
   bodyObj?: Record<string, unknown>;
   nonceRepo?: {
-    findOne: (query: { tenantId: string; t: number; v1: string }) => Promise<any>;
+    findOne: (query: {
+      tenantId: string;
+      t: number;
+      v1: string;
+    }) => Promise<any>;
     create: (data: { tenantId: string; t: number; v1: string }) => Promise<any>;
   };
 }
@@ -81,7 +90,8 @@ export async function verifyWebhookSignature({
   bodyObj,
   nonceRepo,
 }: VerifyWebhookParams): Promise<
-  { success: true; authStrategy?: string } | { success: false; status: number; error: string }
+  | { success: true; authStrategy?: string }
+  | { success: false; status: number; error: string }
 > {
   const secret = tenant.config?.webhookAuth;
   const webhookKeyHash = tenant.metadata?.webhookSecretHash;
@@ -116,7 +126,8 @@ export async function verifyWebhookSignature({
 
   // Normalize lower-case header getters
   const getHeader = (key: string): string | undefined => {
-    const direct = headers[key] || headers[key.toLowerCase()] || headers[key.toUpperCase()];
+    const direct =
+      headers[key] || headers[key.toLowerCase()] || headers[key.toUpperCase()];
     return typeof direct === "string" ? direct.trim() : undefined;
   };
 
@@ -301,7 +312,11 @@ export async function verifyWebhookSignature({
     if (querySecret && checkSecretMatch(querySecret)) {
       return { success: true, authStrategy: "query_param" };
     }
-    if (bodySecret && typeof bodySecret === "string" && checkSecretMatch(bodySecret)) {
+    if (
+      bodySecret &&
+      typeof bodySecret === "string" &&
+      checkSecretMatch(bodySecret)
+    ) {
       return { success: true, authStrategy: "body_secret" };
     }
 

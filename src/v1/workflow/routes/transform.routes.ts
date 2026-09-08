@@ -4,14 +4,19 @@ import { TenantService } from "../../tenants/services/tenant.service";
 import { TransformWorkflowService } from "../services/workflows/transform.service";
 import jsonSpread from "json-spread";
 import { LLMService } from "../../../@lib/adapters/llm/llm.service";
-import { ResponseBuilder } from "../../../@lib";
+import { AppError, ResponseBuilder } from "../../../@lib";
 import { onlyAdmin } from "../../auth/utils/access-checks";
 import { secureAndValidateInvoice } from "../utils/security";
 import {
   transformInvoiceValidation,
   configureERPDictionaryValidation,
   configureFIRSDictionaryValidation,
+  generateMappingValidation,
+  testMappingValidation,
+  saveMappingValidation,
 } from "../validations/transform.validation";
+import type { MappingTemplate } from "../utils/transformer/mapping-spec.types";
+import { NRSSchemaRegistry } from "../utils/transformer/nrs-schema-registry";
 
 /**
  * Admin-protected tenant routes
@@ -51,13 +56,124 @@ const transformInvoiceRoutes = new Elysia({ prefix: "/transform" })
       }
     },
     transformInvoiceValidation,
+  )
+
+  /**
+   * GET /api/v1/workflow/transform/nrs-schemas
+   * List available NRS target schema versions and required fields
+   */
+  .get("/nrs-schemas", async ({ transformWorkflowService }) => {
+    return ResponseBuilder.success(transformWorkflowService.getNRSSchemas());
+  })
+
+  /**
+   * POST /api/v1/workflow/transform/mapping/generate
+   * Generate a proposed MappingTemplate using LLM (One-time during onboarding)
+   */
+  .post(
+    "/mapping/generate",
+    async ({ auth, body, llmService, transformWorkflowService, set }) => {
+      try {
+        onlyAdmin(auth!);
+        const { erp, sample_invoice, nrs_version }: any = body;
+
+        const firsSchemaDoc =
+          await transformWorkflowService.getInvoiceSchema("FIRS_UBL");
+        const targetNrsData =
+          firsSchemaDoc?.fields ||
+          NRSSchemaRegistry.getSchema(nrs_version || "v1.0")?.fields;
+
+        const generatedTemplate = await llmService.generateMappingTemplate(
+          erp,
+          sample_invoice,
+          nrs_version || "v1.0",
+          targetNrsData,
+        );
+
+        return ResponseBuilder.success({
+          erp_source: erp,
+          template: generatedTemplate,
+        });
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
+      }
+    },
+    generateMappingValidation,
+  )
+
+  /**
+   * POST /api/v1/workflow/transform/mapping/test
+   * Test a MappingTemplate on a sample invoice payload without saving
+   */
+  .post(
+    "/mapping/test",
+    async ({ auth, body, transformWorkflowService, set }) => {
+      try {
+        onlyAdmin(auth!);
+        const { sample_invoice, template }: any = body;
+
+        const result = await transformWorkflowService.testMappingTemplate(
+          sample_invoice,
+          template as MappingTemplate,
+          auth,
+        );
+
+        return ResponseBuilder.success(result);
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error(error.message, error.statusCode || 500);
+      }
+    },
+    testMappingValidation,
+  )
+
+  /**
+   * POST /api/v1/workflow/transform/mapping/save
+   * Strictly validates sample payload against NRS rules before saving and activating ERP mapping
+   */
+  .post(
+    "/mapping/save",
+    async ({ auth, body, transformWorkflowService, set }) => {
+      try {
+        onlyAdmin(auth!);
+        const { erp, template, sample_invoice }: any = body;
+
+        const savedSchema = await transformWorkflowService.saveMappingTemplate(
+          erp,
+          template as MappingTemplate,
+          sample_invoice,
+          {
+            tenantId: auth?.tenantId,
+            createdBy: auth?.userId || "system",
+          },
+          auth,
+        );
+
+        return ResponseBuilder.success({
+          schema_id: savedSchema.schema_id,
+          erp_source: erp,
+          status: savedSchema.status,
+          message:
+            "ERP Mapping verified against NRS schema and activated successfully",
+        });
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        return ResponseBuilder.error(
+          error.message,
+          error.statusCode || 500,
+          error.details || error.data,
+        );
+      }
+    },
+    saveMappingValidation,
   );
 
 /* Dictionary Configuration */
 transformInvoiceRoutes
   /**
    * POST /api/v1/workflow/transform/dictionary/erp
-   * Update erp invoice dictionary for use in transformation operations
+   * Update erp invoice dictionary and mapping template (supports manual or llm mapping)
    */
   .post(
     "/dictionary/erp",
@@ -71,70 +187,77 @@ transformInvoiceRoutes
     }) => {
       try {
         onlyAdmin(auth!);
-        const { erp, invoice: rawInvoice, metadata }: any = body;
+        const {
+          erp,
+          invoice: rawInvoice,
+          mapping_type = "manual",
+          mapping_template,
+          mapping_rules,
+        }: any = body;
+
         const invoice = secureAndValidateInvoice(
           rawInvoice as SecureInvoice,
           auth,
         );
 
-        // Flatten the invoice for field extraction
-        let flatInvoice = jsonSpread(invoice)[0];
-        let flatMetadata = metadata ? jsonSpread(metadata)[0] : undefined;
+        let finalTemplate: MappingTemplate | null = null;
 
-        // Generate invoice dictionary using LLM
-        let generatedFields = await llmService.generateInvoiceDictionary(
-          erp,
-          flatInvoice,
-          flatMetadata,
-        );
-
-        let generatedMappingRules: Array<Record<string, any>> = [];
-        try {
-          const firsSchemaDoc = await transformWorkflowService.getInvoiceSchema(
-            "FIRS_UBL",
-          );
-          generatedMappingRules = await llmService.generateMappingRules(
+        if (mapping_type === "llm") {
+          // Option A: LLM-Assisted Mapping Generation
+          finalTemplate = await llmService.generateMappingTemplate(
             erp,
-            flatInvoice,
-            firsSchemaDoc?.fields,
+            invoice,
           );
-        } catch (mErr) {
-          // Non-blocking fallback
+        } else {
+          // Option B: Manual Mapping
+          if (mapping_template) {
+            finalTemplate = mapping_template as MappingTemplate;
+          } else if (Array.isArray(mapping_rules) && mapping_rules.length > 0) {
+            finalTemplate = {
+              erp_source: erp,
+              nrs_schema_version: "v1.0",
+              field_mappings: mapping_rules.filter(
+                (r: any) => r.source && !r.source.includes("[*]"),
+              ),
+              array_mappings: [],
+            };
+          } else {
+            throw new AppError(
+              400,
+              "For manual mapping, 'mapping_template' or 'mapping_rules' must be provided",
+              "MISSING_MAPPING_RULES",
+            );
+          }
         }
 
-        // Upsert the schema to database
-        const savedSchema = await transformWorkflowService.upsertERPSchema(
+        // Strict Gatekeeper: Validates sample invoice against NRS schema before saving
+        const savedSchema = await transformWorkflowService.saveMappingTemplate(
           erp,
-          generatedFields,
+          finalTemplate,
+          invoice,
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || "system",
-            mapping_rules: generatedMappingRules,
-            metadata: {
-              ...metadata,
-              mapping_rules: generatedMappingRules,
-              source_invoice_sample:
-                metadata && metadata.source_invoice_sample
-                  ? metadata.source_invoice_sample
-                  : flatInvoice,
-              generated_at: new Date().toISOString(),
-            },
           },
+          auth,
         );
 
         return ResponseBuilder.success({
           schema_id: savedSchema.schema_id,
           erp_type: erp,
-          fields_count: generatedFields.length,
-          fields: generatedFields,
-          mapping_rules_count: generatedMappingRules.length,
-          mapping_rules: generatedMappingRules,
+          mapping_type,
+          template: finalTemplate,
           status: savedSchema.status,
+          message:
+            "ERP mapping verified against NRS schema and activated successfully",
         });
-
       } catch (error: any) {
         set.status = error.statusCode || 500;
-        return ResponseBuilder.error(error.message, error.statusCode || 500);
+        return ResponseBuilder.error(
+          error.message,
+          error.statusCode || 500,
+          error.details || error.data,
+        );
       }
     },
     configureERPDictionaryValidation,
@@ -160,10 +283,6 @@ transformInvoiceRoutes
         // Flatten the invoice and metadata for field extraction
         let flatInvoice = jsonSpread(invoice)[0];
         let invoiceKeyTypes: any = {};
-        /*  Object.keys(invoice).forEach(key => {
-           const value = invoice[key];
-           invoiceKeyTypes[key] = typeof value
-         }); */
         let flatMetadata = metadata ? jsonSpread(metadata)[0] : {};
         flatMetadata.dataTypes = invoiceKeyTypes;
 

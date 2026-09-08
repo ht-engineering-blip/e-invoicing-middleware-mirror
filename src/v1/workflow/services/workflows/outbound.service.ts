@@ -1,6 +1,6 @@
 import { FIRSService } from "../../../../@lib/adapters/firs/firs.service";
 import { TenantService } from "../../../tenants/services/tenant.service";
-import { OutboundInvoiceStatus } from "../../models";
+import { OutboundInvoiceSource, OutboundInvoiceStatus } from "../../models";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { generateUniqueHsnCode } from "../../utils/transformer/utils";
 import { extractFIRSError, retryWithBackoff } from "../../../shared/utils";
@@ -37,19 +37,52 @@ export class OutboundWorkflowService {
       throw new Error("QR code generation failed");
     }
 
-    return encryptedData;
+    return {
+      qrCode: encryptedData.qrCode,
+      data: encryptedData.data,
+    };
   }
 
   getFIRSError = (error: any) => extractFIRSError(error);
 
+  /**
+   * Orchestrates the outbound workflow for an invoice:
+   *   1. Validate invoice against FIRS
+   *   2. Sign invoice via FIRS
+   *   3. Confirm signed status
+   *   4. Generate QR code
+   *   5. Transmit to FIRS portal (when transmit = true)
+   */
   async handleOutboundWorkflow(
     invoice: SecureInvoice,
     transmit: boolean = false,
   ) {
     // Load persisted workflow state
     let stored = null;
+    const tenantId = invoice.tenant_id || (invoice as any).tenantId;
     if (invoice.irn) {
       stored = await this.outboundRepo.findByIrn(invoice.irn).catch(() => null);
+      if (!stored && tenantId) {
+        stored = await this.outboundRepo
+          .upsertByIrn({
+            irn: invoice.irn,
+            tenantId: tenantId,
+            source: OutboundInvoiceSource.API,
+            erpInvoiceId: invoice.invoice_id || (invoice as any).erpInvoiceId || `ERP-${Date.now()}`,
+            createdBy: tenantId,
+            workflowState: {
+              transformed: true,
+              validated: false,
+              signed: false,
+              transmitted: false,
+              delivered: false,
+            },
+          })
+          .catch((err) => {
+            console.warn("[OutboundService] upsertByIrn warning:", err?.message);
+            return null;
+          });
+      }
     }
 
     const wf = stored?.workflowState ?? {
@@ -92,8 +125,17 @@ export class OutboundWorkflowService {
             invoice.business_id,
             invoice.irn,
           );
+          console.log(`\n📡 [NRS Response: Search Invoice]`, {
+            irn: invoice.irn,
+            business_id: invoice.business_id,
+            found: (searchedInvoice?.data?.data?.items?.length ?? 0) > 0,
+            response: searchedInvoice?.data ?? searchedInvoice,
+          });
           skipSigning = (searchedInvoice?.data?.data?.items?.length ?? 0) > 0;
         } catch (searchErr: unknown) {
+          console.log(
+            `\n📡 [NRS Response: Search Invoice] IRN ${invoice.irn} not found on server (proceeding with validation/signing)`,
+          );
           skipSigning = false;
         }
       }
@@ -132,8 +174,28 @@ export class OutboundWorkflowService {
             },
           );
         } catch (error: any) {
+          console.error(
+            `\n❌ [NRS Response: Validate Invoice Failed]`,
+            error?.message || error,
+          );
           throw error;
         }
+
+        console.log(
+          `\n📡 [NRS Response: Validate Invoice] (HTTP 200 OK)`,
+          JSON.stringify(
+            {
+              endpoint: "/api/v1/invoice/validate",
+              irn: invoice.irn,
+              business_id: invoice.business_id,
+              code: validatedInvoice?.code ?? 200,
+              status: "VALIDATED",
+              data: validatedInvoice?.data ?? validatedInvoice,
+            },
+            null,
+            2,
+          ),
+        );
 
         if (
           !validatedInvoice ||
@@ -155,11 +217,42 @@ export class OutboundWorkflowService {
 
       // Step 2: Sign
       if (!skipSigning && !wf.signed) {
-        const signedInvoice = await this.firsService.signInvoice(invoice);
+        let signedInvoice: any;
+        try {
+          signedInvoice = await this.firsService.signInvoice(invoice);
 
-        if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
-          const { message } = extractFIRSError(signedInvoice);
-          throw new Error(`Invoice signing failed: ${message}`);
+          console.log(
+            `\n📡 [NRS Response: Sign Invoice] (HTTP 200 OK)`,
+            JSON.stringify(
+              {
+                endpoint: "/api/v1/invoice/sign",
+                irn: invoice.irn,
+                code: signedInvoice?.code ?? 200,
+                status: "SIGNED",
+                data: signedInvoice?.data ?? signedInvoice,
+              },
+              null,
+              2,
+            ),
+          );
+
+          if (signedInvoice.code !== 200 && !signedInvoice?.data?.ok) {
+            const { message } = extractFIRSError(signedInvoice);
+            throw new Error(`Invoice signing failed: ${message}`);
+          }
+        } catch (signErr: any) {
+          const errMsg = String(signErr?.message || "").toLowerCase();
+          if (
+            errMsg.includes("duplicate request") ||
+            errMsg.includes("already exist") ||
+            errMsg.includes("already signed")
+          ) {
+            console.log(
+              `\nℹ [Invoice Retry] Invoice '${invoice.irn}' is already signed in FIRS. Proceeding to confirmation, QR code generation, and transmission...`,
+            );
+          } else {
+            throw signErr;
+          }
         }
 
         await this.outboundRepo.update(invoice.irn, {
@@ -178,6 +271,24 @@ export class OutboundWorkflowService {
         try {
           const confirmedInvoice = await this.firsService.confirmSignedInvoice(
             invoice.irn,
+          );
+
+          console.log(
+            `\n📡 [NRS Response: Confirm Signed Invoice] (HTTP 200 OK)`,
+            JSON.stringify(
+              {
+                endpoint: `/api/v1/invoice/confirm/${invoice.irn}`,
+                irn: invoice.irn,
+                code:
+                  (confirmedInvoice as any)?.code ??
+                  (confirmedInvoice as any)?.data?.code ??
+                  200,
+                status: "CONFIRMED",
+                data: confirmedInvoice?.data ?? confirmedInvoice,
+              },
+              null,
+              2,
+            ),
           );
 
           const confirmCode = confirmedInvoice?.data?.code;
@@ -226,6 +337,18 @@ export class OutboundWorkflowService {
           firsCredentials.publicKey || "",
         );
 
+        console.log(`\n📡 [NRS Response: Generate QR Code]`, {
+          irn: invoice.irn,
+          hasQrCode: !!encryptedData?.qrCode,
+          qrCodeLength: encryptedData?.qrCode?.length,
+          qrCodePreview: encryptedData?.qrCode
+            ? `${encryptedData.qrCode.slice(0, 60)}...`
+            : undefined,
+          encryptedDataSummary: encryptedData?.data
+            ? `${encryptedData.data.slice(0, 40)}...`
+            : undefined,
+        });
+
         if (encryptedData?.qrCode) {
           const existingInvoice = await this.outboundRepo.findByIrn(
             invoice.irn,
@@ -249,6 +372,21 @@ export class OutboundWorkflowService {
         try {
           const transmitRes = await this.firsService.transmitInvoice(
             invoice.irn,
+          );
+
+          console.log(
+            `\n📡 [NRS Response: Transmit Invoice] (HTTP 200 OK)`,
+            JSON.stringify(
+              {
+                endpoint: `/api/v1/invoice/transmit/${invoice.irn}`,
+                irn: invoice.irn,
+                code: transmitRes?.code ?? 200,
+                status: "TRANSMITTED",
+                data: transmitRes?.data ?? transmitRes,
+              },
+              null,
+              2,
+            ),
           );
 
           if (

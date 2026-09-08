@@ -121,6 +121,9 @@ export function registerCompleteOutboundJob(): void {
           });
 
           await outboundRepo.updateWorkflowState(irn, {
+            transformed: true,
+            validated: true,
+            signed: true,
             transmitted: !transmissionFailed,
             delivered: !transmissionFailed || !!qrCode,
           });

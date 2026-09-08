@@ -23,6 +23,9 @@ export type { FIRSInvoice } from "./schema-validator";
 export { normalizeInvoicePayload } from "./payload-normalizer";
 export { DeterministicCompleter } from "./deterministic-completer";
 export { TransformerCircuitBreaker } from "./circuit-breaker";
+export { DeterministicMappingEngine } from "./deterministic-engine";
+export { NRSSchemaRegistry, type NRSSchemaVersionInfo } from "./nrs-schema-registry";
+export * from "./mapping-spec.types";
 
 import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
 

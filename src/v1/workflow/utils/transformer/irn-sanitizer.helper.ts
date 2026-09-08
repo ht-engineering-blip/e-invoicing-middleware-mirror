@@ -70,6 +70,8 @@ export function sanitizeInvoiceIRNs(
         { irn: sanitizeIRN(defaultRef), issue_date: defaultDate },
       ];
     }
+  } else {
+    delete invoice.billing_reference;
   }
 
   if (Array.isArray(invoice.billing_reference)) {
@@ -141,10 +143,9 @@ export function generateIRN(
 
   if (!finalServiceId) return undefined;
 
-  const padding = generateRandomString(4).substring(0, 4).toUpperCase();
-  const inv = (baseRef + padding).replace(/[^A-Za-z0-9]/g, "");
+  const inv = (baseRef || "").replace(/[^A-Za-z0-9]/g, "");
 
-  if (!/^[A-Za-z0-9]+$/.test(inv)) return undefined;
+  if (!inv || !/^[A-Za-z0-9]+$/.test(inv)) return undefined;
 
   const datestamp = generateDatestamp(date);
   return `${inv}-${finalServiceId}-${datestamp}`.toUpperCase();

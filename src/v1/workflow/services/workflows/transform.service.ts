@@ -20,6 +20,10 @@ import {
   type FIRSInvoice,
   type TransformationResult,
   type TransformInvoiceInput,
+  DeterministicMappingEngine,
+  NRSSchemaRegistry,
+  type MappingTemplate,
+  type DeterministicTransformResult,
 } from "../../utils/transformer";
 import { FIRSInvoiceTransformerV2 } from "../../utils/transformer/v2";
 
@@ -131,6 +135,73 @@ export class TransformWorkflowService {
   }
 
   /**
+   * Resolve an active MappingTemplate for a given source ERP type
+   */
+  private async resolveMappingTemplate(
+    sourceType?: SchemaSourceType | string,
+  ): Promise<MappingTemplate | null> {
+    if (!sourceType) return null;
+    const schemaDoc = await this.getInvoiceSchema(sourceType);
+    if (!schemaDoc) return null;
+
+    if (schemaDoc.metadata && schemaDoc.metadata.mapping_template) {
+      return schemaDoc.metadata.mapping_template as MappingTemplate;
+    }
+
+    if (
+      Array.isArray(schemaDoc.mapping_rules) &&
+      schemaDoc.mapping_rules.length > 0
+    ) {
+      const fieldMappings: any[] = [];
+      const arrayMappings: any[] = [];
+
+      for (const rule of schemaDoc.mapping_rules as any[]) {
+        if (rule && rule.source && rule.target) {
+          if (rule.source.includes("[*]") || rule.target.includes("[*]")) {
+            const srcArr = rule.source.split("[*]")[0].replace(/\.$/, "");
+            const tgtArr = rule.target.split("[*]")[0].replace(/\.$/, "");
+            const srcItem = rule.source.split("[*].")[1] || "";
+            const tgtItem = rule.target.split("[*].")[1] || "";
+
+            let existingArr = arrayMappings.find(
+              (a) => a.source_array === srcArr,
+            );
+            if (!existingArr) {
+              existingArr = {
+                source_array: srcArr,
+                target_array: tgtArr,
+                item_mappings: [],
+              };
+              arrayMappings.push(existingArr);
+            }
+            existingArr.item_mappings.push({
+              source: srcItem,
+              target: tgtItem,
+            });
+          } else {
+            fieldMappings.push({
+              source: rule.source,
+              target: rule.target,
+              fallback_sources: rule.fallback_sources,
+              default_value: rule.default_value,
+              transform: rule.transform,
+            });
+          }
+        }
+      }
+
+      return {
+        erp_source: String(sourceType),
+        nrs_schema_version: "v1.0",
+        field_mappings: fieldMappings,
+        array_mappings: arrayMappings,
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Transform invoice from source ERP format to FIRS UBL format
    */
   transformInvoice = async (
@@ -138,6 +209,36 @@ export class TransformWorkflowService {
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<FIRSInvoice & Record<string, unknown>> => {
+    // 1. Try fast deterministic transformation first
+    try {
+      const template = await this.resolveMappingTemplate(sourceType);
+      if (
+        template &&
+        (template.field_mappings.length > 0 ||
+          (template.array_mappings && template.array_mappings.length > 0))
+      ) {
+        const deterministicRes = DeterministicMappingEngine.transform(
+          invoice as Record<string, any>,
+          template,
+          authContext,
+        );
+
+        if (deterministicRes.success && deterministicRes.data) {
+          logger.info(
+            `[TransformService] Fast deterministic V1 transformation completed in ${deterministicRes.executionTimeMs}ms`,
+            { sourceType },
+          );
+          return deterministicRes.data as FIRSInvoice & Record<string, unknown>;
+        }
+      }
+    } catch (detErr: any) {
+      logger.warn(
+        `[TransformService] Deterministic V1 pre-check failed, falling back to LLM`,
+        { error: detErr?.message },
+      );
+    }
+
+    // 2. Fallback to LLM Transformer
     const transformer = new FIRSInvoiceTransformer(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -166,6 +267,36 @@ export class TransformWorkflowService {
     authContext?: AuthContext,
     sourceType?: SchemaSourceType | string,
   ): Promise<FIRSInvoice & Record<string, unknown>> => {
+    // 1. Try fast deterministic transformation first
+    try {
+      const template = await this.resolveMappingTemplate(sourceType);
+      if (
+        template &&
+        (template.field_mappings.length > 0 ||
+          (template.array_mappings && template.array_mappings.length > 0))
+      ) {
+        const deterministicRes = DeterministicMappingEngine.transform(
+          invoice as Record<string, any>,
+          template,
+          authContext,
+        );
+
+        if (deterministicRes.success && deterministicRes.data) {
+          logger.info(
+            `[TransformService] Fast deterministic V2 transformation completed in ${deterministicRes.executionTimeMs}ms`,
+            { sourceType },
+          );
+          return deterministicRes.data as FIRSInvoice & Record<string, unknown>;
+        }
+      }
+    } catch (detErr: any) {
+      logger.warn(
+        `[TransformService] Deterministic V2 pre-check failed, falling back to LLM`,
+        { error: detErr?.message },
+      );
+    }
+
+    // 2. Fallback to LLM Transformer V2
     const transformer = new FIRSInvoiceTransformerV2(
       aiConfig?.apiKey!,
       aiConfig?.apiEndpoint!,
@@ -184,6 +315,147 @@ export class TransformWorkflowService {
     } else {
       this.handleTransformationFailure("V2 Transformation", result);
     }
+  };
+
+  /**
+   * Test a MappingTemplate on a sample ERP invoice payload without saving
+   */
+  testMappingTemplate = async (
+    samplePayload: Record<string, any>,
+    template: MappingTemplate,
+    authContext?: AuthContext,
+  ): Promise<DeterministicTransformResult> => {
+    // Load active NRS schema directly from DB dictionary
+    const firsDoc = await this.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
+    if (firsDoc) {
+      NRSSchemaRegistry.registerFromDB(
+        template.nrs_schema_version || (firsDoc as any)?.version || "v1.0",
+        firsDoc.name,
+        firsDoc.description || "",
+        firsDoc.fields,
+        true,
+      );
+    }
+
+    return DeterministicMappingEngine.transform(
+      samplePayload,
+      template,
+      authContext,
+    );
+  };
+
+  /**
+   * Save a verified MappingTemplate for an ERP source.
+   * STRICT GATEKEEPER: Validates the sample payload against the mapping template + NRS schema.
+   * If validation fails, throws AppError and prevents saving to database.
+   */
+  saveMappingTemplate = async (
+    erpType: string,
+    template: MappingTemplate,
+    sampleInvoice?: Record<string, any>,
+    options?: {
+      tenantId?: string;
+      createdBy?: string;
+    },
+    authContext?: AuthContext,
+  ): Promise<InvoiceSchemaDictionaryDocument> => {
+    // 1. Gatekeeper: Validate sample invoice if provided
+    if (sampleInvoice && Object.keys(sampleInvoice).length > 0) {
+      const testResult = await this.testMappingTemplate(
+        sampleInvoice,
+        template,
+        authContext,
+      );
+
+      if (!testResult.success) {
+        const errorDetails = (testResult.errors || []).map((err) => ({
+          message: err,
+        }));
+        throw new AppError(
+          400,
+          `Cannot save ERP mapping: Sample payload failed NRS schema validation (${(testResult.errors || []).length} errors found)`,
+          "ERP_MAPPING_VALIDATION_FAILED",
+          errorDetails,
+        );
+      }
+    }
+
+    const fields: ISchemaField[] = [];
+
+    // Extract schema fields from mapping rules for dictionary persistence
+    if (Array.isArray(template.field_mappings)) {
+      for (const rule of template.field_mappings) {
+        if (rule.source) {
+          fields.push({
+            field_id: rule.source.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase(),
+            field_path: rule.source,
+            data_type: "String",
+            is_required: rule.is_required || false,
+            description: rule.description || `Mapped to ${rule.target}`,
+          });
+        }
+      }
+    }
+
+    const legacyRules: Array<Record<string, any>> = [];
+    if (Array.isArray(template.field_mappings)) {
+      for (const rule of template.field_mappings) {
+        legacyRules.push({
+          source: rule.source,
+          target: rule.target,
+          fallback_sources: rule.fallback_sources,
+          default_value: rule.default_value,
+          transform: rule.transform,
+        });
+      }
+    }
+    if (Array.isArray(template.array_mappings)) {
+      for (const arr of template.array_mappings) {
+        for (const item of arr.item_mappings) {
+          legacyRules.push({
+            source: `${arr.source_array}[*].${item.source}`,
+            target: `${arr.target_array}[*].${item.target}`,
+            transform: item.transform,
+          });
+        }
+      }
+    }
+
+    return this.upsertERPSchema(erpType, fields, {
+      tenantId: options?.tenantId,
+      createdBy: options?.createdBy || "system",
+      status: SchemaStatus.ACTIVE,
+      mapping_rules: legacyRules,
+      metadata: {
+        mapping_template: template,
+        sample_invoice: sampleInvoice,
+        validated_at: new Date().toISOString(),
+      },
+    });
+  };
+
+  /**
+   * Get supported NRS target schema versions loaded directly from DB
+   */
+  getNRSSchemas = async () => {
+    const firsSchemas = await this.invoiceRepo.findBySourceType(
+      SchemaSourceType.FIRS_UBL,
+      true,
+    );
+
+    if (Array.isArray(firsSchemas) && firsSchemas.length > 0) {
+      for (const doc of firsSchemas) {
+        NRSSchemaRegistry.registerFromDB(
+          (doc as any)?.version || "v1.0",
+          doc.name,
+          doc.description || "",
+          doc.fields,
+          doc.is_default || true,
+        );
+      }
+    }
+
+    return NRSSchemaRegistry.listSchemas();
   };
 
   /**
@@ -296,7 +568,9 @@ export class TransformWorkflowService {
     },
   ): Promise<Array<Record<string, any>>> => {
     if (!aiConfig?.enabled) {
-      logger.info("[TransformService] AI disabled, skipping LLM mapping rule learning");
+      logger.info(
+        "[TransformService] AI disabled, skipping LLM mapping rule learning",
+      );
       return [];
     }
 
@@ -308,7 +582,9 @@ export class TransformWorkflowService {
         if (firsDoc) firsFields = firsDoc.fields;
       }
 
-      logger.info(`[TransformService] Synthesizing one-time mapping rules for ${sourceType} via LLM...`);
+      logger.info(
+        `[TransformService] Synthesizing one-time mapping rules for ${sourceType} via LLM...`,
+      );
       const rules = await llmService.generateMappingRules(
         String(sourceType),
         sampleInvoice,
@@ -336,13 +612,15 @@ export class TransformWorkflowService {
         return rules;
       }
     } catch (err: any) {
-      logger.warn(`[TransformService] Failed to synthesize mapping rules via LLM for ${sourceType}:`, {
-        error: err.message,
-      });
+      logger.warn(
+        `[TransformService] Failed to synthesize mapping rules via LLM for ${sourceType}:`,
+        {
+          error: err.message,
+        },
+      );
     }
     return [];
   };
-
 
   /**
    * Upsert FIRS UBL invoice schema
@@ -354,7 +632,7 @@ export class TransformWorkflowService {
       metadata?: Record<string, any>;
     },
   ): Promise<InvoiceSchemaDictionaryDocument> => {
-    return this.upsertInvoiceSchema(SchemaSourceType.FIRS_UBL, {
+    const saved = await this.upsertInvoiceSchema(SchemaSourceType.FIRS_UBL, {
       schema_id: "FIRS_UBL_INVOICE_SCHEMA",
       name: "FIRS UBL Invoice Schema",
       description: "Nigerian FIRS Universal Business Language invoice schema",
@@ -368,6 +646,17 @@ export class TransformWorkflowService {
         ...options?.metadata,
       },
     });
+
+    // Dynamically register into runtime NRSSchemaRegistry
+    NRSSchemaRegistry.registerFromDB(
+      "v1.0",
+      saved.name,
+      saved.description || "",
+      saved.fields,
+      true,
+    );
+
+    return saved;
   };
 
   /**

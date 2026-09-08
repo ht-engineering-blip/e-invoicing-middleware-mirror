@@ -1,5 +1,6 @@
 import { generateUniqueHsnCode } from "./transformer/classification.helper";
 import { DEFAULT_INVOICE_TYPE_CODE } from "./invoice-type";
+import { generateIRN } from "./transformer/irn-sanitizer.helper";
 
 /**
  * Sanitizes and normalizes an invoice payload before dispatching to FIRS or validation services.
@@ -153,6 +154,20 @@ export function sanitizeInvoicePayload(
     invoice.invoice_kind = "B2B";
   } else {
     invoice.invoice_kind = invoice.invoice_kind.trim().toUpperCase();
+  }
+
+  // 1b. Payment Status
+  if (
+    typeof invoice.payment_status === "string" &&
+    invoice.payment_status.trim() !== ""
+  ) {
+    const rawStatus = invoice.payment_status.trim().toUpperCase();
+    const validStatuses = ["PENDING", "PAID", "PARTIAL", "REJECTED"];
+    invoice.payment_status = validStatuses.includes(rawStatus)
+      ? rawStatus
+      : "PENDING";
+  } else {
+    invoice.payment_status = "PENDING";
   }
 
   // 2. Issue Dates
@@ -380,16 +395,7 @@ export function sanitizeInvoicePayload(
   }
 
   // 6. Billing Reference (Adjustment Invoices)
-  const adjustmentCodes = [
-    "380",
-    "381",
-    "383",
-    "384",
-    "385",
-    "386",
-    "393",
-    "395",
-  ];
+  const adjustmentCodes = ["380", "383", "384", "385", "386", "393", "395"];
   const invoiceTypeCode = String(invoice.invoice_type_code || "").trim();
   const isAdjustmentNote =
     adjustmentCodes.includes(invoiceTypeCode) ||
@@ -412,6 +418,8 @@ export function sanitizeInvoicePayload(
         },
       ];
     }
+  } else {
+    delete invoice.billing_reference;
   }
 
   if (Array.isArray(invoice.billing_reference)) {
@@ -685,13 +693,21 @@ export function sanitizeInvoicePayload(
           ) {
             if (percentNum === 0) {
               tc.id = "ZERO_VAT";
+              tc.percent = 0;
             } else if (percentNum > 0 && percentNum < 7.5) {
               tc.id = "REDUCED_VAT";
+              tc.percent = percentNum;
             } else {
               tc.id = "STANDARD_VAT";
+              tc.percent = 7.5;
             }
           } else {
             tc.id = rawCatId;
+            if (rawCatId === "STANDARD_VAT") {
+              tc.percent = 7.5;
+            } else if (rawCatId === "ZERO_VAT" || rawCatId === "EXEMPT_VAT") {
+              tc.percent = 0;
+            }
           }
 
           const stTax = toFloat(
@@ -799,10 +815,7 @@ function enforceParty(
   party: Record<string, unknown>,
   fallbackName: string,
 ): void {
-  if (
-    typeof party.party_name !== "string" ||
-    party.party_name.trim() === ""
-  ) {
+  if (typeof party.party_name !== "string" || party.party_name.trim() === "") {
     party.party_name = fallbackName;
   }
   party.name = party.party_name;
@@ -826,12 +839,17 @@ function enforceParty(
   // Optional, but FIRS rejects it outright unless it starts with a country code.
   if (typeof party.telephone === "string" && party.telephone.trim() !== "") {
     const digits = party.telephone.replace(/[^0-9+]/g, "");
-    party.telephone = digits.startsWith("+") ? digits : `+${digits.replace(/^0+/, "234")}`;
+    party.telephone = digits.startsWith("+")
+      ? digits
+      : `+${digits.replace(/^0+/, "234")}`;
   } else {
     delete party.telephone;
   }
 
-  party.business_description = ensureBusinessDescription(party, party.party_name);
+  party.business_description = ensureBusinessDescription(
+    party,
+    party.party_name,
+  );
 
   if (!party.postal_address || typeof party.postal_address !== "object") {
     party.postal_address = {};
@@ -860,11 +878,17 @@ export function enforceFirsRequiredFields(
   // business_id is injected upstream from the tenant profile, not supplied by
   // the field mapping, so it is backstopped rather than treated as a mapping
   // error. tenant_id is the same identifier on the job payload.
-  if (!isNonEmptyString(invoice.business_id) && isNonEmptyString(invoice.tenant_id)) {
+  if (
+    !isNonEmptyString(invoice.business_id) &&
+    isNonEmptyString(invoice.tenant_id)
+  ) {
     invoice.business_id = (invoice.tenant_id as string).trim();
   }
   // ── Parties ──────────────────────────────────────────────────────────────
-  if (!invoice.accounting_supplier_party || typeof invoice.accounting_supplier_party !== "object") {
+  if (
+    !invoice.accounting_supplier_party ||
+    typeof invoice.accounting_supplier_party !== "object"
+  ) {
     invoice.accounting_supplier_party = {};
   }
   enforceParty(
@@ -872,7 +896,10 @@ export function enforceFirsRequiredFields(
     "Supplier Party",
   );
 
-  if (!invoice.accounting_customer_party || typeof invoice.accounting_customer_party !== "object") {
+  if (
+    !invoice.accounting_customer_party ||
+    typeof invoice.accounting_customer_party !== "object"
+  ) {
     invoice.accounting_customer_party = {};
   }
   enforceParty(
@@ -881,7 +908,10 @@ export function enforceFirsRequiredFields(
   );
 
   // ── Invoice lines ────────────────────────────────────────────────────────
-  if (!Array.isArray(invoice.invoice_line) || invoice.invoice_line.length === 0) {
+  if (
+    !Array.isArray(invoice.invoice_line) ||
+    invoice.invoice_line.length === 0
+  ) {
     invoice.invoice_line = [{}];
   }
   const lines = invoice.invoice_line as Record<string, unknown>[];
@@ -894,13 +924,19 @@ export function enforceFirsRequiredFields(
     if (typeof item.name !== "string" || item.name.trim() === "") {
       item.name = "Standard Service Item";
     }
-    if (typeof item.description !== "string" || item.description.trim() === "") {
+    if (
+      typeof item.description !== "string" ||
+      item.description.trim() === ""
+    ) {
       item.description = item.name as string;
     }
 
     if (!line.price || typeof line.price !== "object") line.price = {};
     const price = line.price as Record<string, unknown>;
-    price.price_amount = asNumber(price.price_amount, asNumber(line.line_extension_amount));
+    price.price_amount = asNumber(
+      price.price_amount,
+      asNumber(line.line_extension_amount),
+    );
     price.base_quantity = asNumber(price.base_quantity, 1) || 1;
     // Same rule the main pass uses, so this can never weaken it: FIRS wants a
     // UN/ECE code, not a free-text unit like "NGN per 1".
@@ -922,6 +958,18 @@ export function enforceFirsRequiredFields(
       line.line_extension_amount,
       (price.price_amount as number) * (line.invoiced_quantity as number),
     );
+    if (line.discount_rate !== undefined) {
+      line.discount_rate = asNumber(line.discount_rate);
+    }
+    if (line.discount_amount !== undefined) {
+      line.discount_amount = asNumber(line.discount_amount);
+    }
+    if (line.fee_rate !== undefined) {
+      line.fee_rate = asNumber(line.fee_rate);
+    }
+    if (line.fee_amount !== undefined) {
+      line.fee_amount = asNumber(line.fee_amount);
+    }
     lineTotal += line.line_extension_amount as number;
   }
 
@@ -938,10 +986,26 @@ export function enforceFirsRequiredFields(
           st.taxable_amount = asNumber(st.taxable_amount, lineTotal);
           st.tax_amount = asNumber(st.tax_amount);
           const tc = (st.tax_category as Record<string, unknown>) || {};
-          tc.percent = asNumber(tc.percent, 7.5);
-          if (typeof tc.id !== "string" || tc.id.trim() === "") {
-            tc.id = (tc.percent as number) === 0 ? "ZERO_VAT" : "STANDARD_VAT";
+          let pct = asNumber(tc.percent, 7.5);
+          let catId =
+            typeof tc.id === "string" ? tc.id.trim().toUpperCase() : "";
+
+          if (catId === "STANDARD_VAT" || (!catId && pct > 0)) {
+            catId = "STANDARD_VAT";
+            pct = 7.5;
+          } else if (
+            catId === "ZERO_VAT" ||
+            catId === "EXEMPT_VAT" ||
+            pct === 0
+          ) {
+            catId = catId || "ZERO_VAT";
+            pct = 0;
+          } else if (pct === 7.5) {
+            catId = "STANDARD_VAT";
           }
+
+          tc.id = catId || "STANDARD_VAT";
+          tc.percent = pct;
           st.tax_category = tc;
         }
       }
@@ -951,7 +1015,10 @@ export function enforceFirsRequiredFields(
   // ── Legal monetary total ─────────────────────────────────────────────────
   // "legalmonetarytotal.lineextensionamount is required" — every one of these
   // must be a real number, never a numeric string and never absent.
-  if (!invoice.legal_monetary_total || typeof invoice.legal_monetary_total !== "object") {
+  if (
+    !invoice.legal_monetary_total ||
+    typeof invoice.legal_monetary_total !== "object"
+  ) {
     invoice.legal_monetary_total = {};
   }
   const lmt = invoice.legal_monetary_total as Record<string, unknown>;
@@ -968,6 +1035,24 @@ export function enforceFirsRequiredFields(
     lmt.payable_amount,
     lmt.tax_inclusive_amount as number,
   );
+  if (lmt.prepaid_amount !== undefined) {
+    lmt.prepaid_amount = asNumber(lmt.prepaid_amount);
+  }
+  if (lmt.allowance_total_amount !== undefined) {
+    lmt.allowance_total_amount = asNumber(lmt.allowance_total_amount);
+  }
+  if (lmt.charge_total_amount !== undefined) {
+    lmt.charge_total_amount = asNumber(lmt.charge_total_amount);
+  }
+
+  // ── Allowance Charge ─────────────────────────────────────────────────────
+  if (Array.isArray(invoice.allowance_charge)) {
+    for (const rawAc of invoice.allowance_charge) {
+      if (!rawAc || typeof rawAc !== "object") continue;
+      const ac = rawAc as Record<string, unknown>;
+      ac.amount = asNumber(ac.amount);
+    }
+  }
 
   return invoice;
 }
@@ -987,17 +1072,33 @@ export function autoFixInvoiceFromFIRSError(
 
   const target = sanitizeInvoicePayload(invoice);
 
-  // 1. Tax Category ID Fix
-  if (errString.includes("taxcategory") || errString.includes("tax category")) {
+  // 1. Tax Category ID Fix & STANDARD_VAT percent enforcement
+  if (
+    errString.includes("taxcategory") ||
+    errString.includes("tax category") ||
+    errString.includes("standard_vat") ||
+    errString.includes("7.5") ||
+    errString.includes("percent must be 7.5")
+  ) {
     if (Array.isArray(target.tax_total)) {
       for (const tt of target.tax_total as Record<string, unknown>[]) {
         if (tt && Array.isArray(tt.tax_subtotal)) {
           for (const st of tt.tax_subtotal as Record<string, unknown>[]) {
             if (st) {
               const tc = (st.tax_category as Record<string, unknown>) || {};
-              const pct = typeof tc.percent === "number" ? tc.percent : 7.5;
-              tc.id = pct === 0 ? "ZERO_VAT" : "STANDARD_VAT";
-              tc.percent = pct;
+              const catId =
+                typeof tc.id === "string" ? tc.id.trim().toUpperCase() : "";
+              if (
+                catId === "ZERO_VAT" ||
+                catId === "EXEMPT_VAT" ||
+                tc.percent === 0
+              ) {
+                tc.id = catId || "ZERO_VAT";
+                tc.percent = 0;
+              } else {
+                tc.id = "STANDARD_VAT";
+                tc.percent = 7.5;
+              }
               st.tax_category = tc;
             }
           }
@@ -1131,10 +1232,9 @@ export function autoFixInvoiceFromFIRSError(
     }
 
     if (serviceId) {
-      const padding = Math.random().toString(36).substring(2, 6).toUpperCase();
-      target.irn = `${baseRef}${padding}-${serviceId}-${dateStr}`;
+      target.irn = generateIRN(baseRef, serviceId);
     } else if (rawIrn) {
-      target.irn = rawIrn.replace(/[^A-Za-z0-9-]/g, "").toUpperCase();
+      target.irn = generateIRN(baseRef, serviceId);
     }
 
     if (
@@ -1145,7 +1245,21 @@ export function autoFixInvoiceFromFIRSError(
     }
   }
 
-  // 7. Duplicate / Invalid HSN Code Fix
+  // 7. Payment Status Normalization Fix
+  if (
+    errString.includes("paymentstatus") ||
+    errString.includes("payment_status")
+  ) {
+    const validStatuses = ["PENDING", "PAID", "PARTIAL", "REJECTED"];
+    const current = String(target.payment_status || "PENDING")
+      .toUpperCase()
+      .trim();
+    target.payment_status = validStatuses.includes(current)
+      ? current
+      : "PENDING";
+  }
+
+  // 8. Duplicate / Invalid HSN Code Fix
   if (errString.includes("hsn") || errString.includes("hsn_code")) {
     if (Array.isArray(target.invoice_line)) {
       const usedCodes = new Set<string>();

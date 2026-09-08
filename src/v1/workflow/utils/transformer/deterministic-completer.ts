@@ -1,5 +1,4 @@
-import { AuthContext } from "../../../../middlewares";
-import { ISchemaField } from "../../models";
+import type { AuthContext, ISchemaField } from "./mapping-spec.types";
 import {
   extractCurrency,
   generateInvoiceRef,
@@ -9,9 +8,18 @@ import {
 } from "./utils";
 import { ensureBusinessDescription } from "../invoice-sanitizer.util";
 import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
+import {
+  Address,
+  Party,
+  InvoiceLine,
+  LegalMonetaryTotal,
+  TaxTotal,
+  TaxSubtotal,
+  FIRSInvoice,
+} from "./schema-validator";
 
 export interface ReconcileResult {
-  completedData: Record<string, any>;
+  completedData: FIRSInvoice;
   isFullyCompliant: boolean;
   missingFields: string[];
   mathHealed: boolean;
@@ -30,6 +38,24 @@ export class DeterministicCompleter {
       return isNaN(num) ? fallback : num;
     }
     return fallback;
+  }
+
+  /**
+   * Safe float conversion that preserves undefined/null for optional fields
+   */
+  static toFloatOptional(val: unknown): number | undefined {
+    if (val === undefined || val === null || val === "") return undefined;
+    const num = this.toFloat(val, NaN);
+    return isNaN(num) ? undefined : num;
+  }
+
+  /**
+   * Safe string conversion that trims and preserves undefined/null for empty inputs
+   */
+  static toStringOptional(val: unknown): string | undefined {
+    if (val === undefined || val === null) return undefined;
+    const str = String(val).trim();
+    return str.length > 0 ? str : undefined;
   }
 
   /**
@@ -58,7 +84,7 @@ export class DeterministicCompleter {
    * Sets nested value safely
    */
   static setDeepValue(
-    obj: Record<string, any>,
+    obj: Record<string, unknown>,
     path: string,
     value: unknown,
   ): void {
@@ -95,152 +121,159 @@ export class DeterministicCompleter {
   }
 
   /**
+   * Checks if an unknown value is a non-empty array
+   */
+  static isNonEmptyArray(val: unknown): val is any[] {
+    return Array.isArray(val) && val.length > 0;
+  }
+
+  /**
+   * Retrieves the first non-empty array from candidate values
+   */
+  static getFirstNonEmptyArray(...candidates: unknown[]): any[] {
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      if (this.isNonEmptyArray(candidate)) {
+        return candidate;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Safe extraction of a plain dictionary/object, returning fallback if not a valid non-array object
+   */
+  static toObject<T extends Record<string, unknown> = Record<string, unknown>>(
+    val: unknown,
+    fallback: T = {} as T,
+  ): T {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      return val as T;
+    }
+    return fallback;
+  }
+
+  /**
    * Fully reconciles and auto-completes an invoice payload deterministically
    */
   static reconcileAndComplete(
-    data: Record<string, any>,
+    data: Record<string, unknown>,
     authContext?: AuthContext,
     firsSchema?: ISchemaField[],
     currencies: any[] = [],
   ): ReconcileResult {
-    const dataObj =
-      data?.data && typeof data.data === "object" && !Array.isArray(data.data)
-        ? data.data
-        : {};
-    const invObj =
-      data?.invoice &&
-      typeof data.invoice === "object" &&
-      !Array.isArray(data.invoice)
-        ? data.invoice
-        : {};
+    const dataObj = this.toObject(data?.data);
+    const invObj = this.toObject(data?.invoice);
     const res: Record<string, any> = { ...dataObj, ...invObj, ...data };
     const adjustments: string[] = [];
     let mathHealed = false;
 
-    // Address & Email Defaults Helpers
-    const defaultAddress = (given: any = {}) => ({
-      street_name: given.street_name || given.street || "1 Commercial Way",
-      city_name: given.city_name || given.city || "Lagos",
-      postal_zone: given.postal_zone || given.zip || "100001",
-      country: given.country || "NG",
-      state: given.state || "Lagos",
-    });
-
-    const defaultEmail = (
-      given: string = "",
-      fallback: string = "info@company.com",
-    ) => {
-      if (typeof given === "string" && given.includes("@")) return given.trim();
-      return fallback;
+    // Address & Email Helpers: exact extraction without dummy placeholder strings
+    const extractAddress = (
+      given?: Partial<Address> | Record<string, unknown>,
+    ): Address => {
+      const addr = this.toObject(given) as Partial<Address> & {
+        address?: string;
+        city?: string;
+        zip?: string;
+      };
+      return {
+        street_name:
+          this.toStringOptional(addr.street_name) ??
+          this.toStringOptional(addr.address) ??
+          "",
+        city_name:
+          this.toStringOptional(addr.city_name) ??
+          this.toStringOptional(addr.city) ??
+          "",
+        postal_zone:
+          this.toStringOptional(addr.postal_zone) ??
+          this.toStringOptional(addr.zip) ??
+          "",
+        country: this.toStringOptional(addr.country) ?? "NG",
+        state: this.toStringOptional(addr.state),
+        lga: this.toStringOptional(addr.lga),
+      };
     };
 
-    // 1. Identity & Supplier Information
-    const expectedBusinessId =
-      authContext?.businessId || res.business_id || "TEST_BUSINESS_ID";
-    const expectedSupplierTIN =
-      authContext?.businessTIN || res.supplier_tin || "10000000-0001";
-    const expectedSupplierName =
-      authContext?.businessName ||
-      (authContext as any)?.tenantName ||
-      "Supplier Company Inc";
+    const extractEmail = (given?: unknown): string => {
+      const str = this.toStringOptional(given);
+      return str && str.includes("@") ? str : "";
+    };
 
-    res.business_id = expectedBusinessId;
+    // 1. Identity & Supplier Information (Exact Priority -> AuthContext > Explicit Payload)
+    const businessId =
+      this.toStringOptional(authContext?.businessId) ??
+      this.toStringOptional(authContext?.tenantId) ??
+      this.toStringOptional(res.business_id) ??
+      "";
+    res.business_id = businessId;
 
-    if (
-      !res.accounting_supplier_party ||
-      typeof res.accounting_supplier_party !== "object" ||
-      Object.keys(res.accounting_supplier_party).length === 0
-    ) {
-      res.accounting_supplier_party =
-        dataObj.accounting_supplier_party ||
-        invObj.accounting_supplier_party ||
-        {};
-    }
-    const supplier = res.accounting_supplier_party as Record<string, any>;
-    supplier.tin = expectedSupplierTIN;
-    supplier.party_name =
-      supplier.party_name || supplier.name || expectedSupplierName;
-    supplier.name = supplier.party_name;
-    supplier.email = defaultEmail(supplier.email, "supplier@business.com");
-    // FIRS requires businessdescription to be at least 5 characters on both
-    // parties. Nothing upstream supplies one, so derive it from the party name.
-    supplier.business_description = ensureBusinessDescription(
-      supplier,
-      supplier.party_name,
-    );
-    supplier.postal_address = defaultAddress(supplier.postal_address);
+    const rawSupplier = this.toObject(res.accounting_supplier_party) as Partial<Party> & {
+      name?: string;
+    };
+    const supplierTIN =
+      this.toStringOptional(authContext?.businessTIN) ??
+      this.toStringOptional(rawSupplier.tin) ??
+      this.toStringOptional(res.supplier_tin) ??
+      "";
 
-    // 2. Customer Party Auto-Completion
-    if (
-      !res.accounting_customer_party ||
-      typeof res.accounting_customer_party !== "object" ||
-      Object.keys(res.accounting_customer_party).length === 0
-    ) {
-      res.accounting_customer_party =
-        dataObj.accounting_customer_party ||
-        invObj.accounting_customer_party ||
-        {};
-    }
-    const customer = res.accounting_customer_party as Record<string, any>;
-    let custName = customer.party_name || customer.name;
-    if (!custName) {
-      if (typeof res.customer_name === "string" && res.customer_name.trim()) {
-        custName = res.customer_name.trim();
-      } else if (typeof res.buyer_name === "string" && res.buyer_name.trim()) {
-        custName = res.buyer_name.trim();
-      } else if (typeof dataObj.customer_name === "string" && dataObj.customer_name.trim()) {
-        custName = dataObj.customer_name.trim();
-      } else {
-        custName = "General Customer";
-        adjustments.push("Defaulted customer party_name to General Customer");
-      }
-    }
-    customer.party_name = custName;
-    customer.name = custName;
+    const supplierPartyName =
+      this.toStringOptional(authContext?.businessName) ??
+      this.toStringOptional(rawSupplier.party_name) ??
+      this.toStringOptional(rawSupplier.name) ??
+      "";
 
-    if (!customer.tin) {
-      if (typeof res.customer_tin === "string" && res.customer_tin.trim()) {
-        customer.tin = res.customer_tin.trim();
-      } else if (typeof res.buyer_tin === "string" && res.buyer_tin.trim()) {
-        customer.tin = res.buyer_tin.trim();
-      } else if (typeof dataObj.customer_tin === "string" && dataObj.customer_tin.trim()) {
-        customer.tin = dataObj.customer_tin.trim();
-      } else {
-        customer.tin = "00000000-0000";
-      }
-    }
-    customer.email = defaultEmail(customer.email, "customer@domain.com");
-    customer.business_description = ensureBusinessDescription(
-      customer,
-      customer.party_name,
-    );
-    customer.postal_address = defaultAddress(customer.postal_address);
+    const supplier: Party = {
+      tin: supplierTIN,
+      party_name: supplierPartyName,
+      email: extractEmail(rawSupplier.email),
+      telephone: this.toStringOptional(rawSupplier.telephone),
+      business_description: this.toStringOptional(
+        rawSupplier.business_description,
+      ),
+      postal_address: extractAddress(rawSupplier.postal_address as Partial<Address>),
+    };
+    res.accounting_supplier_party = supplier;
+
+    // 2. Customer Party (Exact Priority -> Explicit Payload)
+    const rawCustomer = this.toObject(res.accounting_customer_party) as Partial<Party> & {
+      name?: string;
+    };
+    const customerPartyName =
+      this.toStringOptional(rawCustomer.party_name) ??
+      this.toStringOptional(rawCustomer.name) ??
+      this.toStringOptional(res.customer_name) ??
+      this.toStringOptional(res.buyer_name) ??
+      "";
+
+    const customerTIN =
+      this.toStringOptional(rawCustomer.tin) ??
+      this.toStringOptional(res.customer_tin) ??
+      this.toStringOptional(res.buyer_tin) ??
+      "";
+
+    const customer: Party = {
+      tin: customerTIN,
+      party_name: customerPartyName,
+      email: extractEmail(rawCustomer.email),
+      telephone: this.toStringOptional(rawCustomer.telephone),
+      business_description: this.toStringOptional(
+        rawCustomer.business_description,
+      ),
+      postal_address: extractAddress(rawCustomer.postal_address as Partial<Address>),
+    };
+    res.accounting_customer_party = customer;
 
     // 3. IRN & Invoice Reference Resolution
-    let invoiceRef = "";
-    if (
-      typeof res.invoice_reference === "string" &&
-      res.invoice_reference.trim()
-    ) {
-      invoiceRef = res.invoice_reference.trim();
-    } else if (
-      typeof res.invoiceNumber === "string" &&
-      res.invoiceNumber.trim()
-    ) {
-      invoiceRef = res.invoiceNumber.trim();
-    } else if (typeof res.invoice_id === "string" && res.invoice_id.trim()) {
-      invoiceRef = res.invoice_id.trim();
-    } else if (typeof dataObj.invoice_number === "string" && dataObj.invoice_number.trim()) {
-      invoiceRef = dataObj.invoice_number.trim();
-    } else {
-      invoiceRef = generateInvoiceRef();
-    }
-    res.invoice_reference = invoiceRef;
-
-    if (!res.irn) {
-      const serviceId = authContext?.serviceId || "34A843BE";
-      res.irn = generateIRN(invoiceRef, serviceId);
-      adjustments.push("Auto-generated IRN");
+    const invoiceRef =
+      this.toStringOptional(res.invoice_reference) ??
+      this.toStringOptional(res.invoice_number) ??
+      this.toStringOptional(res.invoice_id) ??
+      this.toStringOptional(res.irn) ??
+      "";
+    if (invoiceRef) {
+      res.invoice_reference = invoiceRef;
     }
 
     // 4. Dates & Times
@@ -261,10 +294,20 @@ export class DeterministicCompleter {
       adjustments.push("Defaulted issue_time to current time");
     }
 
+    const targetRef = invoiceRef || (typeof res.irn === "string" ? res.irn : "");
+    if (targetRef) {
+      const serviceId = authContext?.serviceId;
+      const parsedDate = new Date(String(res.issue_date));
+      const issueDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+      const generated = generateIRN(targetRef, serviceId, issueDate);
+      if (generated) {
+        res.irn = generated;
+        adjustments.push("Auto-generated IRN");
+      }
+    }
+
     // 5. Invoice Type Code & Kind
     if (!res.invoice_type_code) {
-      // Last resort only — the transform job normally stamps the
-      // event-derived type onto the payload before this runs.
       res.invoice_type_code = res.invoiceTypeCode || DEFAULT_INVOICE_TYPE_CODE;
     }
     if (!res.invoice_kind) {
@@ -282,59 +325,35 @@ export class DeterministicCompleter {
     if (!res.payment_status) {
       res.payment_status = "PENDING";
     }
-    if (!res.payment_means || !Array.isArray(res.payment_means)) {
-      if (res.payment_means && typeof res.payment_means === "object") {
-        res.payment_means = [res.payment_means];
-      } else {
-        res.payment_means = [
-          {
-            payment_means_code: "10",
-            payee_financial_account: {
-              account_number: "0000000000",
-              account_name: supplier.party_name || "Default Company Account",
-              bank_name: "Central Bank of Nigeria",
-            },
-          },
-        ];
-        adjustments.push("Auto-populated default payment_means array");
+    if (res.payment_means) {
+      if (!Array.isArray(res.payment_means)) {
+        res.payment_means =
+          typeof res.payment_means === "object"
+            ? [res.payment_means]
+            : undefined;
       }
     }
 
     // 8. Line Items Normalization & Mathematical Reconciliation
-    let rawLines: any[] = [];
-    if (Array.isArray(res.invoice_line) && res.invoice_line.length > 0)
-      rawLines = res.invoice_line;
-    else if (Array.isArray(dataObj.invoice_line) && dataObj.invoice_line.length > 0)
-      rawLines = dataObj.invoice_line;
-    else if (Array.isArray(invObj.invoice_line) && invObj.invoice_line.length > 0)
-      rawLines = invObj.invoice_line;
-    else if (Array.isArray(res.invoiceLine) && res.invoiceLine.length > 0)
-      rawLines = res.invoiceLine;
-    else if (Array.isArray(dataObj.invoiceLine) && dataObj.invoiceLine.length > 0)
-      rawLines = dataObj.invoiceLine;
-    else if (Array.isArray(res.line_items) && res.line_items.length > 0)
-      rawLines = res.line_items;
-    else if (Array.isArray(dataObj.line_items) && dataObj.line_items.length > 0)
-      rawLines = dataObj.line_items;
-    else if (
-      Array.isArray(res.invoice?.line_items) &&
-      res.invoice.line_items.length > 0
-    )
-      rawLines = res.invoice.line_items;
-    else if (Array.isArray(invObj.line_items) && invObj.line_items.length > 0)
-      rawLines = invObj.line_items;
-    else if (Array.isArray(res.items) && res.items.length > 0)
-      rawLines = res.items;
-    else if (Array.isArray(dataObj.items) && dataObj.items.length > 0)
-      rawLines = dataObj.items;
-    else if (Array.isArray(res.lines) && res.lines.length > 0)
-      rawLines = res.lines;
-    else if (Array.isArray(dataObj.lines) && dataObj.lines.length > 0)
-      rawLines = dataObj.lines;
-    else if (Array.isArray(res.invoice_line)) rawLines = res.invoice_line;
+    const rawLines = this.getFirstNonEmptyArray(
+      res.invoice_line,
+      dataObj.invoice_line,
+      invObj.invoice_line,
+      res.invoiceLine,
+      dataObj.invoiceLine,
+      res.line_items,
+      dataObj.line_items,
+      res.invoice?.line_items,
+      invObj.line_items,
+      res.items,
+      dataObj.items,
+      res.lines,
+      dataObj.lines,
+      res.invoice_line,
+    );
 
     let computedLineExtensionTotal = 0;
-    const normalizedLines: any[] = [];
+    const normalizedLines: InvoiceLine[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
       const raw = rawLines[i] || {};
@@ -374,121 +393,135 @@ export class DeterministicCompleter {
       computedLineExtensionTotal += lineAmount;
 
       const itemName = (
-        itemRaw.name ||
-        raw.name ||
-        raw.description ||
-        `Item ${i + 1}`
+        (typeof itemRaw.name === "string" ? itemRaw.name : "") ||
+        (typeof raw.name === "string" ? raw.name : "") ||
+        (typeof raw.description === "string" ? raw.description : "")
       ).trim();
       const itemDesc = (
-        itemRaw.description ||
-        raw.description ||
+        (typeof itemRaw.description === "string" ? itemRaw.description : "") ||
+        (typeof raw.description === "string" ? raw.description : "") ||
         itemName
       ).trim();
-      const category = (
-        raw.product_category ||
-        raw.service_category ||
-        itemName ||
-        "General Goods and Services"
-      ).trim();
+      const category =
+        (
+          (typeof raw.product_category === "string"
+            ? raw.product_category
+            : "") ||
+          (typeof raw.service_category === "string" ? raw.service_category : "")
+        ).trim() || undefined;
 
       const rawUnit = String(priceRaw.price_unit || raw.unit || "H87").trim();
       const priceUnit = sanitizePriceUnit(rawUnit);
 
       normalizedLines.push({
-        hsn_code: raw.hsn_code ? String(raw.hsn_code).trim() : undefined,
-        isic_code: raw.isic_code ? String(raw.isic_code).trim() : undefined,
+        hsn_code: this.toStringOptional(raw.hsn_code),
+        isic_code: this.toStringOptional(raw.isic_code),
         product_category: category,
         invoiced_quantity: qty,
         line_extension_amount: lineAmount,
         item: {
           name: itemName,
-          description: itemDescription(itemDesc),
-          sellers_item_identification: itemRaw.sellers_item_identification
-            ? String(itemRaw.sellers_item_identification).trim()
-            : undefined,
+          description: itemDesc,
+          sellers_item_identification: this.toStringOptional(
+            itemRaw.sellers_item_identification,
+          ),
         },
         price: {
           price_amount: priceAmount,
           base_quantity: baseQty,
           price_unit: priceUnit,
         },
-        discount_rate:
-          raw.discount_rate !== undefined
-            ? this.toFloat(raw.discount_rate)
-            : undefined,
-        discount_amount:
-          raw.discount_amount !== undefined
-            ? this.toFloat(raw.discount_amount)
-            : undefined,
-        fee_rate:
-          raw.fee_rate !== undefined ? this.toFloat(raw.fee_rate) : undefined,
-        fee_amount:
-          raw.fee_amount !== undefined
-            ? this.toFloat(raw.fee_amount)
-            : undefined,
+        discount_rate: this.toFloatOptional(raw.discount_rate),
+        discount_amount: this.toFloatOptional(raw.discount_amount),
+        fee_rate: this.toFloatOptional(raw.fee_rate),
+        fee_amount: this.toFloatOptional(raw.fee_amount),
       });
-    }
-
-    function itemDescription(d: string): string {
-      return d.length > 0 ? d : "Item Description";
-    }
-
-    if (normalizedLines.length === 0) {
-      normalizedLines.push({
-        product_category: "General Goods and Services",
-        invoiced_quantity: 1,
-        line_extension_amount: 0,
-        item: { name: "General Item", description: "General Item Description" },
-        price: { price_amount: 0, base_quantity: 1, price_unit: "H87" },
-      });
-      adjustments.push("Created default fallback invoice_line");
     }
 
     res.invoice_line = normalizedLines;
 
-    // 9. Tax Total Calculation & Auto-Categorization
+    // 9. Tax Total Calculation & Auto-Categorization (Strongly Typed TaxTotal[])
     let totalTaxAmount = 0;
-    const effectiveTaxTotal =
-      Array.isArray(res.tax_total) && res.tax_total.length > 0
-        ? res.tax_total
-        : Array.isArray(dataObj.tax_total) && dataObj.tax_total.length > 0
-          ? dataObj.tax_total
-          : Array.isArray(invObj.tax_total) && invObj.tax_total.length > 0
-            ? invObj.tax_total
-            : null;
+    const rawTaxTotalCandidate = this.getFirstNonEmptyArray(
+      res.tax_total,
+      dataObj.tax_total,
+      invObj.tax_total,
+    );
 
-    if (effectiveTaxTotal) {
-      res.tax_total = effectiveTaxTotal;
-    }
+    let normalizedTaxTotals: TaxTotal[] = [];
 
-    if (Array.isArray(res.tax_total) && res.tax_total.length > 0) {
-      for (const tt of res.tax_total) {
-        if (!tt) continue;
-        tt.tax_amount = this.toFloat(tt.tax_amount);
-        totalTaxAmount += tt.tax_amount;
-        if (Array.isArray(tt.tax_subtotal)) {
-          for (const st of tt.tax_subtotal) {
-            if (!st) continue;
-            st.taxable_amount = this.toFloat(
-              st.taxable_amount,
+    if (rawTaxTotalCandidate.length > 0) {
+      for (const tt of rawTaxTotalCandidate) {
+        if (!tt || typeof tt !== "object") continue;
+        const rawTt = tt as Partial<TaxTotal>;
+        const ttTaxAmount = this.toFloat(rawTt.tax_amount);
+        const subtotals: TaxSubtotal[] = [];
+
+        if (Array.isArray(rawTt.tax_subtotal)) {
+          for (const st of rawTt.tax_subtotal) {
+            if (!st || typeof st !== "object") continue;
+            const rawSt = st as Partial<TaxSubtotal>;
+            const taxableAmt = this.toFloat(
+              rawSt.taxable_amount,
               computedLineExtensionTotal,
             );
-            st.tax_amount = this.toFloat(st.tax_amount);
-            if (!st.tax_category || typeof st.tax_category !== "object") {
-              st.tax_category = {};
+            const stTaxAmt = this.toFloat(rawSt.tax_amount);
+            const rawCat = (
+              rawSt.tax_category && typeof rawSt.tax_category === "object"
+                ? rawSt.tax_category
+                : {}
+            ) as Partial<TaxSubtotal["tax_category"]>;
+            let pct = this.toFloat(rawCat?.percent, 7.5);
+            let catId = this.toStringOptional(rawCat?.id)?.toUpperCase() ?? "";
+
+            if (catId === "STANDARD_VAT" || (!catId && pct > 0)) {
+              catId = "STANDARD_VAT";
+              pct = 7.5;
+            } else if (
+              catId === "ZERO_VAT" ||
+              catId === "EXEMPT_VAT" ||
+              pct === 0
+            ) {
+              catId = catId || "ZERO_VAT";
+              pct = 0;
+            } else if (pct === 7.5) {
+              catId = "STANDARD_VAT";
             }
-            const pct = this.toFloat(st.tax_category.percent, 7.5);
-            st.tax_category.percent = pct;
-            if (!st.tax_category.id || typeof st.tax_category.id !== "string") {
-              st.tax_category.id = pct === 0 ? "ZERO_VAT" : "STANDARD_VAT";
-            }
+
+            subtotals.push({
+              taxable_amount: taxableAmt,
+              tax_amount: stTaxAmt,
+              tax_category: {
+                id: catId || "STANDARD_VAT",
+                percent: pct,
+              },
+            });
           }
         }
+
+        if (subtotals.length === 0) {
+          subtotals.push({
+            taxable_amount: computedLineExtensionTotal,
+            tax_amount: ttTaxAmount,
+            tax_category: {
+              id: "STANDARD_VAT",
+              percent: 7.5,
+            },
+          });
+        }
+
+        totalTaxAmount += ttTaxAmount;
+        normalizedTaxTotals.push({
+          tax_amount: ttTaxAmount,
+          tax_subtotal: subtotals,
+        });
       }
-    } else {
+    }
+
+    if (normalizedTaxTotals.length === 0) {
       const estimatedVat = computedLineExtensionTotal * 0.075;
       totalTaxAmount = estimatedVat;
-      res.tax_total = [
+      normalizedTaxTotals = [
         {
           tax_amount: estimatedVat,
           tax_subtotal: [
@@ -507,44 +540,45 @@ export class DeterministicCompleter {
         "Auto-computed 7.5% STANDARD_VAT tax_total subtotal structure",
       );
     }
+    res.tax_total = normalizedTaxTotals;
 
-    // 10. Legal Monetary Total Mathematical Reconciliation
-    const lmtSource =
-      res.legal_monetary_total &&
-      typeof res.legal_monetary_total === "object" &&
-      Object.keys(res.legal_monetary_total).length > 0
-        ? res.legal_monetary_total
-        : (dataObj.legal_monetary_total || invObj.legal_monetary_total || {});
+    // 10. Legal Monetary Total Mathematical Reconciliation (Strongly Typed LegalMonetaryTotal)
+    const lmtSource = this.toObject(
+      res.legal_monetary_total ||
+        dataObj.legal_monetary_total ||
+        invObj.legal_monetary_total,
+    );
 
-    res.legal_monetary_total = { ...lmtSource };
-    const lmt = res.legal_monetary_total as Record<string, any>;
-    const rawLineExt = this.toFloat(lmt.line_extension_amount, 0);
+    const rawLineExt = this.toFloat(lmtSource.line_extension_amount, 0);
     const lineExt = rawLineExt > 0 ? rawLineExt : computedLineExtensionTotal;
 
-    const rawTaxExcl = this.toFloat(lmt.tax_exclusive_amount, 0);
+    const rawTaxExcl = this.toFloat(lmtSource.tax_exclusive_amount, 0);
     const taxExcl = rawTaxExcl > 0 ? rawTaxExcl : lineExt;
 
-    const rawTaxIncl = this.toFloat(lmt.tax_inclusive_amount, 0);
+    const rawTaxIncl = this.toFloat(lmtSource.tax_inclusive_amount, 0);
     const taxIncl = rawTaxIncl > 0 ? rawTaxIncl : taxExcl + totalTaxAmount;
 
-    const prepaid = this.toFloat(lmt.prepaid_amount, 0);
+    const prepaid = this.toFloat(lmtSource.prepaid_amount, 0);
 
-    const rawPayable = this.toFloat(lmt.payable_amount, 0);
+    const rawPayable = this.toFloat(lmtSource.payable_amount, 0);
     const payable = rawPayable > 0 ? rawPayable : taxIncl - prepaid;
 
     if (
-      lmt.payable_amount !== payable ||
-      lmt.line_extension_amount !== lineExt
+      lmtSource.payable_amount !== payable ||
+      lmtSource.line_extension_amount !== lineExt
     ) {
       mathHealed = true;
       adjustments.push("Reconciled legal_monetary_total mathematical totals");
     }
 
-    lmt.line_extension_amount = lineExt;
-    lmt.tax_exclusive_amount = taxExcl;
-    lmt.tax_inclusive_amount = taxIncl;
-    lmt.prepaid_amount = prepaid;
-    lmt.payable_amount = payable;
+    const legalMonetaryTotal: LegalMonetaryTotal = {
+      line_extension_amount: lineExt,
+      tax_exclusive_amount: taxExcl,
+      tax_inclusive_amount: taxIncl,
+      payable_amount: payable,
+      prepaid_amount: prepaid > 0 ? prepaid : undefined,
+    };
+    res.legal_monetary_total = legalMonetaryTotal;
 
     // 11. Check for remaining missing fields against schema
     const missing: string[] = [];
@@ -563,7 +597,7 @@ export class DeterministicCompleter {
     }
 
     return {
-      completedData: res,
+      completedData: res as unknown as FIRSInvoice,
       isFullyCompliant: missing.length === 0,
       missingFields: missing,
       mathHealed,

@@ -621,29 +621,51 @@ export class OutboundInvoiceRepository {
     if (!tenantId) throw new AppError(400, "tenantId is required for upsert");
 
     try {
+      const setOnInsert: Record<string, any> = {
+        tenantId,
+        irn,
+      };
+      if (erpInvoiceId !== undefined) {
+        setOnInsert.erpInvoiceId = erpInvoiceId;
+      }
+      if (source !== undefined) {
+        setOnInsert.source = source;
+      }
+      if (mutableFields.status === undefined) {
+        setOnInsert.status = OutboundInvoiceStatus.CREATED;
+      }
+      if (mutableFields.workflowState === undefined) {
+        setOnInsert.workflowState = {
+          transformed: false,
+          validated: false,
+          signed: false,
+          transmitted: false,
+          delivered: false,
+        };
+      }
+      if (mutableFields.validationAttempts === undefined) {
+        setOnInsert.validationAttempts = 0;
+      }
+      if (mutableFields.webhookEvents === undefined) {
+        setOnInsert.webhookEvents = [];
+      }
+
+      const cleanSet = { ...mutableFields };
+      for (const key of Object.keys(setOnInsert)) {
+        delete cleanSet[key];
+      }
+
+      const updateDoc: any = {};
+      if (Object.keys(cleanSet).length > 0) {
+        updateDoc.$set = cleanSet;
+      }
+      if (Object.keys(setOnInsert).length > 0) {
+        updateDoc.$setOnInsert = setOnInsert;
+      }
+
       const doc = await this.outboundInvoiceModel.findOneAndUpdate(
         { irn, tenantId },
-        {
-          // Only mutable fields go in $set — never identity/index fields
-          $set: mutableFields,
-          // Identity + defaults only applied on first insert
-          $setOnInsert: {
-            irn,
-            tenantId,
-            erpInvoiceId,
-            source,
-            status: OutboundInvoiceStatus.CREATED,
-            workflowState: {
-              transformed: false,
-              validated: false,
-              signed: false,
-              transmitted: false,
-              delivered: false,
-            },
-            validationAttempts: 0,
-            webhookEvents: [],
-          },
-        },
+        updateDoc,
         { upsert: true, returnDocument: "after", runValidators: true },
       );
 
@@ -685,16 +707,14 @@ export class OutboundInvoiceRepository {
 
       const doc = await this.outboundInvoiceModel
         .findOneAndUpdate(query, updateDoc, {
+          upsert: true,
           returnDocument: "after",
           runValidators: true,
+          setDefaultsOnInsert: true,
         })
         .exec();
 
-      if (!doc) {
-        throw new AppError(404, "Outbound invoice not found");
-      }
-
-      return doc;
+      return doc!;
     } catch (error: any) {
       console.error("Error updating outbound invoice:", error);
       if (error.name === "ValidationError") {
