@@ -83,22 +83,18 @@ export async function resolveOriginalInvoices(
   outboundRepo: OutboundInvoiceRepository,
   fallbackErpInvoiceId?: string,
 ): Promise<ResolvedOriginalInvoices> {
-  const dataObj =
-    (payload.data as Record<string, unknown> | undefined) ?? payload;
+  const dataObj = (payload.data as Record<string, unknown>) ?? payload;
 
   // 1. Resolve Credit Note ID
   const idKey =
     authContext?.idKeyMap?.[eventType] ??
     authContext?.idKeyMap?.[eventType.replace(/\./g, "_")];
 
-  const creditNoteId =
-    String(
-      (idKey ? getNestedValue(payload, idKey) : null) ??
-        dataObj.invoice_id ??
-        dataObj.id ??
-        fallbackErpInvoiceId ??
-        "",
-    ).trim() || undefined;
+  const creditNoteId = String(
+    (idKey ? getNestedValue(payload, idKey) : null) ??
+      dataObj.invoice_id ??
+      fallbackErpInvoiceId,
+  ).trim();
 
   // 2. Resolve Billing Reference
   const refKey =
