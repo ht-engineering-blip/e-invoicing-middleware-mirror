@@ -2,6 +2,8 @@ import { generateUniqueHsnCode } from "./transformer/classification.helper";
 import { DEFAULT_INVOICE_TYPE_CODE } from "./invoice-type";
 import { generateIRN } from "./transformer/irn-sanitizer.helper";
 
+
+
 /**
  * Sanitizes and normalizes an invoice payload before dispatching to FIRS or validation services.
  * Implements full FIRS/NRS Schema 1.1 compliance for all required and optional structures.
@@ -136,25 +138,17 @@ export function sanitizeInvoicePayload(
     invoice.tax_currency_code = invoice.tax_currency_code.trim().toUpperCase();
   }
 
-  if (
-    !invoice.invoice_type_code ||
-    typeof invoice.invoice_type_code !== "string" ||
-    invoice.invoice_type_code.trim() === ""
-  ) {
-    invoice.invoice_type_code = DEFAULT_INVOICE_TYPE_CODE;
-  } else {
-    invoice.invoice_type_code = invoice.invoice_type_code.trim();
-  }
+  invoice.invoice_type_code = String(
+    invoice.invoice_type_code || DEFAULT_INVOICE_TYPE_CODE,
+  ).trim();
 
-  if (
-    !invoice.invoice_kind ||
-    typeof invoice.invoice_kind !== "string" ||
-    invoice.invoice_kind.trim() === ""
-  ) {
-    invoice.invoice_kind = "B2B";
-  } else {
-    invoice.invoice_kind = invoice.invoice_kind.trim().toUpperCase();
-  }
+  invoice.invoice_kind = String(
+    invoice.invoice_kind || "B2B",
+  ).trim().toUpperCase();
+
+
+
+
 
   // 1b. Payment Status
   if (
@@ -395,7 +389,7 @@ export function sanitizeInvoicePayload(
   }
 
   // 6. Billing Reference (Adjustment Invoices)
-  const adjustmentCodes = ["380", "383", "384", "385", "386", "393", "395"];
+  const adjustmentCodes = ["380", "383", "384", "385", "386", "388", "389", "393", "395"];
   const invoiceTypeCode = String(invoice.invoice_type_code || "").trim();
   const isAdjustmentNote =
     adjustmentCodes.includes(invoiceTypeCode) ||

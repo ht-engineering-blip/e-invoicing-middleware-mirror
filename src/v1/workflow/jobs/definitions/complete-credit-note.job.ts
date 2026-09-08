@@ -15,6 +15,8 @@ import {
   resolveOriginalInvoices,
   composeCreditNotePayload,
 } from "../../utils/credit-note-pipeline.helper";
+import { InvoiceTypeCode } from "../../utils/invoice-type";
+
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
@@ -39,12 +41,9 @@ export function registerCompleteCreditNoteJob(): void {
       try {
         let qrCode: string | undefined;
         let firsSignedData: unknown;
-        let creditNotePayload = context.transformedInvoice as
-          | CreditNotePayload
-          | undefined;
-        const source =
-          (context.source as OutboundInvoiceSource) ??
-          OutboundInvoiceSource.WEBHOOK;
+        let creditNotePayload = context.transformedInvoice as CreditNotePayload;
+
+        const source = context.source ?? OutboundInvoiceSource.WEBHOOK;
         let transmissionFailed = false;
 
         if (!creditNotePayload && context.originalPayload) {
@@ -97,10 +96,13 @@ export function registerCompleteCreditNoteJob(): void {
         irn = irn ?? creditNotePayload?.irn;
 
         if (creditNotePayload && irn) {
+          creditNotePayload.invoice_type_code = InvoiceTypeCode.CREDIT_NOTE;
+
           logger.info(
             "[Job:complete-credit-note] Executing outbound workflow...",
             { jobChainId, irn },
           );
+
 
           const outboundResult = await outboundService.handleOutboundWorkflow(
             creditNotePayload as any,

@@ -9,6 +9,7 @@ import {
   sanitizePriceUnit,
 } from "./utils";
 import type { AuthContext } from "./mapping-spec.types";
+import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
 
 export interface InvoiceLineItem {
   hsn_code?: string;
@@ -96,33 +97,12 @@ export function normalizeInvoicePayload(
   }
 
   // 5. Resolve Invoice Type Code
-  // 380 = Commercial Invoice (UNCL1001/UBL); see deterministic-completer.
-  let invoiceTypeCode = "380";
-  if (
-    typeof rawInvoice.invoice_type_code === "string" &&
-    rawInvoice.invoice_type_code.trim() !== ""
-  ) {
-    invoiceTypeCode = rawInvoice.invoice_type_code.trim();
-  } else if (
-    typeof rawInvoice.invoiceTypeCode === "string" &&
-    rawInvoice.invoiceTypeCode.trim() !== ""
-  ) {
-    invoiceTypeCode = rawInvoice.invoiceTypeCode.trim();
-  }
+  const invoiceTypeCode = String(
+    rawInvoice.invoice_type_code || DEFAULT_INVOICE_TYPE_CODE,
+  ).trim();
 
   // 6. Resolve Invoice Kind
-  let invoiceKind = "B2B";
-  if (
-    typeof rawInvoice.invoice_kind === "string" &&
-    rawInvoice.invoice_kind.trim() !== ""
-  ) {
-    invoiceKind = rawInvoice.invoice_kind.trim();
-  } else if (
-    typeof rawInvoice.invoiceKind === "string" &&
-    rawInvoice.invoiceKind.trim() !== ""
-  ) {
-    invoiceKind = rawInvoice.invoiceKind.trim();
-  }
+  const invoiceKind = String(rawInvoice.invoice_kind || "B2B").trim();
 
   // 7. Resolve Document & Tax Currency Codes
   const documentCurrencyCode = extractCurrency(rawInvoice, "document");

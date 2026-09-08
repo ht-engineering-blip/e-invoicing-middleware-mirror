@@ -28,7 +28,9 @@ export interface AuthContext {
   tenantERP?: string;
   serviceId?: string;
   isAdmin?: boolean;
+  eventType?: string;
 }
+
 
 /**
  * Schema Field Definition Interface

@@ -6,6 +6,7 @@ import { OutboundInvoiceDocument } from "../models";
 import { OutboundInvoiceRepository } from "../repos/outbound-invoice.repo";
 import { TransformWorkflowService } from "../services";
 import { resolveCurrencyCode } from "./transformer/utils";
+import { InvoiceTypeCode } from "./invoice-type";
 
 export interface BillingReferenceItem {
   irn: string;
@@ -295,16 +296,7 @@ export async function composeCreditNotePayload(params: {
     creditNotePayload = structuredClone(fallbackOriginalTransformed);
   }
 
-  let resolvedInvoiceTypeCode = "380";
-  if (payloadData?.invoice_type_code) {
-    resolvedInvoiceTypeCode = String(payloadData.invoice_type_code);
-  } else if (payload.invoice_type_code) {
-    resolvedInvoiceTypeCode = String(payload.invoice_type_code);
-  } else if (hasLines && creditNotePayload.invoice_type_code) {
-    resolvedInvoiceTypeCode = creditNotePayload.invoice_type_code;
-  }
-
-  creditNotePayload.invoice_type_code = resolvedInvoiceTypeCode.trim();
+  creditNotePayload.invoice_type_code = InvoiceTypeCode.CREDIT_NOTE;
   creditNotePayload.billing_reference = resolvedOriginals.billingReferences;
 
   if (fallbackOriginalTransformed?.accounting_supplier_party) {
