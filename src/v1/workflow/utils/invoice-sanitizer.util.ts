@@ -1155,89 +1155,9 @@ export function autoFixInvoiceFromFIRSError(
     }
   }
 
-  // 5. Billing Reference Fix
-  if (
-    errString.includes("billingreference") ||
-    errString.includes("billing_reference") ||
-    errString.includes("credit note and debit note")
-  ) {
-    const fallbackIrn =
-      typeof target.irn === "string" && target.irn.trim() !== ""
-        ? target.irn
-        : `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
-    target.billing_reference = [
-      {
-        irn: fallbackIrn,
-        issue_date: String(
-          target.issue_date || new Date().toISOString().slice(0, 10),
-        ),
-      },
-    ];
-  }
 
-  // 6. IRN Format & Template Validation Fix
-  if (
-    errString.includes("irn validation failed") ||
-    errString.includes("refer to the template") ||
-    errString.includes("valid irn") ||
-    errString.includes("irn value must be")
-  ) {
-    const rawIrn = String(target.irn || "");
-    const parts = rawIrn.split("-").filter(Boolean);
 
-    let dateStr: string;
-    if (
-      typeof target.issue_date === "string" &&
-      target.issue_date.length >= 10
-    ) {
-      dateStr = target.issue_date.slice(0, 10).replace(/-/g, "");
-    } else {
-      dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    }
 
-    let baseRef: string;
-    if (
-      typeof target.invoice_number === "string" &&
-      target.invoice_number.trim() !== ""
-    ) {
-      baseRef = target.invoice_number
-        .trim()
-        .replace(/[^A-Za-z0-9]/g, "")
-        .toUpperCase();
-    } else if (parts[0]) {
-      baseRef = parts[0].replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-    } else {
-      baseRef = `INV${dateStr}`;
-    }
-
-    let serviceId = "";
-    if (parts[1] && parts[1].length === 8) {
-      serviceId = parts[1].toUpperCase();
-    } else if (
-      typeof target.service_id === "string" &&
-      target.service_id.trim() !== ""
-    ) {
-      serviceId = target.service_id.trim().toUpperCase();
-    } else if (
-      typeof target.serviceId === "string" &&
-      target.serviceId.trim() !== ""
-    ) {
-      serviceId = target.serviceId.trim().toUpperCase();
-    }
-
-    if (serviceId) {
-      target.irn = generateIRN(baseRef, serviceId);
-    } else if (rawIrn) {
-      target.irn = generateIRN(baseRef, serviceId);
-    }
-
-    if (
-      Array.isArray(target.billing_reference) &&
-      target.billing_reference.length > 0
-    ) {
-      target.billing_reference[0].irn = target.irn;
-    }
-  }
 
   // 7. Payment Status Normalization Fix
   if (
