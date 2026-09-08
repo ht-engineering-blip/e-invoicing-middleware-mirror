@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { DeterministicCompleter } from "../src/v1/workflow/utils/transformer/deterministic-completer";
 import { TransformerCircuitBreaker } from "../src/v1/workflow/utils/transformer/circuit-breaker";
 import { FIRSInvoiceTransformerV2 } from "../src/v1/workflow/utils/transformer/v2";
-import { FIRSInvoiceSchema } from "../src/v1/workflow/utils/transformer/schema-validator";
+import { FIRSInvoiceSchema, type FIRSInvoice } from "../src/v1/workflow/utils/transformer/schema-validator";
 
 describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
   it("should auto-complete missing fields and self-heal mathematical totals without LLM", () => {
@@ -38,7 +38,7 @@ describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
     expect(result.isFullyCompliant).toBe(true);
     expect(result.completedData.business_id).toBe("BIZ_ACME_001");
     expect(result.completedData.accounting_supplier_party.tin).toBe("98765432-0001");
-    expect(result.completedData.accounting_customer_party.name).toBe("Acme Nigeria Ltd");
+    expect(result.completedData.accounting_customer_party.party_name).toBe("Acme Nigeria Ltd");
     expect(result.completedData.accounting_customer_party.tin).toBe("12345678-0001");
 
     // Verify mathematical self-healing
@@ -109,7 +109,9 @@ describe("Fail-Proof Deterministic Transformer & Circuit Breaker Tests", () => {
     expect(res.success).toBe(true);
     if (res.success) {
       expect(res.data.business_id).toBe("BIZ_GLOBAL");
-      expect((res.data.accounting_customer_party as any).name).toBe("Global Tech Ltd");
+      expect(
+        (res.data as FIRSInvoice).accounting_customer_party.party_name,
+      ).toBe("Global Tech Ltd");
       expect((res.data.invoice_line as any[])[0].item.name).toBe("Cloud Hosting Services");
     }
   });

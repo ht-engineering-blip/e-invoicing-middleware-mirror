@@ -9,10 +9,12 @@ import { aiConfig, firsConfig } from "../../../@config";
 import {
   DICTIONARY_PROMPT,
   MAPPING_RULES_PROMPT,
+  MAPPING_TEMPLATE_PROMPT,
   formatSchemaFields,
 } from "./prompts";
 import { ISchemaField } from "../../../v1/workflow/models";
 import { cleanAndParseJson } from "../../utils";
+import type { MappingTemplate } from "../../../v1/workflow/utils/transformer/mapping-spec.types";
 
 export interface FIRSUserInfo {
   id: string;
@@ -294,4 +296,107 @@ export class LLMService {
       throw error;
     }
   }
+
+  /**
+   * Generate Full Deterministic MappingTemplate using LLM (Design/Setup Time)
+   */
+  async generateMappingTemplate(
+    erp: string,
+    sampleInvoice: any,
+    nrsVersion: string = "v1.0",
+    targetNrsSchemaOrSample?: any,
+  ): Promise<MappingTemplate> {
+    try {
+      const promptContent = MAPPING_TEMPLATE_PROMPT(
+        erp,
+        sampleInvoice,
+        nrsVersion,
+        targetNrsSchemaOrSample,
+      );
+      const isGemini = aiConfig?.provider === "gemini";
+
+      if (isGemini) {
+        const model = aiConfig?.model || "gemini-2.0-flash";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiConfig?.apiKey}`;
+        const body = {
+          contents: [{ role: "user", parts: [{ text: promptContent }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+          },
+        };
+        const geminiRes = await axios.post(url, body, {
+          headers: { "Content-Type": "application/json" },
+        });
+        const candidate = geminiRes.data?.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text || "";
+        const parsed = cleanAndParseJson(text);
+        const data = parsed.success ? parsed.data : null;
+        if (data && typeof data === "object") {
+          return {
+            erp_source: erp,
+            nrs_schema_version: nrsVersion,
+            field_mappings: Array.isArray(data.field_mappings)
+              ? data.field_mappings
+              : [],
+            array_mappings: Array.isArray(data.array_mappings)
+              ? data.array_mappings
+              : [],
+            constants:
+              data.constants && typeof data.constants === "object"
+                ? data.constants
+                : {},
+          };
+        }
+      }
+
+      const payload = {
+        model: aiConfig?.model || "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: promptContent,
+          },
+        ],
+        temperature: 0.1,
+      };
+
+      const response: any = await this.client.post(``, payload);
+      if (!response.choices || !response.choices[0]?.message?.content) {
+        throw new Error("Failed to generate mapping template from LLM");
+      }
+      const rawContent = response.choices[0].message.content;
+      const parsed = cleanAndParseJson(rawContent);
+      const data = parsed.success ? parsed.data : null;
+      if (data && typeof data === "object") {
+        return {
+          erp_source: erp,
+          nrs_schema_version: nrsVersion,
+          field_mappings: Array.isArray(data.field_mappings)
+            ? data.field_mappings
+            : [],
+          array_mappings: Array.isArray(data.array_mappings)
+            ? data.array_mappings
+            : [],
+          constants:
+            data.constants && typeof data.constants === "object"
+              ? data.constants
+              : {},
+        };
+      }
+
+      throw new Error("Invalid response structure from LLM for mapping template");
+    } catch (error: any) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          throw new Error("Invalid or expired LLM access token");
+        }
+        throw new Error(
+          `Mapping template generation error: ${error.response?.data?.message || error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
 }
+

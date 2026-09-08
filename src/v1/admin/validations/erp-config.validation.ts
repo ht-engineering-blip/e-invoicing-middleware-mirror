@@ -32,13 +32,23 @@ export const addERPDictionaryValidation = {
       t.String(),
     ]),
     invoice: t.Any({ default: {} }),
+    mapping_type: t.Optional(
+      t.Union([t.Literal("manual"), t.Literal("llm")], {
+        default: "manual",
+        description: "Mapping strategy: 'manual' (user-provided mapping) or 'llm' (AI-generated mapping)",
+      }),
+    ),
+    mapping_template: t.Optional(t.Any()),
+    mapping_rules: t.Optional(t.Array(t.Any())),
+    fields: t.Optional(t.Array(t.Any())),
     metadata: t.Optional(t.Record(t.String(), t.Any())),
   }),
   
   detail: {
     tags: ['Admin - System Configuration'],
     security: [{ adminKey: [] }],
-    summary: 'Add ERP Dictionary',
-    description: 'Add a new ERP system invoice dictionary',
+    summary: 'Add / Configure ERP Dictionary',
+    description: 'Add a new ERP system invoice dictionary and mapping template with either manual or LLM-assisted mapping.',
   },
 };
+

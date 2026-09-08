@@ -18,21 +18,24 @@ export const PhoneSchema = z.preprocess((val) => {
 }, z.string().regex(/^\+/, "Phone must start with + (country code)").optional());
 
 export const AddressSchema = z.object({
-  street_name: z.string(),
-  city_name: z.string(),
-  postal_zone: z.string(),
-  country: z.string(),
+  street_name: z.string().nullish(),
+  city_name: z.string().nullish(),
+  postal_zone: z.string().nullish(),
+  country: z.string().nullish().default("NG"),
   lga: z.string().nullish(),
   state: z.string().nullish(),
 });
 
 export const PartySchema = z.object({
-  party_name: z.string(),
-  tin: z.string(),
-  email: z.string().email(),
+  party_name: z.string().nullish(),
+  tin: z.string().nullish(),
+  email: z.preprocess((val) => {
+    if (typeof val === "string" && val.includes("@")) return val.trim();
+    return undefined;
+  }, z.string().email().optional().nullish()),
   telephone: PhoneSchema.nullish(),
   business_description: z.string().nullish(),
-  postal_address: AddressSchema,
+  postal_address: AddressSchema.nullish(),
 });
 
 const NumericSchema = z.preprocess((val) => {
@@ -65,6 +68,7 @@ export const LegalMonetaryTotalSchema = z.object({
   tax_exclusive_amount: NumericSchema,
   tax_inclusive_amount: NumericSchema,
   payable_amount: NumericSchema,
+  prepaid_amount: NumericSchema.nullish(),
 });
 
 export const InvoiceLineSchema = z.object({
@@ -88,7 +92,9 @@ export const InvoiceLineSchema = z.object({
   item: z.object({
     name: z
       .string()
-      .transform((val) => (val && val.trim() !== "" ? val.trim() : "General Item"))
+      .transform((val) =>
+        val && val.trim() !== "" ? val.trim() : "General Item",
+      )
       .default("General Item"),
     description: z
       .string()
@@ -118,12 +124,12 @@ export const DocumentReferenceSchema = z.object({
 });
 
 export const FIRSInvoiceSchema = z.object({
-  business_id: z.string(),
-  irn: z.string(),
+  business_id: z.string().optional(),
+  irn: z.string().optional(),
   issue_date: DateSchema,
   due_date: DateSchema.nullish(),
   issue_time: TimeSchema.nullish(),
-  invoice_type_code: z.string().default("380"),
+  invoice_type_code: z.string().default("381"),
   invoice_kind: z.string().default("B2B"),
   payment_status: z.string().default("PENDING"),
   note: z.string().nullish(),
@@ -175,4 +181,11 @@ export const FIRSInvoiceSchema = z.object({
   invoice_reference: z.string().nullish(),
 });
 
+export type Address = z.infer<typeof AddressSchema>;
+export type Party = z.infer<typeof PartySchema>;
+export type TaxSubtotal = z.infer<typeof TaxSubtotalSchema>;
+export type TaxTotal = z.infer<typeof TaxTotalSchema>;
+export type LegalMonetaryTotal = z.infer<typeof LegalMonetaryTotalSchema>;
+export type InvoiceLine = z.infer<typeof InvoiceLineSchema>;
+export type DocumentReference = z.infer<typeof DocumentReferenceSchema>;
 export type FIRSInvoice = z.infer<typeof FIRSInvoiceSchema>;

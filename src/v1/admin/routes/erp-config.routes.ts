@@ -174,138 +174,80 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
         const payload = body as {
           erp: string;
           invoice: Record<string, unknown>;
-          metadata?: Record<string, unknown> & {
-            status?: SchemaStatus;
-            mapping_rules?: Array<Record<string, unknown>>;
-            source_invoice_sample?: Record<string, unknown>;
-          };
+          mapping_type?: "manual" | "llm";
+          mapping_template?: any;
           mapping_rules?: Array<Record<string, unknown>>;
-          fields?: Array<ISchemaField>;
-          regenerate_fields?: boolean;
+          metadata?: Record<string, unknown>;
         };
 
-        const { erp, invoice, metadata } = payload;
+        const {
+          erp,
+          invoice,
+          metadata,
+          mapping_type = "manual",
+          mapping_template,
+          mapping_rules,
+        } = payload;
+
         if (auth && auth.tenantId) {
           invoice.business_id = auth.businessId;
         }
 
-        // Flatten the invoice for field extraction
-        const flatInvoice = jsonSpread(invoice)[0] as Record<string, unknown>;
-        let flatMetadata: Record<string, unknown> | undefined = undefined;
-        if (metadata) {
-          flatMetadata = jsonSpread(metadata)[0] as Record<string, unknown>;
-        }
-        const mapping_rules =
-          metadata?.mapping_rules || payload.mapping_rules || [];
+        let effectiveTemplate: any = null;
 
-        // Check if schema already exists to avoid slow redundant LLM calls on update
-        const existingSchema =
-          await transformWorkflowService.getInvoiceSchema(erp);
+        if (mapping_type === "llm") {
+          // Option A: LLM-Assisted Generation
+          const schemaDoc =
+            await transformWorkflowService.getInvoiceSchema("FIRS_UBL");
+          const targetNrsData = schemaDoc?.fields || undefined;
 
-        let generatedFields: Array<ISchemaField> = [];
-        if (
-          payload.fields &&
-          Array.isArray(payload.fields) &&
-          payload.fields.length > 0
-        ) {
-          generatedFields = payload.fields;
-        } else if (
-          existingSchema &&
-          Array.isArray(existingSchema.fields) &&
-          existingSchema.fields.length > 0 &&
-          !payload.regenerate_fields
-        ) {
-          // Fast path: preserve existing schema fields on updates
-          generatedFields = existingSchema.fields;
-        } else if (flatInvoice && Object.keys(flatInvoice).length > 0) {
-          try {
-            generatedFields = await Promise.race([
-              llmService.generateInvoiceDictionary(
-                erp,
-                flatInvoice,
-                flatMetadata,
-              ),
-              new Promise<Array<ISchemaField>>((_, reject) =>
-                setTimeout(
-                  () => reject(new Error("LLM generation timeout")),
-                  5000,
-                ),
-              ),
-            ]);
-          } catch (llmErr: unknown) {
-            const err = llmErr as { message?: string };
-            logger.warn(
-              "LLM dictionary generation timed out/failed, falling back to direct field extraction",
-              {
-                erp,
-                error: err.message,
-              },
-            );
-            generatedFields = extractFieldsFromSample(flatInvoice);
-          }
+          effectiveTemplate = await llmService.generateMappingTemplate(
+            erp,
+            invoice,
+            "v1.0",
+            targetNrsData,
+          );
         } else {
-          generatedFields = [];
-        }
-
-        let effectiveMappingRules: Array<Record<string, any>> = [];
-        if (
-          payload.mapping_rules &&
-          Array.isArray(payload.mapping_rules) &&
-          payload.mapping_rules.length > 0
-        ) {
-          effectiveMappingRules = payload.mapping_rules;
-        } else if (
-          metadata?.mapping_rules &&
-          Array.isArray(metadata.mapping_rules) &&
-          metadata.mapping_rules.length > 0
-        ) {
-          effectiveMappingRules = metadata.mapping_rules;
-        } else if (
-          existingSchema &&
-          Array.isArray(existingSchema.mapping_rules) &&
-          existingSchema.mapping_rules.length > 0 &&
-          !payload.regenerate_fields
-        ) {
-          effectiveMappingRules = existingSchema.mapping_rules;
-        } else if (flatInvoice && Object.keys(flatInvoice).length > 0) {
-          try {
-            const firsSchemaDoc =
-              await transformWorkflowService.getInvoiceSchema(
-                SchemaSourceType.FIRS_UBL,
-              );
-            effectiveMappingRules = await llmService.generateMappingRules(
-              erp,
-              flatInvoice,
-              firsSchemaDoc?.fields,
-            );
-          } catch (mErr: unknown) {
-            logger.warn(
-              "LLM mapping rule generation failed during ERP configuration",
-              {
-                erp,
-                error: (mErr as any)?.message,
-              },
-            );
+          // Option B: Manual Mapping
+          if (mapping_template) {
+            effectiveTemplate = mapping_template;
+          } else if (Array.isArray(mapping_rules) && mapping_rules.length > 0) {
+            effectiveTemplate = {
+              erp_source: erp,
+              nrs_schema_version: "v1.0",
+              field_mappings: mapping_rules.filter(
+                (r: any) => r.source && !r.source.includes("[*]"),
+              ),
+              array_mappings: [],
+            };
+          } else {
+            // Fallback: extract fields from sample if no template provided
+            const flatInvoice = jsonSpread(invoice)[0] as Record<
+              string,
+              unknown
+            >;
+            const extracted = extractFieldsFromSample(flatInvoice);
+            effectiveTemplate = {
+              erp_source: erp,
+              nrs_schema_version: "v1.0",
+              field_mappings: extracted.map((f) => ({
+                source: f.field_path,
+                target: f.field_path,
+              })),
+            };
           }
         }
 
-        // Upsert the schema to database
-        const savedSchema = await transformWorkflowService.upsertERPSchema(
+        // Strict Gatekeeper: Validate sample invoice against NRS schema before saving
+        const savedSchema = await transformWorkflowService.saveMappingTemplate(
           erp,
-          generatedFields,
+          effectiveTemplate,
+          invoice,
           {
             tenantId: auth?.tenantId,
             createdBy: auth?.userId || "system",
-            status: metadata?.status,
-            metadata: {
-              ...(metadata || {}),
-              mapping_rules: effectiveMappingRules,
-              source_invoice_sample:
-                metadata?.source_invoice_sample || flatInvoice,
-              generated_at: new Date().toISOString(),
-            },
-            mapping_rules: effectiveMappingRules,
           },
+          auth,
         );
 
         // Audit log
@@ -327,18 +269,19 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           },
         });
 
+        const finalFields = savedSchema.fields || [];
         const finalMappingRules =
           savedSchema.mapping_rules ||
           savedSchema.metadata?.mapping_rules ||
-          effectiveMappingRules;
+          [];
 
         return {
           success: true,
           data: {
             schema_id: savedSchema.schema_id,
             erp_type: erp,
-            fields_count: generatedFields.length,
-            fields: generatedFields,
+            fields_count: finalFields.length,
+            fields: finalFields,
             status: savedSchema.status,
             mapping_rules: finalMappingRules,
             metadata: {

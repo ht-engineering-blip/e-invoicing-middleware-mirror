@@ -119,7 +119,6 @@ Return ONLY a valid JSON array of objects with the structure:
 5. Output ONLY valid JSON array with no markdown backticks, no markdown fencing, and no explanations.
 `;
 
-
 /**
  * Format schema fields into a readable mapping guide for the LLM
  */
@@ -206,13 +205,11 @@ export const SYSTEM_PROMPT_V2 = (
     .padStart(3, "0")}`;
   const invoiceDate =
     invoice?.date || invoice?.issue_date || invoice?.issueDate;
-  let irn =
-    invoice?.irn ||
-    generateIRN(
-      invoiceRef,
-      authContext?.serviceId,
-      invoiceDate ? new Date(invoiceDate) : undefined,
-    );
+  let irn = generateIRN(
+    invoiceRef,
+    authContext?.serviceId,
+    invoiceDate ? new Date(invoiceDate) : undefined,
+  );
   // Build source schema section
   let sourceSchemaSection = "";
   if (sourceSchema && sourceSchema.length > 0) {
@@ -393,7 +390,10 @@ export const generateTransformPrompt = async (
 
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("FIRS resources prompt timeout")), 1000)
+      setTimeout(
+        () => reject(new Error("FIRS resources prompt timeout")),
+        1000,
+      ),
     );
     const [taxCatRes, invoiceTypeRes] = await Promise.race([
       Promise.all([
@@ -444,4 +444,120 @@ export const generateTransformPrompt = async (
     mappingRules,
     metaContext,
   );
+};
+
+export const MAPPING_TEMPLATE_PROMPT = (
+  erp: string,
+  samplePayload: any,
+  nrsTargetVersion: string = "v1.0",
+  nrsTargetSchemaOrSample?: any,
+) => {
+  let targetSchemaSection = `
+# Target NRS / FIRS Standard Fields:
+- business_id (String, required)
+- irn (String, required)
+- issue_date (Date YYYY-MM-DD, required)
+- issue_time (Time HH:MM:SS, optional)
+- due_date (Date YYYY-MM-DD, optional)
+- invoice_type_code (String, default: "380")
+- document_currency_code (String, default: "NGN")
+- tax_currency_code (String, default: "NGN")
+- invoice_kind (String, default: "B2B")
+- accounting_supplier_party.tin (String, required)
+- accounting_supplier_party.party_name (String, required)
+- accounting_supplier_party.email (String, optional)
+- accounting_supplier_party.telephone (String, optional)
+- accounting_supplier_party.postal_address.street_name (String, optional)
+- accounting_supplier_party.postal_address.city_name (String, optional)
+- accounting_supplier_party.postal_address.state (String, optional)
+- accounting_supplier_party.postal_address.postal_zone (String, optional)
+- accounting_supplier_party.postal_address.country (String, default: "NG")
+- accounting_customer_party.tin (String, required)
+- accounting_customer_party.party_name (String, required)
+- accounting_customer_party.email (String, required)
+- accounting_customer_party.telephone (String, optional)
+- accounting_customer_party.postal_address.street_name (String, optional)
+- accounting_customer_party.postal_address.city_name (String, optional)
+- accounting_customer_party.postal_address.state (String, optional)
+- accounting_customer_party.postal_address.postal_zone (String, optional)
+- accounting_customer_party.postal_address.country (String, default: "NG")
+- invoice_line (Array of items):
+  - item.name (String, required)
+  - item.description (String, optional)
+  - invoiced_quantity (Number, required)
+  - price.price_amount (Number, required)
+  - price.price_unit (String, default: "H87")
+  - line_extension_amount (Number, required)
+  - hsn_code (String, optional)
+  - product_category (String, optional)
+`;
+
+  if (nrsTargetSchemaOrSample) {
+    if (Array.isArray(nrsTargetSchemaOrSample)) {
+      targetSchemaSection = `
+# Target NRS / FIRS Schema Requirements (from Database Dictionary):
+${formatSchemaFields(nrsTargetSchemaOrSample, "NRS Schema")}
+`;
+    } else if (typeof nrsTargetSchemaOrSample === "object") {
+      targetSchemaSection = `
+# Target NRS / FIRS Standard Structure & Schema (from Database):
+${JSON.stringify(nrsTargetSchemaOrSample, null, 2)}
+`;
+    }
+  }
+
+  return `
+You are an Expert Enterprise Integration & E-Invoicing Data Architect.
+Your task is to analyze a sample invoice payload from "${erp}" and generate a complete, deterministic, production-grade MappingTemplate JSON object to map the ERP payload to the standard Nigerian NRS / FIRS UBL 2.1 e-invoicing schema (version: ${nrsTargetVersion}).
+
+# Source ERP Inbound Payload:
+${JSON.stringify(samplePayload, null, 2)}
+${targetSchemaSection}
+# Supported Field Transformers:
+- "toDate"
+- "toTime"
+- "toNumber"
+- "toString"
+- "trim"
+- "uppercase"
+- "lowercase"
+- "sanitizePhone"
+- "sanitizeHsn"
+- "sanitizePriceUnit"
+
+# Desired Output JSON Structure:
+{
+  "erp_source": "${erp}",
+  "nrs_schema_version": "${nrsTargetVersion}",
+  "field_mappings": [
+    {
+      "target": "irn",
+      "source": "exact.source.path",
+      "fallback_sources": ["alternative.source.path"],
+      "default_value": "INV-DEFAULT",
+      "transform": "trim"
+    }
+  ],
+  "array_mappings": [
+    {
+      "source_array": "source_items_array_path",
+      "target_array": "invoice_line",
+      "item_mappings": [
+        { "target": "item.name", "source": "name", "transform": "trim" },
+        { "target": "invoiced_quantity", "source": "qty", "transform": "toNumber" },
+        { "target": "price.price_amount", "source": "unit_price", "transform": "toNumber" },
+        { "target": "line_extension_amount", "source": "total", "transform": "toNumber" }
+      ]
+    }
+  ],
+  "constants": {
+    "document_currency_code": "NGN",
+    "tax_currency_code": "NGN",
+    "invoice_type_code": "380"
+  }
+}
+
+# Output Instructions:
+Output ONLY the valid JSON object described above with no markdown formatting, no backticks, no notes.
+`;
 };

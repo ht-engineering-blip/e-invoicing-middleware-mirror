@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   filterAllowedLLMFields,
   FIRSInvoiceSchema,
+  type FIRSInvoice,
   TransformationResult,
   TransformInvoiceInput,
 } from ".";
@@ -407,7 +408,10 @@ export class FIRSInvoiceTransformerV2 {
           >;
 
           // Deep Merge Protection: Never overwrite deterministically mapped fields
-          completed = this.deepMergePreserveExisting(completed, parsed);
+          completed = this.deepMergePreserveExisting(
+            completed,
+            parsed,
+          ) as unknown as FIRSInvoice & Record<string, unknown>;
         } catch (llmErr: any) {
           circuitBreaker.recordFailure(llmErr);
           logger.warn(
@@ -443,7 +447,8 @@ export class FIRSInvoiceTransformerV2 {
             invoiceTypes,
           );
           if (repaired && typeof repaired === "object") {
-            completed = repaired;
+            completed = repaired as unknown as FIRSInvoice &
+              Record<string, unknown>;
           }
         } catch (repairErr: unknown) {
           logger.warn(
