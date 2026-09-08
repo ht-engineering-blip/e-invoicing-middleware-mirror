@@ -120,10 +120,32 @@ export function resolveInvoiceTypeFromEvent(
   invoiceKind?: unknown,
 ): string {
   const normExplicit = String(explicitCode ?? "").trim();
-  const normEvent = String(eventType ?? "").toLowerCase().trim();
-  const normKind = String(invoiceKind ?? "").toLowerCase().trim();
+  const normEvent = String(eventType ?? "")
+    .toLowerCase()
+    .trim();
+  const normKind = String(invoiceKind ?? "")
+    .toLowerCase()
+    .trim();
 
-  // 1. Check explicitCode if provided
+  // 1. Check if event clearly specifies document type
+  // Note: ERPs sending UNCL1001 codes often send "380" for invoices and "381" for credit notes.
+  // In NRS/FIRS, this is inverted (381 = Commercial Invoice, 380 = Credit Note).
+  // The workflow event (e.g. invoice.submitted vs erp.creditnote.issued) is the authoritative intent.
+  for (const rule of EVENT_TYPE_RULES) {
+    if (rule.match.test(normEvent)) {
+      if (
+        normExplicit &&
+        normExplicit !== "380" &&
+        normExplicit !== "381" &&
+        (VALID_INVOICE_TYPE_CODES.has(normExplicit) || normExplicit === "396")
+      ) {
+        return normExplicit;
+      }
+      return rule.code;
+    }
+  }
+
+  // 2. Check explicitCode if provided
   if (normExplicit) {
     if (VALID_INVOICE_TYPE_CODES.has(normExplicit)) {
       return normExplicit;
@@ -138,13 +160,6 @@ export function resolveInvoiceTypeFromEvent(
     return normExplicit;
   }
 
-  // 2. Check if event clearly specifies document type
-  for (const rule of EVENT_TYPE_RULES) {
-    if (rule.match.test(normEvent)) {
-      return rule.code;
-    }
-  }
-
   // 3. Check if invoice_kind was misused as document type (e.g. "Credit Note", "CN", "Debit Note")
   if (normKind) {
     for (const alias of INVOICE_TYPE_ALIASES) {
@@ -156,4 +171,3 @@ export function resolveInvoiceTypeFromEvent(
 
   return DEFAULT_INVOICE_TYPE_CODE;
 }
-
