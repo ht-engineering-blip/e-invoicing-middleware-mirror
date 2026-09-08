@@ -29,7 +29,7 @@ interface JobChainData {
   context: {
     originalPayload: any;
     sourceType?: string;
-    source?: OutboundInvoiceSource; // OutboundInvoiceSource ('webhook' | 'api')
+    source?: import("../models").OutboundInvoiceSource; // OutboundInvoiceSource ('webhook' | 'api')
     irn?: string;
     erpInvoiceId?: string;
     transformedInvoice?: any; // FIRS-formatted invoice (output of transform)

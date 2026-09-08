@@ -119,37 +119,36 @@ export function resolveInvoiceTypeFromEvent(
   explicitCode?: unknown,
   invoiceKind?: unknown,
 ): string {
+  const normExplicit = String(explicitCode ?? "").trim();
   const normEvent = String(eventType ?? "").toLowerCase().trim();
   const normKind = String(invoiceKind ?? "").toLowerCase().trim();
-  const normExplicit = String(explicitCode ?? "").trim();
 
+  // 1. Check explicitCode if provided
+  if (normExplicit) {
+    if (VALID_INVOICE_TYPE_CODES.has(normExplicit)) {
+      return normExplicit;
+    }
 
-  // 1. Check if event clearly specifies document type
+    for (const alias of INVOICE_TYPE_ALIASES) {
+      if (alias.match.test(normExplicit)) {
+        return alias.code;
+      }
+    }
+
+    return normExplicit;
+  }
+
+  // 2. Check if event clearly specifies document type
   for (const rule of EVENT_TYPE_RULES) {
     if (rule.match.test(normEvent)) {
       return rule.code;
     }
   }
 
-  // 2. Check if invoice_kind was misused as document type (e.g. "Credit Note", "CN", "Debit Note")
+  // 3. Check if invoice_kind was misused as document type (e.g. "Credit Note", "CN", "Debit Note")
   if (normKind) {
     for (const alias of INVOICE_TYPE_ALIASES) {
       if (alias.match.test(normKind)) {
-        return alias.code;
-      }
-    }
-  }
-
-  // 3. Check explicitCode if provided
-  if (normExplicit) {
-    // Check if it's already a valid NRS numeric code
-    if (VALID_INVOICE_TYPE_CODES.has(normExplicit)) {
-      return normExplicit;
-    }
-
-    // Check if it's a string name or alias (e.g. "Credit Note", "Debit Note")
-    for (const alias of INVOICE_TYPE_ALIASES) {
-      if (alias.match.test(normExplicit)) {
         return alias.code;
       }
     }
