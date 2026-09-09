@@ -158,6 +158,11 @@ export class NRSSchemaRegistry {
         const path = field.field_path || field.field_id;
         const val = this.getPathValue(payload, path);
 
+        // Skip system-generated fields (like IRN and business_id) that are automatically computed by the system
+        if (path === "irn" || path === "business_id") {
+          continue;
+        }
+
         const isReq =
           field.is_required || field?.validation_rules?.includes("required");
 

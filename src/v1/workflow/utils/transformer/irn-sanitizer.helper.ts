@@ -24,6 +24,17 @@ export function generateInvoiceRef(
   }
 }
 
+export function isIRNPlaceholder(val?: unknown): boolean {
+  if (val == null || typeof val !== "string") return false;
+  const trimmed = val.trim().toUpperCase();
+  return (
+    trimmed === "{{IRN}}" ||
+    trimmed === "IRN" ||
+    trimmed === "{{INVOICE_REFERENCE_NUMBER}}" ||
+    (trimmed.startsWith("{{") && trimmed.endsWith("}}"))
+  );
+}
+
 export function sanitizeIRN(irn: string): string {
   if (typeof irn !== "string") {
     return irn;
@@ -43,7 +54,17 @@ export function sanitizeInvoiceIRNs(
   }
 
   if (typeof invoice.irn === "string" && invoice.irn.trim() !== "") {
-    invoice.irn = sanitizeIRN(invoice.irn);
+    if (isIRNPlaceholder(invoice.irn)) {
+      invoice.irn = generateIRN(
+        (invoice.invoice_reference as string) ||
+          (invoice.invoice_number as string) ||
+          "INV-SAMPLE",
+        undefined,
+        new Date(String(invoice.issue_date || new Date())),
+      );
+    } else {
+      invoice.irn = sanitizeIRN(invoice.irn);
+    }
   }
 
   const adjustmentCodes = ["380", "383", "384", "385", "386", "393", "395"];
@@ -129,6 +150,10 @@ export function generateIRN(
   let finalServiceId = serviceId;
   let baseRef = invoiceNumber;
 
+  if (isIRNPlaceholder(baseRef)) {
+    baseRef = "";
+  }
+
   if (invoiceNumber && typeof invoiceNumber === "string") {
     const match = invoiceNumber
       .trim()
@@ -141,11 +166,17 @@ export function generateIRN(
     }
   }
 
-  if (!finalServiceId) return undefined;
+  if (!finalServiceId) {
+    finalServiceId = "00000000";
+  }
 
   const inv = (baseRef || "").replace(/[^A-Za-z0-9]/g, "");
 
-  if (!inv || !/^[A-Za-z0-9]+$/.test(inv)) return undefined;
+  if (!inv || !/^[A-Za-z0-9]+$/.test(inv)) {
+    const fallbackInv = `INV${generateDatestamp(date)}${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+    const datestamp = generateDatestamp(date);
+    return `${fallbackInv}-${finalServiceId}-${datestamp}`.toUpperCase();
+  }
 
   const datestamp = generateDatestamp(date);
   return `${inv}-${finalServiceId}-${datestamp}`.toUpperCase();
