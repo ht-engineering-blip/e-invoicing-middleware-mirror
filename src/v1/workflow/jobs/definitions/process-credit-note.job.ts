@@ -7,6 +7,7 @@ import { TransformWorkflowService } from "../../services";
 import { getNestedValue } from "../../../../@lib";
 import { InvoiceTypeCode } from "../../utils/invoice-type";
 
+
 const outboundRepo = new OutboundInvoiceRepository();
 const transformService = new TransformWorkflowService();
 
@@ -152,15 +153,9 @@ export function registerProcessCreditNoteJob(): void {
           creditNotePayload = structuredClone(fallbackOriginalTransformed);
         }
 
-        // Dynamically set invoice_type_code from payload or default to 380
-        const resolvedInvoiceTypeCode =
-          payload.data?.invoice_type_code ??
-          payload.invoice_type_code ??
-          (hasLines ? creditNotePayload.invoice_type_code : InvoiceTypeCode.CREDIT_NOTE);
+        // Set invoice_type_code to Credit Note (380)
+        creditNotePayload.invoice_type_code = InvoiceTypeCode.CREDIT_NOTE;
 
-        creditNotePayload.invoice_type_code = String(
-          resolvedInvoiceTypeCode,
-        ).trim();
 
         // Assign billing reference (use incoming if provided, otherwise resolved from original invoice)
         const incomingBillingRefs =

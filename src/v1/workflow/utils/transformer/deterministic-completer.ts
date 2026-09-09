@@ -8,6 +8,7 @@ import {
 } from "./utils";
 import { ensureBusinessDescription } from "../invoice-sanitizer.util";
 import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
+
 import {
   Address,
   Party,
@@ -209,7 +210,9 @@ export class DeterministicCompleter {
       "";
     res.business_id = businessId;
 
-    const rawSupplier = this.toObject(res.accounting_supplier_party) as Partial<Party> & {
+    const rawSupplier = this.toObject(
+      res.accounting_supplier_party,
+    ) as Partial<Party> & {
       name?: string;
     };
     const supplierTIN =
@@ -232,12 +235,16 @@ export class DeterministicCompleter {
       business_description: this.toStringOptional(
         rawSupplier.business_description,
       ),
-      postal_address: extractAddress(rawSupplier.postal_address as Partial<Address>),
+      postal_address: extractAddress(
+        rawSupplier.postal_address as Partial<Address>,
+      ),
     };
     res.accounting_supplier_party = supplier;
 
     // 2. Customer Party (Exact Priority -> Explicit Payload)
-    const rawCustomer = this.toObject(res.accounting_customer_party) as Partial<Party> & {
+    const rawCustomer = this.toObject(
+      res.accounting_customer_party,
+    ) as Partial<Party> & {
       name?: string;
     };
     const customerPartyName =
@@ -261,7 +268,9 @@ export class DeterministicCompleter {
       business_description: this.toStringOptional(
         rawCustomer.business_description,
       ),
-      postal_address: extractAddress(rawCustomer.postal_address as Partial<Address>),
+      postal_address: extractAddress(
+        rawCustomer.postal_address as Partial<Address>,
+      ),
     };
     res.accounting_customer_party = customer;
 
@@ -294,7 +303,8 @@ export class DeterministicCompleter {
       adjustments.push("Defaulted issue_time to current time");
     }
 
-    const targetRef = invoiceRef || (typeof res.irn === "string" ? res.irn : "");
+    const targetRef =
+      invoiceRef || (typeof res.irn === "string" ? res.irn : "");
     if (targetRef) {
       const serviceId = authContext?.serviceId;
       const parsedDate = new Date(String(res.issue_date));
@@ -307,12 +317,11 @@ export class DeterministicCompleter {
     }
 
     // 5. Invoice Type Code & Kind
-    if (!res.invoice_type_code) {
-      res.invoice_type_code = res.invoiceTypeCode || DEFAULT_INVOICE_TYPE_CODE;
-    }
-    if (!res.invoice_kind) {
-      res.invoice_kind = res.invoiceKind || "B2B";
-    }
+    res.invoice_type_code = String(
+      res.invoice_type_code || DEFAULT_INVOICE_TYPE_CODE,
+    ).trim();
+
+    res.invoice_kind = String(res.invoice_kind || "B2B").trim();
 
     // 6. Currencies
     const docCurr = extractCurrency(res, "document", currencies) || "NGN";

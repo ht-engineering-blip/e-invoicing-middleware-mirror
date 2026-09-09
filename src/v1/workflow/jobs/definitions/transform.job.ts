@@ -26,10 +26,15 @@ export function registerTransformJob(): void {
     // has to guess. A type already present on the payload is left alone.
     if (context.originalPayload && typeof context.originalPayload === "object") {
       const payload = context.originalPayload as Record<string, unknown>;
-      if (!payload.invoice_type_code) {
-        payload.invoice_type_code = resolveInvoiceTypeFromEvent(eventType);
-      }
+      payload.invoice_type_code = resolveInvoiceTypeFromEvent(
+        eventType ?? payload.event ?? payload.eventType,
+        payload.invoice_type_code,
+        payload.invoice_kind,
+      );
     }
+
+
+
 
     const tenantRepo = new TenantRepository();
     let effectiveAuthContext = (authContext || {}) as any;

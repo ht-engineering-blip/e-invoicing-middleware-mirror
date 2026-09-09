@@ -6,6 +6,7 @@ import { OutboundWorkflowService } from "../../services";
 import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
+import { resolveInvoiceTypeFromEvent } from "../../utils/invoice-type";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
@@ -15,7 +16,8 @@ export function registerCompleteOutboundJob(): void {
   agenda.define(
     "workflow:complete-outbound",
     async (job: Job<JobChainData>) => {
-      const { tenantId, authContext, context, jobChainId } = job.attrs.data;
+      const { tenantId, authContext, context, jobChainId, eventType } =
+        job.attrs.data;
 
       logger.info("[Job:complete-outbound] Starting", {
         jobChainId,
@@ -45,15 +47,21 @@ export function registerCompleteOutboundJob(): void {
           );
         }
 
+        if (transformed) {
+          transformed.invoice_type_code = resolveInvoiceTypeFromEvent(
+            eventType ?? context.originalPayload?.event,
+            transformed.invoice_type_code,
+            transformed.invoice_kind,
+          );
+        }
+
         // Ensure IRN is on the transformed invoice
-        irn = irn ?? transformed?.irn;
+        irn = context.irn || transformed?.irn;
         if (irn && transformed) transformed.irn = irn;
 
         // Persist invoice record if needed
         if (irn && transformed) {
-          const source =
-            (context.source as OutboundInvoiceSource) ??
-            OutboundInvoiceSource.API;
+          const source = context.source ?? OutboundInvoiceSource.API;
           await outboundRepo.upsertByIrn({
             irn,
             tenantId: authContext?.tenantId ?? tenantId,
@@ -104,9 +112,7 @@ export function registerCompleteOutboundJob(): void {
         if (irn) {
           const currentInvoice = await outboundRepo.findByIrn(irn);
           const existingTransError =
-            transmissionErrorMsg ??
-            result?.transmissionError ??
-            currentInvoice?.metadata?.transmissionError;
+            transmissionErrorMsg ?? currentInvoice?.metadata?.transmissionError;
 
           await outboundRepo.update(irn, {
             qrCode,

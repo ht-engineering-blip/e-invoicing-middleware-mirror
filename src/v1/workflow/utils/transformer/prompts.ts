@@ -168,9 +168,7 @@ CRITICAL REQUIREMENTS:
 MANDATORY FIELDS (MUST BE PRESENT):
 - business_id: Use "{{TEST_BUSINESS_ID}}" if not provided
 - irn: Generate a unique invoice reference if not provided (format: INVYYYYMMDDXXX)
-- issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, default to "380" (Commercial Invoice) if not specified
-- invoice_kind: REQUIRED, default to "B2B" if not specified
+- invoice_type_code: REQUIRED, default to "381" (Commercial Invoice) if not specified (use "380" for Credit Note, "384" for Debit Note)
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address

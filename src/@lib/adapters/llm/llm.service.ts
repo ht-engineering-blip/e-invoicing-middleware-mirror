@@ -63,6 +63,7 @@ export default class LLMClient extends RestClient {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${aiConfig?.apiKey}`,
+        "api-key": aiConfig?.apiKey || "",
       },
     });
   }
@@ -243,17 +244,19 @@ export class LLMService {
         const candidate = geminiRes.data?.candidates?.[0];
         const text = candidate?.content?.parts?.[0]?.text || "";
         const parsed = cleanAndParseJson(text);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (rule: any) =>
-              rule &&
-              typeof rule.source === "string" &&
-              rule.source.trim() !== "" &&
-              typeof rule.target === "string" &&
-              rule.target.trim() !== "",
-          );
-        }
-        return [];
+        const rulesArray = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.data)
+            ? parsed.data
+            : [];
+        return rulesArray.filter(
+          (rule: any) =>
+            rule &&
+            typeof rule.source === "string" &&
+            rule.source.trim() !== "" &&
+            typeof rule.target === "string" &&
+            rule.target.trim() !== "",
+        );
       }
 
       const payload = {
@@ -273,17 +276,19 @@ export class LLMService {
       }
       const rawContent = response.choices[0].message.content;
       const parsed = cleanAndParseJson(rawContent);
-      if (Array.isArray(parsed)) {
-        return parsed.filter(
-          (rule: any) =>
-            rule &&
-            typeof rule.source === "string" &&
-            rule.source.trim() !== "" &&
-            typeof rule.target === "string" &&
-            rule.target.trim() !== "",
-        );
-      }
-      return [];
+      const rulesArray = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.data)
+          ? parsed.data
+          : [];
+      return rulesArray.filter(
+        (rule: any) =>
+          rule &&
+          typeof rule.source === "string" &&
+          rule.source.trim() !== "" &&
+          typeof rule.target === "string" &&
+          rule.target.trim() !== "",
+      );
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 401) {

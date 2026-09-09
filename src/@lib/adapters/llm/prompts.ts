@@ -66,9 +66,7 @@ ${JSON.stringify(samplePayload, null, 2)}
 - id: Invoice number / identifier (string)
 - issue_date: Invoice issue date YYYY-MM-DD (string)
 - issue_time: Invoice issue time HH:MM:SS (string)
-- due_date: Payment due date YYYY-MM-DD (string)
-- invoice_type_code: Invoice type code e.g. "396" (Tax Invoice), "381" (Credit Note), "383" (Debit Note)
-- document_currency_code: 3-letter currency code (e.g. "NGN", "USD")
+- invoice_type_code: Invoice type code e.g. "380" (Credit Note), "381" (Commercial Invoice), "384" (Debit Note), "385" (Self Billed Invoice), "388" (Factored Invoice), "389" (Statement of Account)
 - tax_currency_code: Tax currency code (e.g. "NGN")
 - invoice_kind: "B2B", "B2C", or "B2G"
 - accounting_supplier_party.party_name: Supplier business name
@@ -279,8 +277,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "380" for a standard Commercial Invoice, "381" for Credit Note, "383"/"384" for Debit Note), default to "380" if not specified. NOTE: Credit Note ("381", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "381" for a standard Commercial Invoice, "380" for Credit Note, "384" for Debit Note, "385" for Self Billed Invoice, "388" for Factored Invoice, "389" for Statement of Account), default to "381" if not specified. NOTE: Credit Note ("380") and Debit Note ("384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("380") and Debit Notes ("384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
