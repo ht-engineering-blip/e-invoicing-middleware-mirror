@@ -446,7 +446,7 @@ export class TransformWorkflowService {
     if (Array.isArray(firsSchemas) && firsSchemas.length > 0) {
       for (const doc of firsSchemas) {
         NRSSchemaRegistry.registerFromDB(
-          (doc as any)?.version || "v1.0",
+          doc?.version || "v1.0",
           doc.name,
           doc.description || "",
           doc.fields,

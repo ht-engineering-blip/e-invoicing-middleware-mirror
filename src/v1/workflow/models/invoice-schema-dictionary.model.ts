@@ -82,6 +82,7 @@ export interface ISchemaField {
 export interface InvoiceSchemaDictionaryDocument extends Document {
   // Schema Identification
   schema_id: string;
+  version?: string;
   name: string;
   description?: string;
 
@@ -199,6 +200,10 @@ const InvoiceSchemaDictionarySchema =
         required: true,
         unique: true,
         index: true,
+      },
+      version: {
+        type: String,
+        default: "v1.0",
       },
       name: {
         type: String,

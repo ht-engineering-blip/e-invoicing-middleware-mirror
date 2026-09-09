@@ -63,7 +63,7 @@ const transformInvoiceRoutes = new Elysia({ prefix: "/transform" })
    * List available NRS target schema versions and required fields
    */
   .get("/nrs-schemas", async ({ transformWorkflowService }) => {
-    return ResponseBuilder.success(transformWorkflowService.getNRSSchemas());
+    return ResponseBuilder.success(await transformWorkflowService.getNRSSchemas());
   })
 
   /**
