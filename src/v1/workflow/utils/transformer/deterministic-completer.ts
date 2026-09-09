@@ -645,7 +645,6 @@ export class DeterministicCompleter {
     const capsToken = token.trim().toUpperCase();
     switch (capsToken) {
       case "IRN":
-      case "INVOICE_REFERENCE_NUMBER":
         return context.irn || "";
 
       case "BUSINESS_ID":
