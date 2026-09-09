@@ -3,6 +3,7 @@ import {
   extractCurrency,
   generateInvoiceRef,
   generateIRN,
+  isIRNPlaceholder,
   resolveCurrencyCode,
   sanitizePriceUnit,
 } from "./utils";
@@ -18,6 +19,14 @@ import {
   TaxSubtotal,
   FIRSInvoice,
 } from "./schema-validator";
+
+export interface PlaceholderContext {
+  authContext?: AuthContext;
+  irn?: string;
+  invoiceRef?: string;
+  issueDate?: string;
+  issueTime?: string;
+}
 
 export interface ReconcileResult {
   completedData: FIRSInvoice;
@@ -165,7 +174,7 @@ export class DeterministicCompleter {
   ): ReconcileResult {
     const dataObj = this.toObject(data?.data);
     const invObj = this.toObject(data?.invoice);
-    const res: Record<string, any> = { ...dataObj, ...invObj, ...data };
+    let res: Record<string, any> = { ...dataObj, ...invObj, ...data };
     const adjustments: string[] = [];
     let mathHealed = false;
 
@@ -230,7 +239,10 @@ export class DeterministicCompleter {
     const supplier: Party = {
       tin: supplierTIN,
       party_name: supplierPartyName,
-      email: extractEmail(rawSupplier.email),
+      email:
+        extractEmail(rawSupplier.email) ||
+        extractEmail(authContext?.email) ||
+        "",
       telephone: this.toStringOptional(rawSupplier.telephone),
       business_description: this.toStringOptional(
         rawSupplier.business_description,
@@ -303,17 +315,19 @@ export class DeterministicCompleter {
       adjustments.push("Defaulted issue_time to current time");
     }
 
+    const rawIrn = typeof res.irn === "string" ? res.irn.trim() : "";
+    const isPlaceholder =
+      !rawIrn || isIRNPlaceholder(rawIrn) || rawIrn.startsWith("{{");
+
     const targetRef =
-      invoiceRef || (typeof res.irn === "string" ? res.irn : "");
-    if (targetRef) {
-      const serviceId = authContext?.serviceId;
-      const parsedDate = new Date(String(res.issue_date));
-      const issueDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-      const generated = generateIRN(targetRef, serviceId, issueDate);
-      if (generated) {
-        res.irn = generated;
-        adjustments.push("Auto-generated IRN");
-      }
+      invoiceRef || (!isPlaceholder ? rawIrn : "") || "INV-SAMPLE";
+    const serviceId = authContext?.serviceId;
+    const parsedDate = new Date(String(res.issue_date));
+    const issueDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    const generated = generateIRN(targetRef, serviceId, issueDate);
+    if (generated) {
+      res.irn = generated;
+      adjustments.push("Auto-generated IRN");
     }
 
     // 5. Invoice Type Code & Kind
@@ -589,7 +603,17 @@ export class DeterministicCompleter {
     };
     res.legal_monetary_total = legalMonetaryTotal;
 
-    // 11. Check for remaining missing fields against schema
+    // 11. Dynamic Placeholder Replacement (All tokens turned to ALL CAPS)
+    const placeholderContext: PlaceholderContext = {
+      authContext,
+      irn: typeof res.irn === "string" ? res.irn : "",
+      invoiceRef: invoiceRef || "INV-SAMPLE",
+      issueDate: String(res.issue_date),
+      issueTime: String(res.issue_time),
+    };
+    res = this.replacePlaceholders(res, placeholderContext);
+
+    // 12. Check for remaining missing fields against schema
     const missing: string[] = [];
     if (firsSchema) {
       for (const field of firsSchema) {
@@ -612,5 +636,103 @@ export class DeterministicCompleter {
       mathHealed,
       adjustmentsMade: adjustments,
     };
+  }
+
+  /**
+   * Resolve any token normalized to ALL CAPS into dynamic context values
+   */
+  static resolveTokenValue(token: string, context: PlaceholderContext): string {
+    const capsToken = token.trim().toUpperCase();
+    switch (capsToken) {
+      case "IRN":
+      case "INVOICE_REFERENCE_NUMBER":
+        return context.irn || "";
+
+      case "BUSINESS_ID":
+        return context.authContext?.businessId || "";
+
+      case "TENANT_ID":
+        return context.authContext?.tenantId || "";
+
+      case "SUPPLIER_TIN":
+      case "BUSINESS_TIN":
+      case "TIN":
+        return context.authContext?.businessTIN || "";
+
+      case "SUPPLIER_NAME":
+      case "BUSINESS_NAME":
+      case "COMPANY_NAME":
+        return context.authContext?.businessName || "";
+
+      case "SUPPLIER_EMAIL":
+      case "BUSINESS_EMAIL":
+      case "EMAIL":
+        return context.authContext?.email || "";
+
+      case "SERVICE_ID":
+        return context.authContext?.serviceId || "00000000";
+
+      case "ISSUE_DATE":
+        return context.issueDate || new Date().toISOString().split("T")[0];
+
+      case "ISSUE_TIME":
+        return context.issueTime || new Date().toTimeString().slice(0, 8);
+
+      case "INVOICE_REF":
+        return context.invoiceRef || "INV-SAMPLE";
+
+      default:
+        // Also check if authContext has this property (case-insensitive)
+        if (context.authContext) {
+          const authKey = Object.keys(context.authContext).find(
+            (k) => k.toUpperCase() === capsToken,
+          );
+          if (authKey && (context.authContext as any)[authKey] !== undefined) {
+            return String((context.authContext as any)[authKey]);
+          }
+        }
+        return `{{${capsToken}}}`;
+    }
+  }
+
+  /**
+   * Recursively replace any {{TOKEN}} placeholders in objects, arrays, and strings,
+   * converting tokens to ALL CAPS for case-insensitive lookup.
+   */
+  static replacePlaceholders<T = any>(data: T, context: PlaceholderContext): T {
+    if (data == null) return data;
+
+    if (typeof data === "string") {
+      if (!data.includes("{{")) return data;
+
+      // Single exact placeholder match: e.g. "{{irn}}" or "{{IRN}}"
+      const exactMatch = data.trim().match(/^\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}$/);
+      if (exactMatch) {
+        const token = exactMatch[1].trim().toUpperCase();
+        return this.resolveTokenValue(token, context) as unknown as T;
+      }
+
+      // Embedded placeholders: e.g. "INV-{{irn}}"
+      return data.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_, rawToken) => {
+        const token = String(rawToken).trim().toUpperCase();
+        return this.resolveTokenValue(token, context);
+      }) as unknown as T;
+    }
+
+    if (Array.isArray(data)) {
+      return data.map((item) =>
+        this.replacePlaceholders(item, context),
+      ) as unknown as T;
+    }
+
+    if (typeof data === "object") {
+      const res: Record<string, any> = {};
+      for (const [k, v] of Object.entries(data)) {
+        res[k] = this.replacePlaceholders(v, context);
+      }
+      return res as unknown as T;
+    }
+
+    return data;
   }
 }

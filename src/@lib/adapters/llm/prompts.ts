@@ -523,6 +523,16 @@ ${targetSchemaSection}
 - "sanitizeHsn"
 - "sanitizePriceUnit"
 
+# System Dynamic Fallback Placeholders (Normalized to ALL CAPS):
+When the source ERP payload does NOT provide values for auto-generated or tenant-managed fields, use the following placeholder tokens as "default_value" (or fallback). The middleware recognizes any {{...}} token, normalizes it to ALL CAPS, and automatically resolves it dynamically:
+- "irn": use "{{IRN}}" as default_value (system auto-generates compliance-grade IRN)
+- "business_id": use "{{BUSINESS_ID}}"
+- "accounting_supplier_party.tin": use "{{SUPPLIER_TIN}}"
+- "accounting_supplier_party.party_name": use "{{SUPPLIER_NAME}}"
+- "accounting_supplier_party.email": use "{{SUPPLIER_EMAIL}}"
+- "issue_date": use "{{ISSUE_DATE}}"
+- "issue_time": use "{{ISSUE_TIME}}"
+
 # Desired Output JSON Structure:
 {
   "erp_source": "${erp}",
@@ -532,8 +542,18 @@ ${targetSchemaSection}
       "target": "irn",
       "source": "exact.source.path",
       "fallback_sources": ["alternative.source.path"],
-      "default_value": "INV-DEFAULT",
+      "default_value": "{{IRN}}",
       "transform": "trim"
+    },
+    {
+      "target": "accounting_supplier_party.tin",
+      "source": null,
+      "default_value": "{{SUPPLIER_TIN}}"
+    },
+    {
+      "target": "accounting_supplier_party.party_name",
+      "source": null,
+      "default_value": "{{SUPPLIER_NAME}}"
     }
   ],
   "array_mappings": [

@@ -329,7 +329,7 @@ export class TransformWorkflowService {
     const firsDoc = await this.getInvoiceSchema(SchemaSourceType.FIRS_UBL);
     if (firsDoc) {
       NRSSchemaRegistry.registerFromDB(
-        template.nrs_schema_version || (firsDoc as any)?.version || "v1.0",
+        template.nrs_schema_version || firsDoc?.version || "v1.0",
         firsDoc.name,
         firsDoc.description || "",
         firsDoc.fields,

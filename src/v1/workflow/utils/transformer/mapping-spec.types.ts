@@ -25,6 +25,7 @@ export interface AuthContext {
   businessId?: string;
   businessName?: string;
   businessTIN?: string;
+  email?: string;
   tenantERP?: string;
   serviceId?: string;
   isAdmin?: boolean;
