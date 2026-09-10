@@ -15,7 +15,11 @@ import {
   testMappingValidation,
   saveMappingValidation,
 } from "../validations/transform.validation";
-import type { MappingTemplate } from "../utils/transformer/mapping-spec.types";
+import type {
+  MappingTemplate,
+  FieldMappingRule,
+  ArrayMappingRule,
+} from "../utils/transformer/mapping-spec.types";
 import { NRSSchemaRegistry } from "../utils/transformer/nrs-schema-registry";
 
 /**
@@ -193,14 +197,37 @@ transformInvoiceRoutes
           mapping_type = "manual",
           mapping_template,
           mapping_rules,
-        }: any = body;
+          metadata,
+        } = body as {
+          erp: string;
+          invoice: unknown;
+          mapping_type?: "manual" | "llm";
+          mapping_template?: MappingTemplate;
+          mapping_rules?: FieldMappingRule[];
+          metadata?: Record<string, unknown> &
+            Partial<MappingTemplate> & {
+              template?: MappingTemplate;
+              field_mappings?: FieldMappingRule[];
+              array_mappings?: ArrayMappingRule[];
+            };
+        };
 
         const invoice = secureAndValidateInvoice(
           rawInvoice as SecureInvoice,
           auth,
         );
 
-        let finalTemplate: MappingTemplate | null = null;
+        let finalTemplate: MappingTemplate;
+
+        const candidateTemplate: Partial<MappingTemplate> | undefined =
+          mapping_template ||
+          (metadata && Array.isArray(metadata.field_mappings)
+            ? (metadata as MappingTemplate)
+            : undefined) ||
+          (metadata && metadata.template ? metadata.template : undefined) ||
+          (metadata && Array.isArray(metadata.array_mappings)
+            ? (metadata as MappingTemplate)
+            : undefined);
 
         if (mapping_type === "llm") {
           // Option A: LLM-Assisted Mapping Generation
@@ -210,16 +237,57 @@ transformInvoiceRoutes
           );
         } else {
           // Option B: Manual Mapping
-          if (mapping_template) {
-            finalTemplate = mapping_template as MappingTemplate;
+          if (
+            candidateTemplate &&
+            (Array.isArray(candidateTemplate.field_mappings) ||
+              Array.isArray(candidateTemplate.array_mappings))
+          ) {
+            finalTemplate = {
+              erp_source: candidateTemplate.erp_source || erp,
+              nrs_schema_version:
+                candidateTemplate.nrs_schema_version || "v1.0",
+              field_mappings: candidateTemplate.field_mappings || [],
+              array_mappings: candidateTemplate.array_mappings || [],
+              constants: candidateTemplate.constants || {},
+            };
           } else if (Array.isArray(mapping_rules) && mapping_rules.length > 0) {
+            const fieldMappings: FieldMappingRule[] = [];
+            const arrayMappingsMap = new Map<string, ArrayMappingRule>();
+
+            for (const r of mapping_rules) {
+              if (
+                r.source &&
+                r.source.includes("[*]") &&
+                r.target &&
+                r.target.includes("[*]")
+              ) {
+                const [srcArr, ...srcRest] = r.source.split("[*].");
+                const [tgtArr, ...tgtRest] = r.target.split("[*].");
+                const key = `${srcArr}->${tgtArr}`;
+                if (!arrayMappingsMap.has(key)) {
+                  arrayMappingsMap.set(key, {
+                    source_array: srcArr,
+                    target_array: tgtArr,
+                    item_mappings: [],
+                  });
+                }
+                arrayMappingsMap.get(key)!.item_mappings.push({
+                  source: srcRest.join("[*]."),
+                  target: tgtRest.join("[*]."),
+                  transform: r.transform,
+                  default_value: r.default_value,
+                  fallback_sources: r.fallback_sources,
+                });
+              } else {
+                fieldMappings.push(r);
+              }
+            }
+
             finalTemplate = {
               erp_source: erp,
               nrs_schema_version: "v1.0",
-              field_mappings: mapping_rules.filter(
-                (r: any) => r.source && !r.source.includes("[*]"),
-              ),
-              array_mappings: [],
+              field_mappings: fieldMappings,
+              array_mappings: Array.from(arrayMappingsMap.values()),
             };
           } else {
             throw new AppError(

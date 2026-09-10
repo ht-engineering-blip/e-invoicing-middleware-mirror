@@ -14,6 +14,11 @@ import {
   ISchemaField,
   SchemaSourceType,
 } from "../../workflow/models";
+import type {
+  MappingTemplate,
+  FieldMappingRule,
+  ArrayMappingRule,
+} from "../../workflow/utils/transformer/mapping-spec.types";
 import {
   addERPDictionaryValidation,
   getERPDictionaryValidation,
@@ -175,16 +180,21 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           erp: string;
           invoice: Record<string, unknown>;
           mapping_type?: "manual" | "llm";
-          mapping_template?: any;
-          mapping_rules?: Array<Record<string, unknown>>;
-          metadata?: Record<string, unknown>;
+          mapping_template?: MappingTemplate;
+          mapping_rules?: FieldMappingRule[];
+          metadata?: Record<string, unknown> &
+            Partial<MappingTemplate> & {
+              template?: MappingTemplate;
+              field_mappings?: FieldMappingRule[];
+              array_mappings?: ArrayMappingRule[];
+            };
         };
 
         const {
           erp,
           invoice,
           metadata,
-          mapping_type = "manual",
+          mapping_type = "llm",
           mapping_template,
           mapping_rules,
         } = payload;
@@ -193,13 +203,17 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           invoice.business_id = auth.businessId;
         }
 
-        let effectiveTemplate: any = null;
+        let effectiveTemplate: MappingTemplate;
 
-        const candidateTemplate: any =
+        const candidateTemplate: Partial<MappingTemplate> | undefined =
           mapping_template ||
-          (metadata && (metadata as any).field_mappings ? metadata : undefined) ||
-          (metadata && (metadata as any).template ? (metadata as any).template : undefined) ||
-          (metadata && (metadata as any).schema_info ? metadata : undefined);
+          (metadata && Array.isArray(metadata.field_mappings)
+            ? (metadata as MappingTemplate)
+            : undefined) ||
+          (metadata && metadata.template ? metadata.template : undefined) ||
+          (metadata && Array.isArray(metadata.array_mappings)
+            ? (metadata as MappingTemplate)
+            : undefined);
 
         if (mapping_type === "llm") {
           // Option A: LLM-Assisted Generation
@@ -222,16 +236,17 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           ) {
             effectiveTemplate = {
               erp_source: candidateTemplate.erp_source || erp,
-              nrs_schema_version: candidateTemplate.nrs_schema_version || "v1.0",
+              nrs_schema_version:
+                candidateTemplate.nrs_schema_version || "v1.0",
               field_mappings: candidateTemplate.field_mappings || [],
               array_mappings: candidateTemplate.array_mappings || [],
               constants: candidateTemplate.constants || {},
             };
           } else if (Array.isArray(mapping_rules) && mapping_rules.length > 0) {
-            const fieldMappings: any[] = [];
-            const arrayMappingsMap = new Map<string, any>();
+            const fieldMappings: FieldMappingRule[] = [];
+            const arrayMappingsMap = new Map<string, ArrayMappingRule>();
 
-            for (const r of mapping_rules as any[]) {
+            for (const r of mapping_rules) {
               if (
                 r.source &&
                 r.source.includes("[*]") &&
@@ -248,7 +263,7 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
                     item_mappings: [],
                   });
                 }
-                arrayMappingsMap.get(key).item_mappings.push({
+                arrayMappingsMap.get(key)!.item_mappings.push({
                   source: srcRest.join("[*]."),
                   target: tgtRest.join("[*]."),
                   transform: r.transform,
