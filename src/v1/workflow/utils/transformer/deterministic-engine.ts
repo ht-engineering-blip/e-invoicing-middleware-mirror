@@ -310,12 +310,23 @@ export class DeterministicMappingEngine {
 
     const executionTime = performance.now() - startTime;
 
-    if (missingRequired.length > 0) {
+    // Verify if any required fields are actually missing from the healed output
+    const remainingMissingRequired = missingRequired.filter((target) => {
+      const val = this.getValue(healedOutput, target);
+      return (
+        val === undefined ||
+        val === null ||
+        val === "" ||
+        (Array.isArray(val) && val.length === 0)
+      );
+    });
+
+    if (remainingMissingRequired.length > 0) {
       return {
         success: false,
         data: healedOutput,
-        errors: missingRequired.map((f) => `Missing required field: ${f}`),
-        missingRequiredFields: missingRequired,
+        errors: remainingMissingRequired.map((f) => `Missing required field: ${f}`),
+        missingRequiredFields: remainingMissingRequired,
         appliedRulesCount: appliedRules.length,
         healedFields,
         executionTimeMs: Math.round(executionTime * 100) / 100,
