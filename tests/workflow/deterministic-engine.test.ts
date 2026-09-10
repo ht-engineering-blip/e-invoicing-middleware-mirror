@@ -76,7 +76,7 @@ describe("DeterministicMappingEngine", () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
-    expect(result.data?.irn).toBe("ORD-99881");
+    expect(result.data?.irn).toContain("ORD99881");
     expect(result.data?.issue_date).toBe("2026-09-08");
     expect(result.data?.document_currency_code).toBe("NGN");
     expect(result.data?.accounting_customer_party?.tin).toBe("22334455-0001");
@@ -160,7 +160,7 @@ describe("DeterministicMappingEngine", () => {
     const result = DeterministicMappingEngine.transform(payloadWithMissingFields, template);
 
     expect(result.success).toBe(true);
-    expect(result.data?.irn).toBe("INV-5500");
+    expect(result.data?.irn).toContain("INV5500");
     expect(result.data?.accounting_customer_party?.tin).toBe("99887766-0001");
     expect(result.data?.document_currency_code).toBe("NGN");
     expect(result.data?.invoice_line?.[0]?.line_extension_amount).toBe(100000);

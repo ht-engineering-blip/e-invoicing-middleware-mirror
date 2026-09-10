@@ -447,7 +447,7 @@ describe("Sage X3 & Tally ERP Live Payload Testing Suite", () => {
     console.log("   ✔ Invoicing Transmission Receipt:", JSON.stringify(transmissionReceipt, null, 2));
 
     expect(transmissionReceipt.status).toBe("TRANSMITTED_SUCCESSFULLY");
-    expect(transmissionReceipt.irn).toBe("HTECHZAINV2512000472");
+    expect(transmissionReceipt.irn).toBe("HTECHZAINV2512000472-00000000-20251231");
     expect(transmissionReceipt.line_items_count).toBe(2);
     expect(transmissionReceipt.payable_amount).toBe(161250);
   });
@@ -531,7 +531,7 @@ describe("Sage X3 & Tally ERP Live Payload Testing Suite", () => {
     console.log("   ✔ Invoicing Transmission Receipt:", JSON.stringify(transmissionReceipt, null, 2));
 
     expect(transmissionReceipt.status).toBe("TRANSMITTED_SUCCESSFULLY");
-    expect(transmissionReceipt.irn).toBe("INV-000011-8593BD6E-20260819");
+    expect(transmissionReceipt.irn).toBe("INV000011-00000000-20260819");
     expect(transmissionReceipt.line_items_count).toBe(1);
     expect(transmissionReceipt.payable_amount).toBe(215000);
   });

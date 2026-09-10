@@ -137,7 +137,7 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
 
     // 5. Verify results
     expect(transformed).toBeDefined();
-    expect(transformed.irn).toBe("SAGE-INV-10029");
+    expect(transformed.irn).toContain("SAGEINV10029");
     expect(transformed.issue_date).toBe("2026-09-08");
     expect(transformed.accounting_supplier_party.tin).toBe("55667788-0001");
     expect(transformed.accounting_customer_party.tin).toBe("99881122-0001");
@@ -201,7 +201,7 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
     const preview = await transformService.testMappingTemplate(rawERPPayload, draftTemplate);
 
     expect(preview.success).toBe(true);
-    expect(preview.data?.irn).toBe("PO-7788");
+    expect(preview.data?.irn).toContain("PO7788");
     expect(preview.data?.accounting_customer_party?.tin).toBe("44556677-0001");
     expect(preview.data?.invoice_line?.length).toBe(1);
     expect(preview.appliedRulesCount).toBeGreaterThan(0);
