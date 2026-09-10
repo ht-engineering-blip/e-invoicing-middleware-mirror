@@ -54,11 +54,11 @@ export class NRSSchemaRegistry {
   }
 
   /**
-   * Helper to retrieve nested values by path
+   * Helper to retrieve nested values by path (supports [0] or direct numeric indices)
    */
   static getPathValue(obj: any, path: string): any {
     if (!obj || typeof obj !== "object" || !path) return undefined;
-    const cleanPath = path.replace(/\[(\d+|\*)\]/g, ".$1").replace(/^\./, "");
+    const cleanPath = path.replace(/\[(\d+)\]/g, ".$1").replace(/^\./, "");
     const parts = cleanPath.split(".").filter(Boolean);
 
     let curr: any = obj;
@@ -67,6 +67,52 @@ export class NRSSchemaRegistry {
       curr = curr[part];
     }
     return curr;
+  }
+
+  /**
+   * Helper to retrieve all values matching a path that may contain array wildcards [*]
+   */
+  static getWildcardValues(
+    obj: any,
+    path: string,
+  ): { arrayFound: boolean; values: any[] } {
+    if (obj == null || !path) {
+      return { arrayFound: false, values: [] };
+    }
+
+    const starIndex = path.indexOf("[*]");
+    if (starIndex === -1) {
+      const val = this.getPathValue(obj, path);
+      return { arrayFound: true, values: [val] };
+    }
+
+    // There is at least one [*]
+    const prefix = path.slice(0, starIndex);
+    let remainder = path.slice(starIndex + 3);
+    if (remainder.startsWith(".")) {
+      remainder = remainder.slice(1);
+    }
+
+    const targetArray = prefix ? this.getPathValue(obj, prefix) : obj;
+    if (!Array.isArray(targetArray) || targetArray.length === 0) {
+      return { arrayFound: false, values: [] };
+    }
+
+    if (!remainder) {
+      return { arrayFound: true, values: targetArray };
+    }
+
+    const collected: any[] = [];
+    for (const item of targetArray) {
+      const res = this.getWildcardValues(item, remainder);
+      if (!res.arrayFound || res.values.length === 0) {
+        collected.push(undefined);
+      } else {
+        collected.push(...res.values);
+      }
+    }
+
+    return { arrayFound: true, values: collected };
   }
 
   /**
@@ -156,7 +202,7 @@ export class NRSSchemaRegistry {
     ) {
       for (const field of fieldsToCheck) {
         const path = field.field_path || field.field_id;
-        const val = this.getPathValue(payload, path);
+        if (!path) continue;
 
         // Skip system-generated fields (like IRN and business_id) that are automatically computed by the system
         if (path === "irn" || path === "business_id") {
@@ -166,30 +212,47 @@ export class NRSSchemaRegistry {
         const isReq =
           field.is_required || field?.validation_rules?.includes("required");
 
+        const { arrayFound, values } = this.getWildcardValues(payload, path);
+
         // Check required presence
-        if (
-          isReq &&
-          (val === undefined ||
-            val === null ||
-            val === "" ||
-            (Array.isArray(val) && val.length === 0))
-        ) {
-          errors.push(
-            `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
-          );
+        if (isReq) {
+          if (!arrayFound || values.length === 0) {
+            errors.push(
+              `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
+            );
+          } else {
+            const hasMissingValue = values.some(
+              (val) =>
+                val === undefined ||
+                val === null ||
+                val === "" ||
+                (Array.isArray(val) && val.length === 0),
+            );
+            if (hasMissingValue) {
+              errors.push(
+                `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
+              );
+            }
+          }
         }
 
         // Check enum constraints if defined in DB
         if (
-          val !== undefined &&
-          val !== null &&
           Array.isArray(field.enum_values) &&
-          field.enum_values.length > 0
+          field.enum_values.length > 0 &&
+          values.length > 0
         ) {
-          if (!field.enum_values.includes(String(val))) {
-            errors.push(
-              `NRS DB Constraint: '${path}' value '${val}' is not in allowed list [${field.enum_values.join(", ")}]`,
-            );
+          for (const val of values) {
+            if (
+              val !== undefined &&
+              val !== null &&
+              val !== "" &&
+              !field.enum_values.includes(String(val))
+            ) {
+              errors.push(
+                `NRS DB Constraint: '${path}' value '${val}' is not in allowed list [${field.enum_values.join(", ")}]`,
+              );
+            }
           }
         }
       }
