@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { TransformWorkflowService } from "../../src/v1/workflow/services/workflows/transform.service";
-import { NRSSchemaRegistry } from "../../src/v1/workflow/utils/transformer/nrs-schema-registry";
 import { SchemaStatus } from "../../src/v1/workflow/models";
+import { TransformWorkflowService } from "../../src/v1/workflow/services/workflows/transform.service";
 import type { MappingTemplate } from "../../src/v1/workflow/utils/transformer/mapping-spec.types";
 
 // In-Memory Mock Repository for completely offline testing without MongoDB
@@ -68,11 +67,24 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
         { target: "irn", source: "doc_number" },
         { target: "issue_date", source: "doc_date", transform: "toDate" },
         { target: "accounting_supplier_party.tin", source: "company.tin" },
-        { target: "accounting_supplier_party.party_name", source: "company.name" },
+        {
+          target: "accounting_supplier_party.party_name",
+          source: "company.name",
+        },
         { target: "accounting_customer_party.tin", source: "client.tax_id" },
-        { target: "accounting_customer_party.party_name", source: "client.company_name" },
-        { target: "accounting_customer_party.email", source: "client.billing_email" },
-        { target: "document_currency_code", source: "currency", default_value: "NGN" },
+        {
+          target: "accounting_customer_party.party_name",
+          source: "client.company_name",
+        },
+        {
+          target: "accounting_customer_party.email",
+          source: "client.billing_email",
+        },
+        {
+          target: "document_currency_code",
+          source: "currency",
+          default_value: "NGN",
+        },
       ],
       array_mappings: [
         {
@@ -80,9 +92,21 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
           target_array: "invoice_line",
           item_mappings: [
             { target: "item.name", source: "description" },
-            { target: "invoiced_quantity", source: "quantity", transform: "toNumber" },
-            { target: "price.price_amount", source: "rate", transform: "toNumber" },
-            { target: "line_extension_amount", source: "amount", transform: "toNumber" },
+            {
+              target: "invoiced_quantity",
+              source: "quantity",
+              transform: "toNumber",
+            },
+            {
+              target: "price.price_amount",
+              source: "rate",
+              transform: "toNumber",
+            },
+            {
+              target: "line_extension_amount",
+              source: "amount",
+              transform: "toNumber",
+            },
           ],
         },
       ],
@@ -141,9 +165,13 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
     expect(transformed.issue_date).toBe("2026-09-08");
     expect(transformed.accounting_supplier_party.tin).toBe("55667788-0001");
     expect(transformed.accounting_customer_party.tin).toBe("99881122-0001");
-    expect(transformed.accounting_customer_party.email).toBe("accounts@apex.ng");
+    expect(transformed.accounting_customer_party.email).toBe(
+      "accounts@apex.ng",
+    );
     expect(transformed.invoice_line.length).toBe(2);
-    expect(transformed.invoice_line[0].item.name).toBe("Freight Delivery Service - Zone 1");
+    expect(transformed.invoice_line[0].item.name).toBe(
+      "Freight Delivery Service - Zone 1",
+    );
     expect(transformed.invoice_line[0].invoiced_quantity).toBe(3);
     expect(transformed.invoice_line[0].line_extension_amount).toBe(135000);
 
@@ -151,7 +179,9 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
     expect(transformed.legal_monetary_total).toBeDefined();
     expect(transformed.legal_monetary_total.line_extension_amount).toBe(150000);
     expect(transformed.tax_total).toBeDefined();
-    expect(transformed.legal_monetary_total.payable_amount).toBeGreaterThan(150000);
+    expect(transformed.legal_monetary_total.payable_amount).toBeGreaterThan(
+      150000,
+    );
 
     // Fast execution check (< 10ms offline)
     expect(duration).toBeLessThan(25);
@@ -181,8 +211,14 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
         { target: "irn", source: "ref" },
         { target: "issue_date", source: "date" },
         { target: "accounting_customer_party.tin", source: "customer.vat_no" },
-        { target: "accounting_customer_party.party_name", source: "customer.full_name" },
-        { target: "accounting_customer_party.email", source: "customer.contact_email" },
+        {
+          target: "accounting_customer_party.party_name",
+          source: "customer.full_name",
+        },
+        {
+          target: "accounting_customer_party.email",
+          source: "customer.contact_email",
+        },
       ],
       array_mappings: [
         {
@@ -190,15 +226,30 @@ describe("Local Offline Transformation & Validation (Zero DB Connection)", () =>
           target_array: "invoice_line",
           item_mappings: [
             { target: "item.name", source: "title" },
-            { target: "invoiced_quantity", source: "qty", transform: "toNumber" },
-            { target: "price.price_amount", source: "price", transform: "toNumber" },
-            { target: "line_extension_amount", source: "total", default_value: 5000 },
+            {
+              target: "invoiced_quantity",
+              source: "qty",
+              transform: "toNumber",
+            },
+            {
+              target: "price.price_amount",
+              source: "price",
+              transform: "toNumber",
+            },
+            {
+              target: "line_extension_amount",
+              source: "total",
+              default_value: 5000,
+            },
           ],
         },
       ],
     };
 
-    const preview = await transformService.testMappingTemplate(rawERPPayload, draftTemplate);
+    const preview = await transformService.testMappingTemplate(
+      rawERPPayload,
+      draftTemplate,
+    );
 
     expect(preview.success).toBe(true);
     expect(preview.data?.irn).toContain("PO7788");
