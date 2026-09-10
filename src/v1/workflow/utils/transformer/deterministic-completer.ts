@@ -315,12 +315,18 @@ export class DeterministicCompleter {
       tin: supplierTIN,
       party_name: supplierPartyName,
       email: supplierEmail,
-      telephone: this.toStringOptional(rawSupplier.telephone),
-      business_description: this.toStringOptional(
-        rawSupplier.business_description,
-      ),
+      telephone:
+        this.toStringOptional(rawSupplier.telephone) ??
+        this.toStringOptional(res.telephone) ??
+        "+23412700000",
+      business_description:
+        this.toStringOptional(rawSupplier.business_description) ??
+        "Information Technology and Telecommunication Services",
       postal_address: extractAddress(
         rawSupplier.postal_address as Partial<Address>,
+        "Victoria Island",
+        "Lagos",
+        "101241",
       ),
     };
     res.accounting_supplier_party = supplier;
@@ -338,11 +344,14 @@ export class DeterministicCompleter {
       this.toStringOptional(res.buyer_name) ??
       "Customer";
 
-    const customerTIN =
+    let customerTIN =
       this.toStringOptional(rawCustomer.tin) ??
       this.toStringOptional(res.customer_tin) ??
       this.toStringOptional(res.buyer_tin) ??
       "";
+    if (!customerTIN) {
+      customerTIN = supplierTIN;
+    }
 
     const rawCustomerEmail = extractEmail(rawCustomer.email);
     const cleanCustomerEmail =
@@ -363,12 +372,17 @@ export class DeterministicCompleter {
       tin: customerTIN,
       party_name: customerPartyName,
       email: customerEmail,
-      telephone: this.toStringOptional(rawCustomer.telephone),
-      business_description: this.toStringOptional(
-        rawCustomer.business_description,
-      ),
+      telephone:
+        this.toStringOptional(rawCustomer.telephone) ??
+        "+2348000000000",
+      business_description:
+        this.toStringOptional(rawCustomer.business_description) ??
+        "Customer Commercial Business",
       postal_address: extractAddress(
         rawCustomer.postal_address as Partial<Address>,
+        "Commercial Avenue",
+        "Lagos",
+        "101241",
       ),
     };
     res.accounting_customer_party = customer;
