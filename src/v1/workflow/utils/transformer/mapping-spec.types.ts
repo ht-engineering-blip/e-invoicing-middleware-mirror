@@ -63,22 +63,22 @@ export interface FieldMappingRule {
   target: string;
 
   /** Primary source path in the source ERP payload (e.g. "customer.tax_id" or "invoice_date") */
-  source?: string;
+  source?: string | null;
 
   /** List of fallback source paths to inspect sequentially if primary source is empty or missing */
-  fallback_sources?: string[];
+  fallback_sources?: string[] | null;
 
   /** Static default value to assign if all source paths are missing/null */
   default_value?: unknown;
 
   /** Name of the transform operation or formatting string (e.g. "toDate(YYYY-MM-DD)", "toNumber", "trim") */
-  transform?: TransformationOp | string;
+  transform?: TransformationOp | string | null;
 
   /** Whether the field is strictly mandatory in the output schema */
-  is_required?: boolean;
+  is_required?: boolean | null;
 
   /** Optional description or mapping rationale */
-  description?: string;
+  description?: string | null;
 }
 
 /**
