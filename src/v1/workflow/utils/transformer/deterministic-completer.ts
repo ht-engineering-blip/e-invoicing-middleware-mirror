@@ -71,6 +71,55 @@ export class DeterministicCompleter {
   }
 
   /**
+   * Sanitize time string to strict HH:MM:SS format
+   */
+  static sanitizeTime(val: unknown): string {
+    if (!val || typeof val !== "string") {
+      return new Date().toTimeString().slice(0, 8);
+    }
+    const str = val.trim();
+    if (/^\d{2}:\d{2}:\d{2}$/.test(str)) {
+      return str;
+    }
+    // 14 digits: YYYYMMDDHHMMSS (e.g. Sage X3 ADXTEC.WW_MODSTAMP "20260819095701")
+    if (/^\d{14}$/.test(str)) {
+      return `${str.slice(8, 10)}:${str.slice(10, 12)}:${str.slice(12, 14)}`;
+    }
+    // 6 digits: HHMMSS
+    if (/^\d{6}$/.test(str)) {
+      return `${str.slice(0, 2)}:${str.slice(2, 4)}:${str.slice(4, 6)}`;
+    }
+    // ISO string with T
+    if (str.includes("T")) {
+      const afterT = str.split("T")[1];
+      if (afterT && afterT.length >= 8) {
+        const timePart = afterT.slice(0, 8);
+        if (/^\d{2}:\d{2}:\d{2}$/.test(timePart)) return timePart;
+      }
+    }
+    return new Date().toTimeString().slice(0, 8);
+  }
+
+  /**
+   * Sanitize date string to strict YYYY-MM-DD format
+   */
+  static sanitizeDate(val: unknown): string | undefined {
+    if (val === undefined || val === null) return undefined;
+    const str = String(val).trim();
+    if (!str) return undefined;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    if (str.includes("T")) return str.split("T")[0];
+    if (/^\d{8}$/.test(str)) {
+      return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+    }
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split("T")[0];
+    }
+    return undefined;
+  }
+
+  /**
    * Traverses object to get nested value safely
    */
   static getDeepValue(obj: unknown, path: string): unknown {
@@ -333,22 +382,12 @@ export class DeterministicCompleter {
     }
 
     // 4. Dates & Times
-    if (
-      !res.issue_date ||
-      typeof res.issue_date !== "string" ||
-      !res.issue_date.trim()
-    ) {
-      res.issue_date = new Date().toISOString().slice(0, 10);
-      adjustments.push("Defaulted issue_date to current date");
-    }
-    if (
-      !res.issue_time ||
-      typeof res.issue_time !== "string" ||
-      !res.issue_time.trim()
-    ) {
-      res.issue_time = new Date().toTimeString().slice(0, 8);
-      adjustments.push("Defaulted issue_time to current time");
-    }
+    res.issue_date =
+      this.sanitizeDate(res.issue_date) ||
+      new Date().toISOString().slice(0, 10);
+    res.due_date = this.sanitizeDate(res.due_date);
+    res.tax_point_date = this.sanitizeDate(res.tax_point_date);
+    res.issue_time = this.sanitizeTime(res.issue_time);
 
     const rawIrn = typeof res.irn === "string" ? res.irn.trim() : "";
     const isPlaceholder =
@@ -366,9 +405,20 @@ export class DeterministicCompleter {
     }
 
     // 5. Invoice Type Code & Kind
-    res.invoice_type_code = String(
+    const rawTypeCode = String(
       res.invoice_type_code || DEFAULT_INVOICE_TYPE_CODE,
-    ).trim();
+    )
+      .trim()
+      .toUpperCase();
+    if (["380", "381", "384", "385", "388", "389"].includes(rawTypeCode)) {
+      res.invoice_type_code = rawTypeCode;
+    } else if (rawTypeCode.includes("CREDIT") || rawTypeCode === "380") {
+      res.invoice_type_code = "380";
+    } else if (rawTypeCode.includes("DEBIT") || rawTypeCode === "384") {
+      res.invoice_type_code = "384";
+    } else {
+      res.invoice_type_code = DEFAULT_INVOICE_TYPE_CODE || "381";
+    }
 
     res.invoice_kind = String(res.invoice_kind || "B2B").trim();
 
@@ -379,10 +429,20 @@ export class DeterministicCompleter {
       extractCurrency(res, "tax", currencies) || res.document_currency_code;
     res.tax_currency_code = resolveCurrencyCode(taxCurr, currencies);
 
-    // 7. Payment Status & Payment Means
-    if (!res.payment_status) {
+    // 7. Payment Status & Payment Means & Allowance Charges
+    const rawStatus = String(res.payment_status || "PENDING")
+      .trim()
+      .toUpperCase();
+    if (
+      ["PENDING", "PAID", "PARTIALLY_PAID", "OVERDUE", "CANCELLED"].includes(
+        rawStatus,
+      )
+    ) {
+      res.payment_status = rawStatus;
+    } else {
       res.payment_status = "PENDING";
     }
+
     if (res.payment_means) {
       if (!Array.isArray(res.payment_means)) {
         res.payment_means =
@@ -390,6 +450,52 @@ export class DeterministicCompleter {
             ? [res.payment_means]
             : undefined;
       }
+    }
+
+    if (Array.isArray(res.allowance_charge)) {
+      const sanitizedCharges: Array<{
+        charge_indicator: boolean;
+        amount: number;
+      }> = [];
+      for (const ac of res.allowance_charge) {
+        if (!ac || typeof ac !== "object") continue;
+        const amt = this.toFloat(ac.amount, 0);
+        let indicator = false;
+        if (typeof ac.charge_indicator === "boolean") {
+          indicator = ac.charge_indicator;
+        } else if (typeof ac.charge_indicator === "number") {
+          indicator = ac.charge_indicator !== 0;
+        } else if (typeof ac.charge_indicator === "string") {
+          const s = ac.charge_indicator.toLowerCase().trim();
+          if (
+            s === "true" ||
+            s === "1" ||
+            s === "yes" ||
+            s.includes("charge")
+          ) {
+            indicator = true;
+          } else if (
+            s === "false" ||
+            s === "0" ||
+            s === "no" ||
+            s.includes("discount") ||
+            s.includes("allowance")
+          ) {
+            indicator = false;
+          } else {
+            const num = Number(s);
+            indicator = !isNaN(num) ? num !== 0 : Boolean(s);
+          }
+        }
+        sanitizedCharges.push({
+          charge_indicator: indicator,
+          amount: amt,
+        });
+      }
+      res.allowance_charge =
+        sanitizedCharges.length > 0 ? sanitizedCharges : undefined;
+    } else if (res.allowance_charge !== undefined) {
+      res.allowance_charge = undefined;
     }
 
     // 8. Line Items Normalization & Mathematical Reconciliation
@@ -533,11 +639,11 @@ export class DeterministicCompleter {
           for (const st of rawTt.tax_subtotal) {
             if (!st || typeof st !== "object") continue;
             const rawSt = st as Partial<TaxSubtotal>;
-            const taxableAmt = this.toFloat(
-              rawSt.taxable_amount,
-              computedLineExtensionTotal,
-            );
-            const stTaxAmt = this.toFloat(rawSt.tax_amount);
+            let taxableAmt = this.toFloat(rawSt.taxable_amount);
+            if (taxableAmt === 0 && computedLineExtensionTotal > 0) {
+              taxableAmt = computedLineExtensionTotal;
+            }
+            let stTaxAmt = this.toFloat(rawSt.tax_amount);
             const rawCat = (
               rawSt.tax_category && typeof rawSt.tax_category === "object"
                 ? rawSt.tax_category
@@ -558,6 +664,10 @@ export class DeterministicCompleter {
               pct = 0;
             } else if (pct === 7.5) {
               catId = "STANDARD_VAT";
+            }
+
+            if (stTaxAmt === 0 && ttTaxAmount > 0) {
+              stTaxAmt = ttTaxAmount;
             }
 
             subtotals.push({
