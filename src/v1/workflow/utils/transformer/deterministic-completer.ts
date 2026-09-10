@@ -724,7 +724,11 @@ export class DeterministicCompleter {
       case "SUPPLIER_TEL":
       case "PHONE":
       case "TELEPHONE":
-        return context.authContext?.telephone || "+2348000000000";
+        return (
+          (context.authContext as any)?.telephone ||
+          (context.authContext as any)?.phone ||
+          "+2348000000000"
+        );
 
       case "SERVICE_ID":
         return context.authContext?.serviceId || "";

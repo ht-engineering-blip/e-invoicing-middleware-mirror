@@ -30,8 +30,6 @@ export interface AuthContext {
   serviceId?: string;
   isAdmin?: boolean;
   eventType?: string;
-  telephone?: string;
-  phone?: string;
 }
 
 
