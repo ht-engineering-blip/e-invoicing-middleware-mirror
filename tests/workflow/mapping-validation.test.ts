@@ -200,3 +200,192 @@ describe("NRSSchemaRegistry Wildcard Array Validation", () => {
   });
 });
 
+import { DeterministicMappingEngine } from "../../src/v1/workflow/utils/transformer/deterministic-engine";
+import type { MappingTemplate } from "../../src/v1/workflow/utils/transformer/mapping-spec.types";
+
+describe("Sage X3 Deterministic Transformation & Compliance Healing", () => {
+  const sageX3Payload = {
+    invoice: {
+      SIH0_1: {
+        SALFCY: "HTECH",
+        ZSALFCY: "HEIRS TECHNOLOGIES HQ",
+        SIVTYP: "ZAINV",
+        NUM: "HTECHZAINV2512000472",
+        INVDAT: "20251231",
+        BPCINV: "BP0001",
+        BPINAM: "United Bank for Africa",
+        CUR: "NGN",
+      },
+      SIH1_1: {
+        BPCORD: "BP0001",
+        BPCNAM: "United Bank for Africa",
+        BPRPAY: "BP0001",
+        ZBPRPAY: "United Bank for Africa",
+        BPCGRU: "BP0001",
+        ZBPCGRU: "United Bank for Africa",
+        BPAADD: "1",
+        BPDNAM: "UBA",
+      },
+      ARRAY_LINE: [
+        {
+          ITMREF: "MGDSER",
+          ITMDES: "MANAGED SERVICES",
+          QTY: 1,
+          NETPRI: 30000,
+          LINAMT: 30000,
+        },
+      ],
+      ARRAY_TAX: [
+        {
+          VACBPR: "VAT75",
+          BASTAX: 30000,
+          AMTTAX: 2250,
+        },
+      ],
+    },
+  };
+
+  const sageX3Template: MappingTemplate = {
+    erp_source: "sage-x3",
+    nrs_schema_version: "v1.0",
+    constants: {
+      invoice_type_code: "380",
+      invoice_kind: "B2B",
+      document_currency_code: "NGN",
+      tax_currency_code: "NGN",
+    },
+    field_mappings: [
+      {
+        source: "invoice.SIH0_1.NUM",
+        target: "invoice_reference",
+        is_required: true,
+      },
+      {
+        source: "invoice.SIH0_1.INVDAT",
+        target: "issue_date",
+        transform: "toDate",
+        is_required: true,
+      },
+      {
+        source: null,
+        target: "accounting_supplier_party.tin",
+        default_value: "{{SUPPLIER_TIN}}",
+        is_required: true,
+      },
+      {
+        source: null,
+        target: "accounting_supplier_party.party_name",
+        default_value: "{{SUPPLIER_NAME}}",
+        is_required: true,
+      },
+      {
+        source: null,
+        target: "accounting_supplier_party.email",
+        default_value: "{{SUPPLIER_EMAIL}}",
+        is_required: false,
+      },
+      {
+        source: "invoice.SIH0_1.BPCINV",
+        target: "accounting_customer_party.tin",
+        is_required: true,
+      },
+      {
+        source: "invoice.SIH0_1.BPINAM",
+        target: "accounting_customer_party.party_name",
+        is_required: true,
+      },
+    ],
+    array_mappings: [
+      {
+        source_array: "invoice.ARRAY_LINE",
+        target_array: "invoice_line",
+        min_items: 1,
+        item_mappings: [
+          {
+            source: "ITMDES",
+            target: "item.name",
+            is_required: true,
+          },
+          {
+            source: "ITMDES",
+            target: "item.description",
+            is_required: true,
+          },
+          {
+            source: "ITMREF",
+            target: "item.sellers_item_identification",
+          },
+          {
+            source: "QTY",
+            target: "invoiced_quantity",
+            transform: "toNumber",
+            is_required: true,
+          },
+          {
+            source: "NETPRI",
+            target: "price.price_amount",
+            transform: "toNumber",
+            is_required: true,
+          },
+          {
+            source: "LINAMT",
+            target: "line_extension_amount",
+            transform: "toNumber",
+            is_required: true,
+          },
+        ],
+      },
+      {
+        source_array: "invoice.ARRAY_TAX",
+        target_array: "tax_total",
+        min_items: 1,
+        item_mappings: [
+          {
+            source: "AMTTAX",
+            target: "tax_amount",
+            transform: "toNumber",
+            is_required: true,
+          },
+        ],
+      },
+    ],
+  };
+
+  it("should transform Sage X3 payload with 100% compliance and heal all 5 previous errors", () => {
+    // Admin context without explicit business profile
+    const authContext = {
+      tenantId: "system",
+      isAdmin: true,
+    };
+
+    const result = DeterministicMappingEngine.transform(
+      sageX3Payload,
+      sageX3Template,
+      authContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toBeDefined();
+
+    const data = result.data!;
+
+    // 1. Supplier party name healed
+    expect(data.accounting_supplier_party.party_name).toBe("Heirs Technologies HQ");
+
+    // 2. Supplier TIN healed
+    expect(data.accounting_supplier_party.tin).toBe("00364075-0001");
+
+    // 3. Supplier email healed
+    expect(data.accounting_supplier_party.email).toBe("finance@heirstechnologies.com");
+
+    // 4. Customer email auto-generated
+    expect(data.accounting_customer_party.email).toContain("@");
+    expect(data.accounting_customer_party.email).toBe("billing@unitedbankforaf.com");
+
+    // 5. Line item HSN code auto-assigned
+    expect(data.invoice_line[0].hsn_code).toMatch(/^\d{4}\.\d{2}$/);
+  });
+});
+
+
