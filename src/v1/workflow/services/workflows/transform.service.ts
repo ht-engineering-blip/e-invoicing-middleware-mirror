@@ -401,11 +401,11 @@ export class TransformWorkflowService {
     if (Array.isArray(template.field_mappings)) {
       for (const rule of template.field_mappings) {
         legacyRules.push({
-          source: rule.source,
+          source: rule.source || undefined,
           target: rule.target,
-          fallback_sources: rule.fallback_sources,
+          fallback_sources: rule.fallback_sources || undefined,
           default_value: rule.default_value,
-          transform: rule.transform,
+          transform: rule.transform || undefined,
         });
       }
     }
@@ -413,9 +413,11 @@ export class TransformWorkflowService {
       for (const arr of template.array_mappings) {
         for (const item of arr.item_mappings) {
           legacyRules.push({
-            source: `${arr.source_array}[*].${item.source}`,
+            source: item.source ? `${arr.source_array}[*].${item.source}` : undefined,
             target: `${arr.target_array}[*].${item.target}`,
-            transform: item.transform,
+            transform: item.transform || undefined,
+            default_value: item.default_value,
+            fallback_sources: item.fallback_sources || undefined,
           });
         }
       }

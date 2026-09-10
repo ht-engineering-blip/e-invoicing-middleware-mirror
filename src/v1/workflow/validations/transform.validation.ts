@@ -63,41 +63,38 @@ export const generateMappingValidation = {
   },
 };
 
+export const fieldMappingRuleSchema = t.Object({
+  target: t.String(),
+  source: t.Optional(t.Nullable(t.String())),
+  fallback_sources: t.Optional(t.Nullable(t.Array(t.String()))),
+  default_value: t.Optional(t.Any()),
+  transform: t.Optional(t.Nullable(t.String())),
+  is_required: t.Optional(t.Nullable(t.Boolean())),
+  description: t.Optional(t.Nullable(t.String())),
+});
+
+export const arrayMappingRuleSchema = t.Object({
+  source_array: t.String(),
+  target_array: t.String(),
+  item_mappings: t.Array(fieldMappingRuleSchema),
+  min_items: t.Optional(t.Nullable(t.Number())),
+});
+
+export const mappingTemplateSchema = t.Object({
+  erp_source: t.String(),
+  tenant_id: t.Optional(t.Nullable(t.String())),
+  nrs_schema_version: t.Optional(t.Nullable(t.String({ default: "v1.0" }))),
+  description: t.Optional(t.Nullable(t.String())),
+  field_mappings: t.Array(fieldMappingRuleSchema),
+  array_mappings: t.Optional(t.Nullable(t.Array(arrayMappingRuleSchema))),
+  constants: t.Optional(t.Nullable(t.Record(t.String(), t.Any()))),
+  version: t.Optional(t.Nullable(t.Number())),
+});
+
 export const testMappingValidation = {
   body: t.Object({
     sample_invoice: t.Any({ default: {} }),
-    template: t.Object({
-      erp_source: t.String(),
-      nrs_schema_version: t.Optional(t.String({ default: "v1.0" })),
-      field_mappings: t.Array(
-        t.Object({
-          target: t.String(),
-          source: t.Optional(t.String()),
-          fallback_sources: t.Optional(t.Array(t.String())),
-          default_value: t.Optional(t.Any()),
-          transform: t.Optional(t.String()),
-          is_required: t.Optional(t.Boolean()),
-        }),
-      ),
-      array_mappings: t.Optional(
-        t.Array(
-          t.Object({
-            source_array: t.String(),
-            target_array: t.String(),
-            item_mappings: t.Array(
-              t.Object({
-                target: t.String(),
-                source: t.Optional(t.String()),
-                fallback_sources: t.Optional(t.Array(t.String())),
-                default_value: t.Optional(t.Any()),
-                transform: t.Optional(t.String()),
-              }),
-            ),
-          }),
-        ),
-      ),
-      constants: t.Optional(t.Record(t.String(), t.Any())),
-    }),
+    template: mappingTemplateSchema,
   }),
   detail: {
     tags: ["Admin - ERP Mapping"],
@@ -111,38 +108,7 @@ export const saveMappingValidation = {
   body: t.Object({
     erp: t.String(),
     sample_invoice: t.Optional(t.Any()),
-    template: t.Object({
-      erp_source: t.String(),
-      nrs_schema_version: t.Optional(t.String({ default: "v1.0" })),
-      field_mappings: t.Array(
-        t.Object({
-          target: t.String(),
-          source: t.Optional(t.String()),
-          fallback_sources: t.Optional(t.Array(t.String())),
-          default_value: t.Optional(t.Any()),
-          transform: t.Optional(t.String()),
-          is_required: t.Optional(t.Boolean()),
-        }),
-      ),
-      array_mappings: t.Optional(
-        t.Array(
-          t.Object({
-            source_array: t.String(),
-            target_array: t.String(),
-            item_mappings: t.Array(
-              t.Object({
-                target: t.String(),
-                source: t.Optional(t.String()),
-                fallback_sources: t.Optional(t.Array(t.String())),
-                default_value: t.Optional(t.Any()),
-                transform: t.Optional(t.String()),
-              }),
-            ),
-          }),
-        ),
-      ),
-      constants: t.Optional(t.Record(t.String(), t.Any())),
-    }),
+    template: mappingTemplateSchema,
   }),
   detail: {
     tags: ["Admin - ERP Mapping"],

@@ -83,7 +83,7 @@ export class DeterministicMappingEngine {
   /**
    * Applies built-in transformations to a value
    */
-  static applyTransform(value: unknown, transformName?: string): unknown {
+  static applyTransform(value: unknown, transformName?: string | null): unknown {
     if (value === undefined || value === null) return value;
     if (!transformName) return value;
 
