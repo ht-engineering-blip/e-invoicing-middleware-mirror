@@ -195,6 +195,12 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
 
         let effectiveTemplate: any = null;
 
+        const candidateTemplate: any =
+          mapping_template ||
+          (metadata && (metadata as any).field_mappings ? metadata : undefined) ||
+          (metadata && (metadata as any).template ? (metadata as any).template : undefined) ||
+          (metadata && (metadata as any).schema_info ? metadata : undefined);
+
         if (mapping_type === "llm") {
           // Option A: LLM-Assisted Generation
           const schemaDoc =
@@ -209,16 +215,56 @@ export const erpConfigRoutes = new Elysia({ prefix: "/config/supported-erps" })
           );
         } else {
           // Option B: Manual Mapping
-          if (mapping_template) {
-            effectiveTemplate = mapping_template;
+          if (
+            candidateTemplate &&
+            (Array.isArray(candidateTemplate.field_mappings) ||
+              Array.isArray(candidateTemplate.array_mappings))
+          ) {
+            effectiveTemplate = {
+              erp_source: candidateTemplate.erp_source || erp,
+              nrs_schema_version: candidateTemplate.nrs_schema_version || "v1.0",
+              field_mappings: candidateTemplate.field_mappings || [],
+              array_mappings: candidateTemplate.array_mappings || [],
+              constants: candidateTemplate.constants || {},
+            };
           } else if (Array.isArray(mapping_rules) && mapping_rules.length > 0) {
+            const fieldMappings: any[] = [];
+            const arrayMappingsMap = new Map<string, any>();
+
+            for (const r of mapping_rules as any[]) {
+              if (
+                r.source &&
+                r.source.includes("[*]") &&
+                r.target &&
+                r.target.includes("[*]")
+              ) {
+                const [srcArr, ...srcRest] = r.source.split("[*].");
+                const [tgtArr, ...tgtRest] = r.target.split("[*].");
+                const key = `${srcArr}->${tgtArr}`;
+                if (!arrayMappingsMap.has(key)) {
+                  arrayMappingsMap.set(key, {
+                    source_array: srcArr,
+                    target_array: tgtArr,
+                    item_mappings: [],
+                  });
+                }
+                arrayMappingsMap.get(key).item_mappings.push({
+                  source: srcRest.join("[*]."),
+                  target: tgtRest.join("[*]."),
+                  transform: r.transform,
+                  default_value: r.default_value,
+                  fallback_sources: r.fallback_sources,
+                });
+              } else {
+                fieldMappings.push(r);
+              }
+            }
+
             effectiveTemplate = {
               erp_source: erp,
               nrs_schema_version: "v1.0",
-              field_mappings: mapping_rules.filter(
-                (r: any) => r.source && !r.source.includes("[*]"),
-              ),
-              array_mappings: [],
+              field_mappings: fieldMappings,
+              array_mappings: Array.from(arrayMappingsMap.values()),
             };
           } else {
             // Fallback: extract fields from sample if no template provided
