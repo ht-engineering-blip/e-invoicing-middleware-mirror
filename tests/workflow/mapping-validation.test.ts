@@ -202,6 +202,7 @@ describe("NRSSchemaRegistry Wildcard Array Validation", () => {
 
 import { DeterministicMappingEngine } from "../../src/v1/workflow/utils/transformer/deterministic-engine";
 import type { MappingTemplate } from "../../src/v1/workflow/utils/transformer/mapping-spec.types";
+import { TransformWorkflowService } from "../../src/v1/workflow/services/workflows/transform.service";
 
 describe("Sage X3 Deterministic Transformation & Compliance Healing", () => {
   const sageX3Payload = {
@@ -385,6 +386,99 @@ describe("Sage X3 Deterministic Transformation & Compliance Healing", () => {
 
     // 5. Line item HSN code auto-assigned
     expect(data.invoice_line[0].hsn_code).toMatch(/^\d{4}\.\d{2}$/);
+
+    // 6. Time, type, and status normalized
+    expect(data.issue_time).toBeDefined();
+    expect(data.invoice_type_code).toBe("380");
+    expect(data.payment_status).toBe("PENDING");
+  });
+
+  it("should successfully pass saveMappingTemplate gatekeeper validation with full ERP payload", async () => {
+    const rawSagePayloadWithComplexFields = {
+      ...sageX3Payload,
+      invoice: {
+        ...sageX3Payload.invoice,
+        SIH0_1: {
+          ...sageX3Payload.invoice.SIH0_1,
+          SIVTYP: "ZAINV", // raw ERP invoice type
+        },
+        SIH1_8: {
+          INVSTA_LBL: "Not posted", // raw ERP status
+        },
+        ADXTEC: {
+          WW_MODSTAMP: "20260819095701", // 14-digit timestamp
+        },
+        SIH2_5: [
+          { SHO: "Discount %", INVDTAAMT: "0", INVDTATYP: "3" },
+          { SHO: "Freight", INVDTAAMT: "0", INVDTATYP: "1" },
+        ],
+      },
+    };
+
+    const templateWithComplexFields: MappingTemplate = {
+      ...sageX3Template,
+      field_mappings: [
+        ...sageX3Template.field_mappings,
+        {
+          source: "invoice.SIH0_1.SIVTYP",
+          target: "invoice_type_code",
+          default_value: "381",
+        },
+        {
+          source: "invoice.SIH1_8.INVSTA_LBL",
+          target: "payment_status",
+          default_value: "PENDING",
+        },
+        {
+          source: "invoice.ADXTEC.WW_MODSTAMP",
+          target: "issue_time",
+        },
+      ],
+      array_mappings: [
+        ...(sageX3Template.array_mappings || []),
+        {
+          source_array: "invoice.SIH2_5",
+          target_array: "allowance_charge",
+          item_mappings: [
+            {
+              source: "INVDTATYP",
+              target: "charge_indicator",
+              transform: "toBoolean",
+            },
+            {
+              source: "INVDTAAMT",
+              target: "amount",
+              transform: "toNumber",
+            },
+          ],
+        },
+      ],
+    };
+
+    const mockRepo: any = {
+      findDefaultBySourceType: async () => null,
+      findBySourceType: async () => [],
+      upsertSchema: async () => ({ schema_id: "SAGE_SCHEMA", status: "ACTIVE" }),
+    };
+
+    const transformService = new TransformWorkflowService({
+      invoiceRepo: mockRepo,
+      tenantService: {} as any,
+    });
+
+    const testRes = await transformService.testMappingTemplate(
+      rawSagePayloadWithComplexFields,
+      templateWithComplexFields,
+      { tenantId: "system", isAdmin: true },
+    );
+
+    expect(testRes.success).toBe(true);
+    expect(testRes.errors).toBeUndefined();
+    expect(testRes.data).toBeDefined();
+    const resultData = testRes.data!;
+    expect(resultData.issue_time).toBe("09:57:01"); // 14-digit to HH:MM:SS
+    expect(resultData.payment_status).toBe("PENDING"); // normalized status
+    expect(resultData.allowance_charge?.[0].charge_indicator).toBe(true); // boolean converted
   });
 });
 

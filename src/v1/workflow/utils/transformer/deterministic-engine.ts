@@ -99,8 +99,13 @@ export class DeterministicMappingEngine {
 
     if (op === "toBoolean") {
       if (typeof value === "boolean") return value;
+      if (typeof value === "number") return value !== 0;
       const str = String(value).toLowerCase().trim();
-      return str === "true" || str === "1" || str === "yes";
+      if (str === "true" || str === "1" || str === "yes" || str === "y" || str === "t") return true;
+      if (str === "false" || str === "0" || str === "no" || str === "n" || str === "f") return false;
+      const num = Number(str);
+      if (!isNaN(num)) return num !== 0;
+      return Boolean(value);
     }
 
     if (op === "trim") {
