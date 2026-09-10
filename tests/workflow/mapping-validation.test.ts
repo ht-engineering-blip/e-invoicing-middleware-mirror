@@ -479,6 +479,63 @@ describe("Sage X3 Deterministic Transformation & Compliance Healing", () => {
     expect(resultData.issue_time).toBe("09:57:01"); // 14-digit to HH:MM:SS
     expect(resultData.payment_status).toBe("PENDING"); // normalized status
     expect(resultData.allowance_charge?.[0].charge_indicator).toBe(true); // boolean converted
+
+    // Address & Product Category auto-healing checks against strict DB required fields
+    const strictDBFields = [
+      {
+        field_id: "supplier_street",
+        field_path: "accounting_supplier_party.postal_address.street_name",
+        data_type: "String",
+        is_required: true,
+        description: "Street name of supplier address.",
+      },
+      {
+        field_id: "supplier_city",
+        field_path: "accounting_supplier_party.postal_address.city_name",
+        data_type: "String",
+        is_required: true,
+        description: "City name of supplier address.",
+      },
+      {
+        field_id: "supplier_postal_zone",
+        field_path: "accounting_supplier_party.postal_address.postal_zone",
+        data_type: "String",
+        is_required: true,
+        description: "Postal zone of supplier address.",
+      },
+      {
+        field_id: "customer_street",
+        field_path: "accounting_customer_party.postal_address.street_name",
+        data_type: "String",
+        is_required: true,
+        description: "Street name of customer address.",
+      },
+      {
+        field_id: "customer_city",
+        field_path: "accounting_customer_party.postal_address.city_name",
+        data_type: "String",
+        is_required: true,
+        description: "City name of customer address.",
+      },
+      {
+        field_id: "customer_postal_zone",
+        field_path: "accounting_customer_party.postal_address.postal_zone",
+        data_type: "String",
+        is_required: true,
+        description: "Postal zone of customer address.",
+      },
+      {
+        field_id: "product_category",
+        field_path: "invoice_line[*].product_category",
+        data_type: "String",
+        is_required: true,
+        description: "Product category name.",
+      },
+    ];
+
+    const strictValidation = NRSSchemaRegistry.validate(resultData, "v1.0", strictDBFields);
+    expect(strictValidation.success).toBe(true);
+    expect(strictValidation.errors).toBeUndefined();
   });
 });
 

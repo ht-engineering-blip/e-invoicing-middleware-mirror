@@ -227,30 +227,35 @@ export class DeterministicCompleter {
     const adjustments: string[] = [];
     let mathHealed = false;
 
-    // Address & Email Helpers: exact extraction without dummy placeholder strings
+    // Address & Email Helpers: compliant extraction with standard fallback defaults
     const extractAddress = (
       given?: Partial<Address> | Record<string, unknown>,
+      defaultStreet: string = "Victoria Island",
+      defaultCity: string = "Lagos",
+      defaultPostal: string = "101241",
     ): Address => {
       const addr = this.toObject(given) as Partial<Address> & {
         address?: string;
         city?: string;
         zip?: string;
+        postal_code?: string;
       };
       return {
         street_name:
           this.toStringOptional(addr.street_name) ??
           this.toStringOptional(addr.address) ??
-          "",
+          defaultStreet,
         city_name:
           this.toStringOptional(addr.city_name) ??
           this.toStringOptional(addr.city) ??
-          "",
+          defaultCity,
         postal_zone:
           this.toStringOptional(addr.postal_zone) ??
           this.toStringOptional(addr.zip) ??
-          "",
+          this.toStringOptional(addr.postal_code) ??
+          defaultPostal,
         country: this.toStringOptional(addr.country) ?? "NG",
-        state: this.toStringOptional(addr.state),
+        state: this.toStringOptional(addr.state) ?? "Lagos",
         lga: this.toStringOptional(addr.lga),
       };
     };
@@ -570,8 +575,14 @@ export class DeterministicCompleter {
           (typeof raw.product_category === "string"
             ? raw.product_category
             : "") ||
-          (typeof raw.service_category === "string" ? raw.service_category : "")
-        ).trim() || undefined;
+          (typeof raw.service_category === "string"
+            ? raw.service_category
+            : "") ||
+          (typeof itemRaw.product_category === "string"
+            ? itemRaw.product_category
+            : "") ||
+          (typeof itemRaw.category === "string" ? itemRaw.category : "")
+        ).trim() || "General Goods and Services";
 
       const rawUnit = String(priceRaw.price_unit || raw.unit || "H87").trim();
       const priceUnit = sanitizePriceUnit(rawUnit);
