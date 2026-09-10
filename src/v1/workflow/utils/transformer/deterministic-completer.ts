@@ -669,7 +669,7 @@ export class DeterministicCompleter {
         return context.authContext?.email || "";
 
       case "SERVICE_ID":
-        return context.authContext?.serviceId || "00000000";
+        return context.authContext?.serviceId || "";
 
       case "ISSUE_DATE":
         return context.issueDate || new Date().toISOString().split("T")[0];
@@ -678,7 +678,7 @@ export class DeterministicCompleter {
         return context.issueTime || new Date().toTimeString().slice(0, 8);
 
       case "INVOICE_REF":
-        return context.invoiceRef || "INV-SAMPLE";
+        return context.invoiceRef || "";
 
       default:
         // Also check if authContext has this property (case-insensitive)
