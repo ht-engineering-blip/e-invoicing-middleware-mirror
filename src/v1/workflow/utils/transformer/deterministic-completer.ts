@@ -1,25 +1,23 @@
+import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
+import { generateUniqueHsnCode } from "./classification.helper";
 import type { AuthContext, ISchemaField } from "./mapping-spec.types";
 import {
   extractCurrency,
-  generateInvoiceRef,
   generateIRN,
   isIRNPlaceholder,
   resolveCurrencyCode,
   sanitizeHsnCode,
   sanitizePriceUnit,
 } from "./utils";
-import { ensureBusinessDescription } from "../invoice-sanitizer.util";
-import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
-import { generateUniqueHsnCode } from "./classification.helper";
 
 import {
   Address,
-  Party,
+  FIRSInvoice,
   InvoiceLine,
   LegalMonetaryTotal,
-  TaxTotal,
+  Party,
   TaxSubtotal,
-  FIRSInvoice,
+  TaxTotal,
 } from "./schema-validator";
 
 export interface PlaceholderContext {
