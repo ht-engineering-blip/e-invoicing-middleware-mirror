@@ -5,6 +5,7 @@ import { chainNext, chainFail } from "../chain";
 import { InvoiceWorkflowService } from "../../../invoicing/services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus } from "../../models";
+import { safeJsonUnpack } from "../../utils/invoice-sanitizer.util";
 
 const invoiceService = new InvoiceWorkflowService();
 
@@ -18,7 +19,8 @@ export function registerValidateJob(): void {
       // transformedInvoice is the FIRS-formatted output from the transform step.
       // originalPayload is the raw ERP data. Prefer transformedInvoice; only
       // fall back to originalPayload if no transform step ran before this one.
-      const invoice = context.transformedInvoice ?? context.originalPayload;
+      const raw = context.transformedInvoice ?? context.originalPayload;
+      const invoice = safeJsonUnpack(raw) as any;
       const result = await invoiceService.validateInvoice(
         authContext.businessId || tenantId,
         invoice,

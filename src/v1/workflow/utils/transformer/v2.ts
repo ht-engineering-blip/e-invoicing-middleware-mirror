@@ -537,21 +537,39 @@ export class FIRSInvoiceTransformerV2 {
           }
           line.item.description = itemDesc;
 
-          // 4. Resolve product category using if/else
-          if (
-            typeof line.product_category === "string" &&
-            line.product_category.trim() !== ""
-          ) {
-            line.product_category = line.product_category.trim();
-          } else if (
-            typeof line.service_category === "string" &&
-            line.service_category.trim() !== ""
-          ) {
-            line.product_category = line.service_category.trim();
-          } else if (itemName && itemName !== "General Item") {
-            line.product_category = itemName;
+          // 4. Resolve goods vs services category using if/else
+          const rawServiceCat =
+            typeof line.service_category === "string"
+              ? line.service_category.trim()
+              : "";
+          const rawIsic =
+            typeof line.isic_code === "string" ? line.isic_code.trim() : "";
+          const rawProductCat =
+            typeof line.product_category === "string"
+              ? line.product_category.trim()
+              : "";
+
+          const isService = Boolean(rawServiceCat || rawIsic);
+
+          if (isService) {
+            line.service_category =
+              rawServiceCat ||
+              rawProductCat ||
+              (itemName && itemName !== "General Item" ? itemName : itemDesc) ||
+              "General Services";
+            line.isic_code = rawIsic || "6201";
+            delete line.hsn_code;
+            delete line.product_category;
           } else {
-            line.product_category = "General Goods and Services";
+            if (rawProductCat) {
+              line.product_category = rawProductCat;
+            } else if (itemName && itemName !== "General Item") {
+              line.product_category = itemName;
+            } else {
+              line.product_category = "General Goods and Services";
+            }
+            delete line.isic_code;
+            delete line.service_category;
           }
 
           // 5. Resolve price structure & UN/ECE price unit using if/else

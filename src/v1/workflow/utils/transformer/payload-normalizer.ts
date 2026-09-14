@@ -292,12 +292,24 @@ export function normalizeInvoicePayload(
       serviceCategory = line.service_category.trim();
     }
 
-    if (!productCategory) {
-      productCategory =
+    const isService = Boolean(serviceCategory || isicCode);
+    if (isService) {
+      serviceCategory =
         serviceCategory ||
+        productCategory ||
         itemName ||
         itemDescription ||
-        "General Goods and Services";
+        "General Services";
+      isicCode = isicCode || "6201";
+      hsnCode = undefined;
+      productCategory = undefined;
+    } else {
+      if (!productCategory) {
+        productCategory =
+          itemName || itemDescription || "General Goods and Services";
+      }
+      isicCode = undefined;
+      serviceCategory = undefined;
     }
 
     // Seller's Item Identification
