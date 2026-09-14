@@ -14,6 +14,20 @@ The system **no longer falls back to the System Integrator API key** for these o
 
 ---
 
+## Request Monitoring (Grafana / Prometheus)
+
+Full implementation + production guide: **[`ops/REQUEST_MONITORING.md`](ops/REQUEST_MONITORING.md)**
+
+```bash
+docker compose -f ops/docker-compose.monitoring.yml up -d
+# Grafana    http://localhost:3003  (admin/admin)
+# Prometheus http://localhost:9090
+# API metrics    http://localhost:3000/metrics
+# Worker metrics http://localhost:3002/metrics
+```
+
+---
+
 ## 🚀 Runtime & Polyfills
 
 To resolve older Bun runtime incompatibilities (e.g. `node:v8` `isBuildingSnapshot` not being implemented), all execution paths must run with the preload polyfill configuration.

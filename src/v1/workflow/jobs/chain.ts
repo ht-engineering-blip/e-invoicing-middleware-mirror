@@ -2,6 +2,7 @@ import type { Job } from "agenda";
 import { agenda } from "../../../@lib/queue/agenda";
 import { logger } from "../../../@lib/logger";
 import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
+import { isInvoicePipeline, recordInvoiceProcessed } from "../../../@lib/metrics";
 import { ACTION_TO_JOB } from "./types";
 import { OutboundInvoiceStatus } from "../models/outbound-invoice.model";
 
@@ -59,6 +60,18 @@ export async function chainNext(
           error: err?.message,
         });
       }
+    }
+
+    if (isInvoicePipeline(data.actions)) {
+      recordInvoiceProcessed({
+        tenantId: data.tenantId,
+        result: "success",
+        startedAtMs: updatedContext.metricsStartedAt,
+        erpSystem:
+          updatedContext.erpSystem ??
+          updatedContext.sourceType ??
+          data.authContext?.tenantERP,
+      });
     }
 
     return;
@@ -230,6 +243,18 @@ export async function chainFail(
     error: errorMessage,
     providerError,
   });
+
+  if (isInvoicePipeline(data.actions)) {
+    recordInvoiceProcessed({
+      tenantId: data.tenantId,
+      result: "failure",
+      startedAtMs: data.context?.metricsStartedAt,
+      erpSystem:
+        data.context?.erpSystem ??
+        data.context?.sourceType ??
+        data.authContext?.tenantERP,
+    });
+  }
 
   // Append structured job error to the webhook event. providerError is stored
   // alongside the flattened message because the message keeps only what the

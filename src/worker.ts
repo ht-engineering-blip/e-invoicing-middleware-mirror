@@ -9,6 +9,9 @@ import "./bun-v8-polyfill";
  * This process connects to MongoDB, registers all Agenda job definitions,
  * and processes queued jobs. It is intentionally separate from the API
  * server so both can be scaled independently.
+ *
+ * Also exposes Prometheus /metrics on METRICS_PORT (default 3002) for
+ * the EC2 Prometheus scraper to collect processing outcome metrics.
  */
 
 import dns from "node:dns";
@@ -23,9 +26,10 @@ import { connectMongo } from "./@lib/adapters/mongo";
 import { agenda } from "./@lib/queue/agenda";
 import { registerAllJobs } from "./v1/workflow/jobs";
 import { logger } from "./@lib/logger";
-import { aiConfig } from "./@config";
+import { getMetricsContentType, getMetricsText } from "./@lib/metrics";
 
 const AGENDASH_PORT = Number(process.env.AGENDASH_PORT ?? 3001);
+const METRICS_PORT = Number(process.env.METRICS_PORT ?? 3002);
 
 async function startWorker() {
   logger.info("[Worker] Starting job worker...");
@@ -61,7 +65,19 @@ async function startWorker() {
     );
   });
 
-  // 5. Graceful shutdown
+  // 5. Prometheus metrics endpoint (scrape from EC2 Prometheus SG only)
+  const metricsApp = express();
+  metricsApp.get("/metrics", async (_req, res) => {
+    res.set("Content-Type", getMetricsContentType());
+    res.end(await getMetricsText());
+  });
+  metricsApp.listen(METRICS_PORT, () => {
+    logger.info(
+      `[Worker] Metrics available at http://localhost:${METRICS_PORT}/metrics`,
+    );
+  });
+
+  // 6. Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`[Worker] ${signal} received — stopping gracefully`);
     await agenda.stop();
@@ -71,7 +87,6 @@ async function startWorker() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  // 5. Surface unhandled rejections
   process.on("unhandledRejection", (reason) => {
     logger.error("[Worker] Unhandled rejection", { reason });
   });
@@ -81,6 +96,3 @@ startWorker().catch((err) => {
   logger.error("[Worker] Failed to start", { err });
   process.exit(1);
 });
-function parseAiConfig(): any {
-  throw new Error("Function not implemented.");
-}

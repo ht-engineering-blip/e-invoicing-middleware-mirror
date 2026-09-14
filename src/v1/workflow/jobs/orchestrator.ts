@@ -4,6 +4,7 @@ import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
 import { logger } from "../../../@lib/logger";
 import { decryptSensitiveData } from "../../../@lib/crypto";
+import { isInvoicePipeline, recordInvoiceAccepted } from "../../../@lib/metrics";
 import { ACTION_TO_JOB, getPriority } from "./types";
 
 const webhookEventRepo = new WebhookEventRepository();
@@ -67,6 +68,14 @@ export async function scheduleJobChain(
 
   const jobChainId = crypto.randomUUID();
   const priority = input.priority ?? getPriority(eventType);
+  const metricsStartedAt =
+    input.initialContext?.metricsStartedAt ?? Date.now();
+  const erpSystem =
+    input.initialContext?.erpSystem ??
+    payload?.sourceType ??
+    tenant?.config?.erpSystem ??
+    authContext.tenantERP ??
+    "unknown";
 
   const firstAction = actions[0];
   const firstJobName = ACTION_TO_JOB[firstAction];
@@ -85,6 +94,8 @@ export async function scheduleJobChain(
       irn: input.irn,
       erpInvoiceId: input.erpInvoiceId,
       ...(input.initialContext ?? {}),
+      metricsStartedAt,
+      erpSystem,
     },
     priority,
     routeId,
@@ -99,6 +110,14 @@ export async function scheduleJobChain(
   const agendaJobId = job.attrs._id?.toString();
   if (agendaJobId) {
     webhookEventRepo.addJobId(webhookEventId, agendaJobId).catch(() => {});
+  }
+
+  if (isInvoicePipeline(actions)) {
+    recordInvoiceAccepted({
+      tenantId,
+      eventType,
+      erpSystem: data.context.erpSystem,
+    });
   }
 
   logger.info("[Orchestrator] Chain scheduled", {
