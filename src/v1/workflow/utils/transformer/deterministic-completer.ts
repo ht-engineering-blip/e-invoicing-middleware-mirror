@@ -598,26 +598,44 @@ export class DeterministicCompleter {
           (typeof itemRaw.category === "string" ? itemRaw.category : "")
         ).trim() || "General Goods and Services";
 
+      const rawServiceCat = this.toStringOptional(raw.service_category);
+      const rawIsicCode = this.toStringOptional(raw.isic_code);
+      const isService = Boolean(rawServiceCat || rawIsicCode);
+
       const rawUnit = String(priceRaw.price_unit || raw.unit || "H87").trim();
       const priceUnit = sanitizePriceUnit(rawUnit);
 
-      let lineHsn = this.toStringOptional(raw.hsn_code);
-      if (lineHsn) {
-        lineHsn = sanitizeHsnCode(lineHsn) || lineHsn;
-      }
-      if (!lineHsn || !/^\d{4}\.\d{2}$/.test(lineHsn)) {
-        lineHsn = generateUniqueHsnCode(usedHsnCodes, itemName || itemDesc);
-        adjustments.push(
-          `Line ${i + 1}: Auto-assigned standard HSN code ${lineHsn}`,
-        );
+      let lineHsn: string | undefined = undefined;
+      let lineProductCategory: string | undefined = undefined;
+      let lineServiceCategory: string | undefined = undefined;
+      let lineIsicCode: string | undefined = undefined;
+
+      if (isService) {
+        lineServiceCategory =
+          rawServiceCat || category || "General Services";
+        lineIsicCode = rawIsicCode || "6201";
       } else {
-        usedHsnCodes.add(lineHsn);
+        lineProductCategory = category;
+        let candidateHsn = this.toStringOptional(raw.hsn_code);
+        if (candidateHsn) {
+          candidateHsn = sanitizeHsnCode(candidateHsn) || candidateHsn;
+        }
+        if (!candidateHsn || !/^\d{4}\.\d{2}$/.test(candidateHsn)) {
+          candidateHsn = generateUniqueHsnCode(usedHsnCodes, itemName || itemDesc);
+          adjustments.push(
+            `Line ${i + 1}: Auto-assigned standard HSN code ${candidateHsn}`,
+          );
+        } else {
+          usedHsnCodes.add(candidateHsn);
+        }
+        lineHsn = candidateHsn;
       }
 
       normalizedLines.push({
         hsn_code: lineHsn,
-        isic_code: this.toStringOptional(raw.isic_code),
-        product_category: category,
+        isic_code: lineIsicCode,
+        product_category: lineProductCategory,
+        service_category: lineServiceCategory,
         invoiced_quantity: qty,
         line_extension_amount: lineAmount,
         item: {

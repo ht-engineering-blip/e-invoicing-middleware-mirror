@@ -146,12 +146,102 @@ describe("FIRS Schema 1.1 Sanitizer & Self-Healing Engine Unit Tests", () => {
     );
     expect((healed3.invoice_line as any[])[0].price.price_unit).toBe("H87");
 
-    // Auto fix IRN template error
-    const healed4 = autoFixInvoiceFromFIRSError(
-      invalidInvoice,
-      "irn validation failed for this business, refer to the template and try again",
+    // Auto fix service category / ISIC error
+    const invalidServiceLineInvoice = {
+      irn: "INV001-8593BD6E-20260830",
+      invoice_line: [
+        {
+          item: { name: "Clearance", description: "To clear the car container" },
+          isic_code: "4566",
+          hsn_code: "9000.00",
+          product_category: "",
+          service_category: "",
+          price: { price_amount: 10000000, price_unit: "NGN per 1" },
+        },
+      ],
+    };
+    const healed5 = autoFixInvoiceFromFIRSError(
+      invalidServiceLineInvoice,
+      "validation failed: invoicerequest.invoice.invoiceline[0].service_category is required when isic_code is provided",
     );
-    expect(healed4.irn).toMatch(/^[A-Z0-9]+-[A-Z0-9]{8}-[0-9]{8}$/);
+    const healedLine = (healed5.invoice_line as any[])[0];
+    expect(healedLine.service_category).toBe("Clearance");
+    expect(healedLine.isic_code).toBe("4566");
+    expect(healedLine.hsn_code).toBeUndefined();
+    expect(healedLine.product_category).toBeUndefined();
+    expect(healedLine.price.price_unit).toBe("H87");
+  });
+
+  it("should sanitize user service payload with conflicting hsn_code and service_category correctly", () => {
+    const userPayload = {
+      data: {
+        business_id: "63e829e4-0e80-42c1-8c08-29dab44b51a0",
+        irn: "882/D-701/309CN-TS-45678901-20260914",
+        issue_date: "2026-09-14T00:00:00.000Z",
+        invoice_type_code: "381",
+        invoice_kind: "B2B",
+        payment_status: "PENDING",
+        document_currency_code: "NGN",
+        accounting_supplier_party: {
+          tin: "TIN-9876543210",
+          party_name: "Heirs Technologies Limited",
+          postal_address: {
+            state: "Lagos",
+            country: "NG",
+            city_name: "Lagos",
+            postal_zone: "1234567",
+            street_name: "123 Business Street",
+          },
+        },
+        accounting_customer_party: {
+          tin: "76543234567",
+          party_name: "Ajayi and Sons Enterprise",
+          postal_address: {
+            country: "NG",
+            city_name: "Lagos",
+            postal_zone: "908811",
+            street_name: "245 Ajayi Street.",
+          },
+        },
+        legal_monetary_total: {
+          line_extension_amount: 10000000,
+          tax_exclusive_amount: 10000000,
+          tax_inclusive_amount: 10750000,
+          payable_amount: 10750000,
+        },
+        invoice_line: [
+          {
+            item: {
+              name: "Clearance",
+              description: "To clear the car container",
+              sellers_item_identification: "",
+            },
+            price: {
+              price_unit: "NGN per 1",
+              price_amount: "10000000",
+              base_quantity: 1,
+            },
+            hsn_code: "9000.00",
+            tax_rate: "7.50",
+            isic_code: "4566",
+            product_category: "",
+            service_category: "Software",
+            invoiced_quantity: 1,
+            line_extension_amount: "10000000",
+          },
+        ],
+      },
+    };
+
+    const sanitized = sanitizeInvoicePayload(userPayload);
+    const line = (sanitized.invoice_line as any[])[0];
+
+    expect(line.service_category).toBe("Software");
+    expect(line.isic_code).toBe("4566");
+    expect(line.hsn_code).toBeUndefined();
+    expect(line.product_category).toBeUndefined();
+    expect(line.price.price_unit).toBe("H87");
+    expect(line.price.price_amount).toBe(10000000);
   });
 
   it("should retry and succeed using retryWithAutoFix", async () => {
@@ -189,6 +279,41 @@ describe("FIRS Schema 1.1 Sanitizer & Self-Healing Engine Unit Tests", () => {
 
     const result = await retryWithAutoFix(mockFIRSCall, testInvoice, { maxRetries: 3, initialDelayMs: 10 });
     expect(result.code).toBe(200);
-    expect(attempts).toBe(2); // First failed, auto-healed taxcategory, second attempt succeeded!
+    expect(attempts).toBe(2);
+  });
+
+  it("should recursively unpack multi-stringified JSON payloads into clean FIRS invoice", () => {
+    const stringifiedPayload = {
+      transformedInvoice: JSON.stringify({
+        data: JSON.stringify({
+          business_id: "63e829e4-0e80-42c1-8c08-29dab44b51a0",
+          irn: "INV-2026-000046-TS-45678901-20260325",
+          issue_date: "2026-03-25",
+          accounting_supplier_party: JSON.stringify({
+            party_name: "Okeke Technologies Ltd",
+            tin: "TIN-9876543210",
+          }),
+          invoice_line: JSON.stringify([
+            JSON.stringify({
+              item: JSON.stringify({ name: "Digital marketing", description: "Marketing service" }),
+              price: JSON.stringify({ price_amount: "3000", price_unit: "NGN per 1" }),
+              isic_code: "6201",
+              service_category: "Digital Marketing",
+            }),
+          ]),
+        }),
+      }),
+    };
+
+    const sanitized = sanitizeInvoicePayload(stringifiedPayload);
+    expect(sanitized.irn).toBe("INV2026000046TS-45678901-20260325");
+    expect(typeof sanitized.accounting_supplier_party).toBe("object");
+    expect((sanitized.accounting_supplier_party as any).party_name).toBe("Okeke Technologies Ltd");
+    expect(Array.isArray(sanitized.invoice_line)).toBe(true);
+    const line = (sanitized.invoice_line as any[])[0];
+    expect(typeof line).toBe("object");
+    expect(line.service_category).toBe("Digital Marketing");
+    expect(line.price.price_unit).toBe("H87");
   });
 });
+

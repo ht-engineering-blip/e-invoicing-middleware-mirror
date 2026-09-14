@@ -47,6 +47,8 @@ interface SecureInvoice {
   tenantId?: string;
   business_id: string;
   irn: string;
+  invoice_id?: string;
+  erpInvoiceId?: string;
   invoice_line?: InvoiceLineInput[];
   data?: Record<string, any>;
   [key: string]: unknown;

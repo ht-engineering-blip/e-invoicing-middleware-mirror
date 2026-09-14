@@ -7,6 +7,7 @@ import { TransformWorkflowService } from "../../services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus, OutboundInvoiceSource } from "../../models";
 import { resolveInvoiceTypeFromEvent } from "../../utils/invoice-type";
+import { safeJsonUnpack } from "../../utils/invoice-sanitizer.util";
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
@@ -32,7 +33,10 @@ export function registerCompleteOutboundJob(): void {
         let transmissionFailed = false;
         let result: any;
 
-        let transformed = context.transformedInvoice;
+        let transformed = context.transformedInvoice
+          ? (safeJsonUnpack(context.transformedInvoice) as any)
+          : undefined;
+
         if (!transformed && context.originalPayload) {
           logger.info("[Job:complete-outbound] Transforming invoice payload", {
             jobChainId,
@@ -40,8 +44,9 @@ export function registerCompleteOutboundJob(): void {
             tenantId,
           });
 
+          const rawPayload = safeJsonUnpack(context.originalPayload);
           transformed = await transformService.transformInvoiceV2(
-            context.originalPayload,
+            rawPayload as any,
             authContext,
             context.sourceType,
           );

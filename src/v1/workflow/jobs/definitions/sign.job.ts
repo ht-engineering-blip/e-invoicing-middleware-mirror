@@ -5,6 +5,7 @@ import { chainNext, chainFail } from "../chain";
 import { InvoiceWorkflowService } from "../../../invoicing/services";
 import { OutboundInvoiceRepository } from "../../repos/outbound-invoice.repo";
 import { OutboundInvoiceStatus } from "../../models";
+import { safeJsonUnpack } from "../../utils/invoice-sanitizer.util";
 
 const invoiceService = new InvoiceWorkflowService();
 
@@ -22,7 +23,8 @@ export function registerSignJob(): void {
     logger.info("[Job:sign] Starting", { jobChainId, tenantId });
 
     try {
-      const invoice = context.transformedInvoice ?? context.originalPayload;
+      const raw = context.transformedInvoice ?? context.originalPayload;
+      const invoice = safeJsonUnpack(raw) as any;
       const result = await invoiceService.signInvoice(
         authContext as any,
         invoice,

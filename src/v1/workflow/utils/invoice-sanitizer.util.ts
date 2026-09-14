@@ -58,21 +58,54 @@ export function ensureBusinessDescription(
     : GENERIC_BUSINESS_DESCRIPTION;
 }
 
-export function sanitizeInvoicePayload(
-  rawInvoice: Record<string, any>,
-): Record<string, unknown> {
-  if (!rawInvoice || typeof rawInvoice !== "object") return rawInvoice;
+export function safeJsonUnpack(val: unknown): unknown {
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    ) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return safeJsonUnpack(parsed);
+      } catch {
+        return val;
+      }
+    }
+    return val;
+  }
+  if (Array.isArray(val)) {
+    return val.map((item) => safeJsonUnpack(item));
+  }
+  if (val && typeof val === "object") {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val)) {
+      res[k] = safeJsonUnpack(v);
+    }
+    return res;
+  }
+  return val;
+}
 
-  // Handle nested envelopes if passed.
-  //
-  // Only unwrap when the payload is NOT already a FIRS invoice. The
-  // transformer builds its result as { ...sourcePayload, ...mapped }, so when
-  // the ERP webhook body is shaped { invoice: {...} } the result carries a
-  // leftover `invoice` key. Unwrapping on that key discarded every field the
-  // transformer had produced — tax_currency_code, invoice_line, payment_means,
-  // payment_status, invoice_reference — and handed FIRS the raw ERP object,
-  // which it rejected with "invoicerequest.invoice.taxcurrencycode is
-  // required".
+export function sanitizeInvoicePayload(
+  rawInput: Record<string, any> | string,
+): Record<string, unknown> {
+  if (!rawInput) return {} as Record<string, unknown>;
+
+  // Recursively unpack any JSON stringified objects/arrays or envelopes
+  let rawInvoice = safeJsonUnpack(rawInput) as Record<string, any>;
+  if (!rawInvoice || typeof rawInvoice !== "object") {
+    return {} as Record<string, unknown>;
+  }
+
+  // If a wrapper like { transformedInvoice: { ... } } was passed, unwrap it
+  if (
+    rawInvoice.transformedInvoice &&
+    typeof rawInvoice.transformedInvoice === "object"
+  ) {
+    rawInvoice = rawInvoice.transformedInvoice;
+  }
+
   const looksLikeFirsInvoice = (o: unknown): boolean => {
     if (!o || typeof o !== "object" || Array.isArray(o)) return false;
     const rec = o as Record<string, unknown>;
@@ -82,8 +115,6 @@ export function sanitizeInvoicePayload(
   let invoice: Record<string, unknown>;
   if (looksLikeFirsInvoice(rawInvoice)) {
     invoice = rawInvoice;
-    // Drop any leftover envelope wrapper so the raw ERP object is not shipped
-    // to FIRS alongside the mapped fields.
     delete invoice.invoice;
     delete invoice.data;
   } else if (rawInvoice.data && typeof rawInvoice.data === "object") {
@@ -517,35 +548,59 @@ export function sanitizeInvoicePayload(
       }
       itemObj.description = itemDesc;
 
-      if (
-        typeof line.product_category === "string" &&
-        (line.product_category as string).trim() !== ""
-      ) {
-        line.product_category = (line.product_category as string).trim();
-      } else if (
-        typeof line.service_category === "string" &&
-        (line.service_category as string).trim() !== ""
-      ) {
-        line.product_category = (line.service_category as string).trim();
-      } else if (itemName && itemName !== "General Item") {
-        line.product_category = itemName;
-      } else {
-        line.product_category = "General Goods and Services";
-      }
-
-      // HSN Code
-      const lineDesc = (line.product_category as string) || itemName;
-      const existingHsn =
+      // Goods vs Services Classification
+      const rawServiceCat =
+        typeof line.service_category === "string"
+          ? line.service_category.trim()
+          : "";
+      const rawIsic =
+        typeof line.isic_code === "string" ? line.isic_code.trim() : "";
+      const rawProductCat =
+        typeof line.product_category === "string"
+          ? line.product_category.trim()
+          : "";
+      const rawHsn =
         typeof line.hsn_code === "string" ? line.hsn_code.trim() : "";
-      if (
-        !existingHsn ||
-        !/^\d{4}\.\d{2}$/.test(existingHsn) ||
-        usedHsnCodes.has(existingHsn)
-      ) {
-        line.hsn_code = generateUniqueHsnCode(usedHsnCodes, lineDesc);
+
+      const isService = Boolean(rawServiceCat || rawIsic);
+
+      if (isService) {
+        // Service Line: FIRS requires service_category & isic_code (NO hsn_code or product_category)
+        line.service_category =
+          rawServiceCat ||
+          rawProductCat ||
+          (itemName && itemName !== "General Item" ? itemName : itemDesc) ||
+          "General Services";
+        line.isic_code = rawIsic || "6201";
+
+        delete line.hsn_code;
+        delete line.product_category;
       } else {
-        line.hsn_code = existingHsn;
-        usedHsnCodes.add(existingHsn);
+        // Goods Line: FIRS requires product_category & hsn_code (NO isic_code or service_category)
+        if (rawProductCat) {
+          line.product_category = rawProductCat;
+        } else if (itemName && itemName !== "General Item") {
+          line.product_category = itemName;
+        } else {
+          line.product_category = "General Goods and Services";
+        }
+
+        delete line.isic_code;
+        delete line.service_category;
+
+        // HSN Code
+        const lineDesc = (line.product_category as string) || itemName;
+        const existingHsn = rawHsn;
+        if (
+          !existingHsn ||
+          !/^\d{4}\.\d{2}$/.test(existingHsn) ||
+          usedHsnCodes.has(existingHsn)
+        ) {
+          line.hsn_code = generateUniqueHsnCode(usedHsnCodes, lineDesc);
+        } else {
+          line.hsn_code = existingHsn;
+          usedHsnCodes.add(existingHsn);
+        }
       }
 
       // Price Structure
@@ -1184,6 +1239,38 @@ export function autoFixInvoiceFromFIRSError(
             ((line.item as Record<string, unknown>)?.name as string) ||
             "Goods and Services";
           line.hsn_code = generateUniqueHsnCode(usedCodes, lineDesc);
+        }
+      }
+    }
+  }
+
+  // 9. Service Category & ISIC Code Auto-Heal Fix
+  if (
+    errString.includes("service_category") ||
+    errString.includes("service category") ||
+    errString.includes("isic_code") ||
+    errString.includes("isic code") ||
+    errString.includes("isic")
+  ) {
+    if (Array.isArray(target.invoice_line)) {
+      for (const line of target.invoice_line as Record<string, unknown>[]) {
+        if (line) {
+          const itemObj = (line.item as Record<string, unknown>) || {};
+          const fallbackDesc =
+            (line.service_category as string) ||
+            (line.product_category as string) ||
+            (itemObj.name as string) ||
+            (itemObj.description as string) ||
+            "General Business Services";
+
+          line.service_category =
+            fallbackDesc.trim() || "General Business Services";
+          line.isic_code =
+            typeof line.isic_code === "string" && line.isic_code.trim() !== ""
+              ? line.isic_code.trim()
+              : "6201";
+          delete line.hsn_code;
+          delete line.product_category;
         }
       }
     }

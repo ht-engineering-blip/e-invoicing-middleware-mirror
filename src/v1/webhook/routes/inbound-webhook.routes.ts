@@ -27,6 +27,7 @@ import {
 } from "../utils/webhook-signature.helper";
 import { isWebhookExpired } from "../utils/webhook-lifespan.helper";
 import { parseXmlToJson, isXmlPayload } from "../utils/xml-parser.helper";
+import { safeJsonUnpack } from "../../workflow/utils/invoice-sanitizer.util";
 
 export const inboundWebhookRoutes = new Elysia()
   .decorate("tenantRepo", new TenantRepository())
@@ -101,6 +102,9 @@ export const inboundWebhookRoutes = new Elysia()
       } else if (typeof rawBody === "object" && rawBody !== null) {
         body = rawBody as Record<string, unknown>;
       }
+
+      // Ensure all nested fields/envelopes in body are cleanly unpacked native JSON
+      body = safeJsonUnpack(body) as Record<string, unknown>;
 
       const verificationResult = await verifyWebhookSignature({
         headers,
