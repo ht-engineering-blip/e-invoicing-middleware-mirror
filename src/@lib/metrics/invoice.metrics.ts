@@ -26,14 +26,14 @@ function normalizeErp(erp?: string): string {
 
 export const invoicesSubmittedTotal = new client.Counter({
   name: 'einvoice_invoices_submitted_total',
-  help: 'Total invoices submitted to the middleware (webhook/API intake)',
+  help: 'Total invoices submitted for processing (recorded on worker when chain starts)',
   labelNames: ['tenant_id', 'source', 'event_type', 'erp_system'] as const,
   registers: [metricsRegistry],
 });
 
 export const invoicesAcceptedTotal = new client.Counter({
   name: 'einvoice_invoices_accepted_total',
-  help: 'Total invoices accepted for processing (job chain scheduled)',
+  help: 'Total invoices accepted for processing (recorded on worker when chain starts)',
   labelNames: ['tenant_id', 'event_type', 'erp_system'] as const,
   registers: [metricsRegistry],
 });
@@ -111,5 +111,29 @@ export function recordInvoiceProcessed(labels: {
         seconds
       );
     }
+  });
+}
+
+/**
+ * Record submitted + accepted on the worker when a pipeline chain's first
+ * job starts. Keeps all request-monitoring series on the EC2 scrape target
+ * (API on Vercel is not scraped).
+ */
+export function recordInvoiceChainStarted(labels: {
+  tenantId: string;
+  source?: string;
+  eventType: string;
+  erpSystem?: string;
+}): void {
+  recordInvoiceSubmitted({
+    tenantId: labels.tenantId,
+    source: labels.source || 'unknown',
+    eventType: labels.eventType,
+    erpSystem: labels.erpSystem,
+  });
+  recordInvoiceAccepted({
+    tenantId: labels.tenantId,
+    eventType: labels.eventType,
+    erpSystem: labels.erpSystem,
   });
 }

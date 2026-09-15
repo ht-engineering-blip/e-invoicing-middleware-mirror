@@ -24,7 +24,10 @@ export function registerTransformJob(): void {
     // commercial invoice, erp.creditnote.issued is a credit note. Stamped on
     // the payload before transforming, so the completer's own default never
     // has to guess. A type already present on the payload is left alone.
-    if (context.originalPayload && typeof context.originalPayload === "object") {
+    if (
+      context.originalPayload &&
+      typeof context.originalPayload === "object"
+    ) {
       const payload = context.originalPayload as Record<string, unknown>;
       payload.invoice_type_code = resolveInvoiceTypeFromEvent(
         eventType ?? payload.event ?? payload.eventType,
@@ -33,25 +36,36 @@ export function registerTransformJob(): void {
       );
     }
 
-
-
-
     const tenantRepo = new TenantRepository();
     let effectiveAuthContext = (authContext || {}) as any;
     let effectiveSourceType = context.sourceType;
 
-    if (tenantId && (!effectiveAuthContext?.tenantERP || !effectiveAuthContext?.tenantMappings)) {
+    if (
+      tenantId &&
+      (!effectiveAuthContext?.tenantERP ||
+        !effectiveAuthContext?.tenantMappings)
+    ) {
       try {
         const tenantDoc = await tenantRepo.findByTenantId(tenantId);
         if (tenantDoc) {
-          const tenantObj = typeof tenantDoc.toObject === "function" ? tenantDoc.toObject() : tenantDoc;
+          const tenantObj =
+            typeof tenantDoc.toObject === "function"
+              ? tenantDoc.toObject()
+              : tenantDoc;
           effectiveAuthContext = {
             tenantId: tenantObj.tenantId,
             businessId: tenantObj.businessId || tenantObj.tenantId,
-            businessTIN: tenantObj.metadata?.tin || tenantObj.config?.tin || tenantObj.tin,
+            businessTIN:
+              tenantObj.metadata?.tin || tenantObj.config?.tin || tenantObj.tin,
             businessName: tenantObj.name,
-            tenantERP: tenantObj.config?.erpSystem || tenantObj.metadata?.erpSystem || effectiveSourceType,
-            tenantMappings: tenantObj.metadata?.webhookFieldMappings || tenantObj.config?.mappingRules || [],
+            tenantERP:
+              tenantObj.config?.erpSystem ||
+              tenantObj.metadata?.erpSystem ||
+              effectiveSourceType,
+            tenantMappings:
+              tenantObj.metadata?.webhookFieldMappings ||
+              tenantObj.config?.mappingRules ||
+              [],
             ...effectiveAuthContext,
           };
           if (!effectiveSourceType) {
@@ -59,7 +73,10 @@ export function registerTransformJob(): void {
           }
         }
       } catch (tErr: any) {
-        logger.warn("[Job:transform] Failed to load tenant record for job context", { error: tErr.message });
+        logger.warn(
+          "[Job:transform] Failed to load tenant record for job context",
+          { error: tErr.message },
+        );
       }
     }
 

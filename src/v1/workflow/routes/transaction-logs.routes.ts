@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { requireAuth } from "../../../middlewares/auth";
 import { logger, ResponseBuilder } from "../../../@lib";
 import { agenda } from "../../../@lib/queue/agenda";
+import { computeJobState } from "agenda";
 import { OutboundInvoiceRepository } from "../repos/outbound-invoice.repo";
 import { InboundInvoiceRepository } from "../repos/inbound-invoice.repo";
 import { AuditLogRepository } from "../../audit/repos/audit-log.repo";
@@ -29,9 +30,14 @@ import {
   getInboundInvoiceValidation,
   listAllInvoicesValidation,
   getInvoiceMetricsValidation,
+  getInvoiceValidation,
 } from "../validations/transaction-logs.validation";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { decryptSensitiveData } from "../../../@lib/crypto";
+import {
+  extractInvoiceNumber,
+  extractCustomerName,
+} from "../utils/invoice-extractor.util";
 
 function parseDate(d?: string): Date | undefined {
   if (!d || typeof d !== "string" || d.trim() === "") return undefined;
@@ -75,6 +81,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           paymentStatus: query.paymentStatus,
           irn: query.irn,
           search: query.search,
+          invoiceNumber: query.invoiceNumber,
+          customerName: query.customerName,
           from: parseDate(query.from),
           to: parseDate(query.to),
           page,
@@ -167,6 +175,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           erpInvoiceId: query.erpInvoiceId,
           irn: query.irn,
           search: query.search,
+          invoiceNumber: query.invoiceNumber,
+          customerName: query.customerName,
           from: parseDate(query.from),
           to: parseDate(query.to),
           page,
@@ -250,15 +260,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
               if (!job) return null;
               const data = (job.data ?? {}) as any;
               const action = data.actions?.[data.stepIndex] ?? job.name;
-              const status =
-                job.state ||
-                (job.failedAt
-                  ? "failed"
-                  : job.lastFinishedAt
-                    ? "completed"
-                    : job.lockedAt
-                      ? "running"
-                      : "queued");
+              const status = job.state || computeJobState(job);
               return {
                 agendaJobId: id,
                 jobName: job.name,
@@ -304,9 +306,14 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           return entries;
         });
 
+        const invoiceNumber = extractInvoiceNumber(invoice);
+        const customerName = extractCustomerName(invoice);
+
         return ResponseBuilder.success({
           invoice: {
             irn: invoice.irn,
+            invoiceNumber,
+            customerName,
             erpInvoiceId: invoice.erpInvoiceId,
             source: invoice.source,
             tenantId: invoice.tenantId,
@@ -487,7 +494,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const workflowState = invoice.workflowState;
         let startAction: string | undefined = body?.fromStep;
         if (!startAction) {
-          if (!workflowState?.transformed || !invoice.metadata?.transformedInvoice) {
+          if (
+            !workflowState?.transformed ||
+            !invoice.metadata?.transformedInvoice
+          ) {
             startAction = WorkflowAction.TRANSFORM;
           } else if (!workflowState?.validated) {
             startAction = WorkflowAction.VALIDATE;
@@ -518,8 +528,7 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           invoice.metadata;
 
         const transformedInvoice =
-          body?.invoice ||
-          invoice.metadata?.transformedInvoice;
+          body?.invoice || invoice.metadata?.transformedInvoice;
 
         // If retrying from validate or later but no transformed invoice exists, start from transform
         if (
@@ -576,7 +585,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
               startAction === WorkflowAction.TRANSFORM
                 ? undefined
                 : transformedInvoice || undefined,
-            originalPayload: invoice.metadata?.originalPayload || incomingPayload,
+            originalPayload:
+              invoice.metadata?.originalPayload || incomingPayload,
             source: invoice.source,
             irn: params.irn,
           },
@@ -654,7 +664,10 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         const workflowState = invoice.workflowState;
         let restartFrom: WorkflowAction = WorkflowAction.VALIDATE;
 
-        if (!workflowState?.transformed || !invoice.metadata?.transformedInvoice) {
+        if (
+          !workflowState?.transformed ||
+          !invoice.metadata?.transformedInvoice
+        ) {
           restartFrom = WorkflowAction.TRANSFORM;
         } else if (!workflowState?.validated) {
           restartFrom = WorkflowAction.VALIDATE;
@@ -739,6 +752,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
           paymentStatus: query.paymentStatus,
           irn: query.irn,
           search: query.search,
+          invoiceNumber: query.invoiceNumber,
+          customerName: query.customerName,
           from: parseDate(query.from),
           to: parseDate(query.to),
           page,
@@ -798,7 +813,8 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
         return ResponseBuilder.success({
           invoice: {
             irn: invoice.irn,
-            invoiceNumber: invoice.invoiceNumber,
+            invoiceNumber: extractInvoiceNumber(invoice),
+            customerName: extractCustomerName(invoice),
             tenantId: invoice.tenantId,
             businessId: invoice.businessId,
             status: invoice.status,
@@ -829,4 +845,110 @@ export const transactionLogsRoutes = new Elysia({ prefix: "/invoices" })
       }
     },
     getInboundInvoiceValidation,
+  )
+
+  /**
+   * GET /workflow/invoices/:irn
+   * Get invoice details by IRN across outbound and inbound streams
+   */
+  .get(
+    "/:irn",
+    async ({ params, auth, outboundRepo, inboundRepo, auditRepo, set }) => {
+      try {
+        const tenantId = auth!.isAdmin ? undefined : auth!.tenantId;
+        const businessId = auth!.isAdmin ? undefined : auth!.businessId;
+
+        // 1. Check outbound first
+        const outboundResult = await outboundRepo.findByIrnWithWebhookEvents(
+          params.irn,
+          tenantId,
+        );
+
+        if (outboundResult) {
+          const { invoice, webhookEvents } = outboundResult;
+          const invoiceNumber = extractInvoiceNumber(invoice);
+          const customerName = extractCustomerName(invoice);
+
+          return ResponseBuilder.success({
+            direction: "OUTBOUND",
+            invoice: {
+              irn: invoice.irn,
+              invoiceNumber,
+              customerName,
+              erpInvoiceId: invoice.erpInvoiceId,
+              source: invoice.source,
+              tenantId: invoice.tenantId,
+              status: invoice.status,
+              paymentStatus: invoice.paymentStatus,
+              paymentDetails: invoice.paymentDetails,
+              workflowState: invoice.workflowState,
+              lastJobError: invoice.lastJobError,
+              qrCode: invoice.qrCode,
+              erpSystem: invoice.erpSystem,
+              validationAttempts: invoice.validationAttempts,
+              validationErrors: invoice.validationErrors,
+              metadata: invoice.metadata,
+              createdAt: invoice.createdAt,
+              updatedAt: invoice.updatedAt,
+            },
+            webhookEvents,
+          });
+        }
+
+        // 2. Check inbound
+        const inboundInvoice = await inboundRepo.findByIRN(
+          params.irn,
+          tenantId,
+          businessId,
+        );
+
+        if (inboundInvoice) {
+          const auditResult = await auditRepo.findByResourceId(params.irn);
+          const auditLogs = auditResult.data || [];
+          const statusHistory = auditLogs.map((log: any) => ({
+            status: log.metadata?.status || log.eventType,
+            timestamp: log.timestamp,
+            details: log.description,
+          }));
+
+          return ResponseBuilder.success({
+            direction: "INBOUND",
+            invoice: {
+              irn: inboundInvoice.irn,
+              invoiceNumber: extractInvoiceNumber(inboundInvoice),
+              customerName: extractCustomerName(inboundInvoice),
+              tenantId: inboundInvoice.tenantId,
+              businessId: inboundInvoice.businessId,
+              status: inboundInvoice.status,
+              paymentStatus: inboundInvoice.paymentStatus,
+              supplierTIN: inboundInvoice.supplierTIN,
+              supplierName: inboundInvoice.supplierName,
+              supplierAddress: inboundInvoice.supplierAddress,
+              totalAmount: inboundInvoice.totalAmount,
+              currency: inboundInvoice.currency,
+              issueDate: inboundInvoice.issueDate,
+              dueDate: inboundInvoice.dueDate,
+              decryptedData: inboundInvoice.decryptedData,
+              workflowState: inboundInvoice.workflowState,
+              paymentDetails: inboundInvoice.paymentDetails,
+              metadata: inboundInvoice.metadata,
+              createdAt: inboundInvoice.createdAt,
+              updatedAt: inboundInvoice.updatedAt,
+            },
+            statusHistory,
+          });
+        }
+
+        set.status = 404;
+        return ResponseBuilder.error("Invoice not found", 404);
+      } catch (error: any) {
+        set.status = error.statusCode || 500;
+        logger.error("Failed to get invoice by IRN", { error: error.message });
+        return ResponseBuilder.error(
+          error.message || "Failed to get invoice",
+          error.statusCode || 500,
+        );
+      }
+    },
+    getInvoiceValidation,
   );
