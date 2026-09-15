@@ -67,7 +67,7 @@ export class InvoiceWorkflowService {
     authContext?: AuthContext,
   ): Promise<any> {
     try {
-      const transformedPayload = await this.transformService.transformInvoice(
+      const transformedPayload = await this.transformService.transformInvoiceV2(
         invoice,
         authContext,
       );

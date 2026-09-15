@@ -1,12 +1,15 @@
 import type { FIRSInvoice } from "./schema-validator";
 import {
+  extractCurrency,
   generateDatestamp,
   generateInvoiceRef,
   generateIRN,
+  resolveCurrencyCode,
   sanitizeInvoiceIRNs,
   sanitizePriceUnit,
 } from "./utils";
-import { AuthContext } from "../../../../middlewares";
+import type { AuthContext } from "./mapping-spec.types";
+import { DEFAULT_INVOICE_TYPE_CODE } from "../invoice-type";
 
 export interface InvoiceLineItem {
   hsn_code?: string;
@@ -94,61 +97,16 @@ export function normalizeInvoicePayload(
   }
 
   // 5. Resolve Invoice Type Code
-  let invoiceTypeCode = "396";
-  if (
-    typeof rawInvoice.invoice_type_code === "string" &&
-    rawInvoice.invoice_type_code.trim() !== ""
-  ) {
-    invoiceTypeCode = rawInvoice.invoice_type_code.trim();
-  } else if (
-    typeof rawInvoice.invoiceTypeCode === "string" &&
-    rawInvoice.invoiceTypeCode.trim() !== ""
-  ) {
-    invoiceTypeCode = rawInvoice.invoiceTypeCode.trim();
-  }
+  const invoiceTypeCode = String(
+    rawInvoice.invoice_type_code || DEFAULT_INVOICE_TYPE_CODE,
+  ).trim();
 
   // 6. Resolve Invoice Kind
-  let invoiceKind = "B2B";
-  if (
-    typeof rawInvoice.invoice_kind === "string" &&
-    rawInvoice.invoice_kind.trim() !== ""
-  ) {
-    invoiceKind = rawInvoice.invoice_kind.trim();
-  } else if (
-    typeof rawInvoice.invoiceKind === "string" &&
-    rawInvoice.invoiceKind.trim() !== ""
-  ) {
-    invoiceKind = rawInvoice.invoiceKind.trim();
-  }
+  const invoiceKind = String(rawInvoice.invoice_kind || "B2B").trim();
 
   // 7. Resolve Document & Tax Currency Codes
-  let documentCurrencyCode = "NGN";
-  if (
-    typeof rawInvoice.document_currency_code === "string" &&
-    rawInvoice.document_currency_code.trim() !== ""
-  ) {
-    documentCurrencyCode = rawInvoice.document_currency_code.trim();
-  } else if (
-    typeof rawInvoice.documentCurrencyCode === "string" &&
-    rawInvoice.documentCurrencyCode.trim() !== ""
-  ) {
-    documentCurrencyCode = rawInvoice.documentCurrencyCode.trim();
-  }
-
-  let taxCurrencyCode = "NGN";
-  if (
-    typeof rawInvoice.tax_currency_code === "string" &&
-    rawInvoice.tax_currency_code.trim() !== ""
-  ) {
-    taxCurrencyCode = rawInvoice.tax_currency_code.trim();
-  } else if (
-    typeof rawInvoice.taxCurrencyCode === "string" &&
-    rawInvoice.taxCurrencyCode.trim() !== ""
-  ) {
-    taxCurrencyCode = rawInvoice.taxCurrencyCode.trim();
-  } else {
-    taxCurrencyCode = documentCurrencyCode;
-  }
+  const documentCurrencyCode = extractCurrency(rawInvoice, "document");
+  const taxCurrencyCode = extractCurrency(rawInvoice, "tax");
 
   // 8. Resolve Payment Status
   let paymentStatus = "PENDING";
@@ -334,12 +292,24 @@ export function normalizeInvoicePayload(
       serviceCategory = line.service_category.trim();
     }
 
-    if (!productCategory) {
-      productCategory =
+    const isService = Boolean(serviceCategory || isicCode);
+    if (isService) {
+      serviceCategory =
         serviceCategory ||
+        productCategory ||
         itemName ||
         itemDescription ||
-        "General Goods and Services";
+        "General Services";
+      isicCode = isicCode || "6201";
+      hsnCode = undefined;
+      productCategory = undefined;
+    } else {
+      if (!productCategory) {
+        productCategory =
+          itemName || itemDescription || "General Goods and Services";
+      }
+      isicCode = undefined;
+      serviceCategory = undefined;
     }
 
     // Seller's Item Identification

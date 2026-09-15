@@ -56,8 +56,7 @@ export class NodeMailerClient implements MailClient {
         port: parseInt(messagingConfig?.smtpPort as string),
         secure: false, // true for 465, false for other ports
         tls: {
-          rejectUnauthorized:
-            process.env.NODE_ENV === "production" ? true : false,
+          rejectUnauthorized: messagingConfig?.rejectUnauthorized ?? true,
         },
         // secure: true, // true for 465, false for other ports
         auth: {

@@ -128,8 +128,24 @@ export default class FIRSClient extends RestClient {
     const errorResp = new AppError(
       error?.response?.data?.code || error?.response?.status || 500,
       errorMessage,
-      error,
     );
+
+    // Everything NRS sent apart from public_message and details used to be
+    // discarded here, leaving a job error whose only specific content was
+    // whatever NRS put in `details`. When that is generic ("unable to complete
+    // this operation at this time"), the failure became undiagnosable from the
+    // UI — the structured response existed only in stdout. Carry it on the
+    // error so chainFail can persist it.
+    (errorResp as any).providerError = {
+      httpStatus: error?.response?.status,
+      code: error?.response?.data?.code,
+      publicMessage: foundError?.public_message,
+      details: foundError?.details,
+      // The rest of data.error, minus the two fields already named above.
+      raw: error?.response?.data?.error ?? error?.response?.data,
+      url: error?.config?.url,
+      method: error?.config?.method,
+    };
 
     return Promise.reject(errorResp);
   }
@@ -433,6 +449,7 @@ export class FIRSService {
     const client = this.appClient;
     const response: any = await client.get(
       `api/v1/invoice/resources/${resourceName}`,
+      { timeout: 1000 },
     );
     const body = response?.data ?? response;
     const data: T[] = Array.isArray(body) ? body : (body?.data ?? body);

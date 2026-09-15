@@ -145,9 +145,23 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
         return {
           ...mockTenant,
           tenantId: "tenant-456",
+          config: {
+            ...mockTenant.config,
+            webhookAuth: undefined,
+          },
           metadata: {
             ...mockTenant.metadata,
             webhookSecretHash: undefined,
+          },
+        } as any;
+      }
+      if (path === "expired-path") {
+        return {
+          ...mockTenant,
+          tenantId: "tenant-789",
+          metadata: {
+            ...mockTenant.metadata,
+            webhookExpiresAt: new Date(Date.now() - 60000),
           },
         } as any;
       }
@@ -427,27 +441,8 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
     expect(body.message).toContain("Webhook received successfully");
   });
 
-  // --- Legacy Static Secret Flow Tests ---
-  it("should reject request with 401 if legacy static key is invalid", async () => {
-    const app = webhookRoutes;
-    const response = await app.handle(
-      new Request("http://localhost/webhook/inbound/valid-path", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Webhook-Key": "wrong-secret-key",
-        },
-        body: JSON.stringify({ event: "invoice.received" }),
-      }),
-    );
-
-    expect(response.status).toBe(401);
-    const body = await response.json();
-    expect(body.success).toBe(false);
-    expect(body.error).toContain("Invalid webhook key");
-  });
-
-  it("should accept request with 200 if legacy static key is valid", async () => {
+  // --- Inbound Webhook Verification Hardening Tests ---
+  it("should reject request with 401 if legacy static key is used (shared-key path removed)", async () => {
     const app = webhookRoutes;
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/valid-path", {
@@ -463,19 +458,20 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
       }),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(401);
     const body = await response.json();
-    expect(body.success).toBe(true);
-    expect(body.message).toContain("Webhook received successfully");
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Invalid X-Webhook-Key format");
   });
 
-  it("should accept request with 200 if webhook secret is not configured on tenant (legacy support)", async () => {
+  it("should reject request with 401 if webhook secret is not configured on tenant", async () => {
     const app = webhookRoutes;
     const response = await app.handle(
       new Request("http://localhost/webhook/inbound/no-secret-path", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Webhook-Key": "t=12345678,v1=fakesig",
         },
         body: JSON.stringify({
           event: "invoice.received",
@@ -484,9 +480,42 @@ describe("Inbound Webhook Security (POST /v1/webhook/inbound/:webhookPath)", () 
       }),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(401);
     const body = await response.json();
-    expect(body.success).toBe(true);
-    expect(body.message).toContain("Webhook received successfully");
+    expect(body.success).toBe(false);
+    expect(body.error).toContain(
+      "Webhook signing secret is not configured for this tenant",
+    );
+  });
+
+  it("should reject request with 401 if webhook credentials have expired", async () => {
+    const app = webhookRoutes;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const rawBody = JSON.stringify({
+      event: "invoice.received",
+      erpInvoiceId: "INV-123",
+    });
+
+    const dataToSign = `${timestamp}.${rawBody}`;
+    const signature = crypto
+      .createHmac("sha256", mockSecret)
+      .update(dataToSign)
+      .digest("hex");
+
+    const response = await app.handle(
+      new Request("http://localhost/webhook/inbound/expired-path", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Key": `t=${timestamp},v1=${signature}`,
+        },
+        body: rawBody,
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Webhook credentials have expired");
   });
 });

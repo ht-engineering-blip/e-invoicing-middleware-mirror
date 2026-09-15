@@ -82,6 +82,7 @@ export interface ISchemaField {
 export interface InvoiceSchemaDictionaryDocument extends Document {
   // Schema Identification
   schema_id: string;
+  version?: string;
   name: string;
   description?: string;
 
@@ -90,6 +91,7 @@ export interface InvoiceSchemaDictionaryDocument extends Document {
 
   // Status & Metadata
   status: SchemaStatus;
+  is_default?: boolean;
   tenant_id?: string;
 
   // Field Definitions
@@ -99,7 +101,7 @@ export interface InvoiceSchemaDictionaryDocument extends Document {
   mapping_rules?: Array<MappingRuleItem>;
 
   // Additional Metadata
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   // Audit
   created_by: string;
@@ -199,6 +201,10 @@ const InvoiceSchemaDictionarySchema =
         unique: true,
         index: true,
       },
+      version: {
+        type: String,
+        default: "v1.0",
+      },
       name: {
         type: String,
         required: true,
@@ -221,6 +227,11 @@ const InvoiceSchemaDictionarySchema =
         default: SchemaStatus.DRAFT,
         index: true,
       },
+      is_default: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
       tenant_id: {
         type: String,
         index: true,
@@ -234,7 +245,7 @@ const InvoiceSchemaDictionarySchema =
 
       // Mapping Rules
       mapping_rules: {
-        type: Array<any>,
+        type: Schema.Types.Mixed,
       },
 
       // Additional Metadata

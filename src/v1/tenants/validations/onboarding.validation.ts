@@ -55,6 +55,19 @@ export const updateCredentialsValidation = {
   },
 };
 
+export const getWebhookConfigValidation = {
+  params: t.Object({
+    tenantId: t.String(),
+  }),
+  detail: {
+    tags: ["Onboarding"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
+    summary: "Get Webhook Configuration & Expiry Status",
+    description:
+      "Retrieve current webhook URL, enabled status, invoiceIdKey, lifespan, and expiration date for a tenant.",
+  },
+};
+
 export const generateWebhookValidation = {
   params: t.Object({
     tenantId: t.String(),
@@ -67,6 +80,49 @@ export const generateWebhookValidation = {
             'Dot-notation path to the invoice ID field in the webhook payload (e.g. "invoiceNumber" or "invoice.documentId")',
         }),
       ),
+      webhookAuthMode: t.Optional(
+        t.Union(
+          [
+            t.Literal("auto"),
+            t.Literal("hmac"),
+            t.Literal("static_secret"),
+            t.Literal("secret_url"),
+          ],
+          {
+            description:
+              "Webhook authentication mode: 'auto' (accepts HMAC and static secret/URL), 'hmac' (strict HMAC dynamic signature), 'static_secret' (static secret header/query/body), or 'secret_url' (capability URL).",
+            default: "auto",
+          },
+        ),
+      ),
+      defaultEventType: t.Optional(
+        t.String({
+          description:
+            "Default event type to assign to inbound webhooks when no event header or body field is provided",
+          default: "invoice.received",
+        }),
+      ),
+      lifespan: t.Optional(
+        t.Union(
+          [
+            t.Literal("30_DAYS"),
+            t.Literal("90_DAYS"),
+            t.Literal("180_DAYS"),
+            t.Literal("1_YEAR"),
+            t.Literal("NO_EXPIRATION"),
+            t.Literal("30d"),
+            t.Literal("90d"),
+            t.Literal("180d"),
+            t.Literal("1y"),
+            t.Literal("never"),
+          ],
+          {
+            description:
+              "Lifespan / expiration duration for the webhook URL and secret (30_DAYS, 90_DAYS, 180_DAYS, 1_YEAR, NO_EXPIRATION)",
+            default: "NO_EXPIRATION",
+          },
+        ),
+      ),
     }),
   ),
   detail: {
@@ -74,7 +130,7 @@ export const generateWebhookValidation = {
     security: [{ apiKey: [] }, { bearerAuth: [] }, { adminKey: [] }] as any,
     summary: "Generate Webhook URL",
     description:
-      "Generate a unique webhook URL for receiving inbound invoices. Optionally set invoiceIdKey to configure which payload field identifies the ERP invoice.",
+      "Generate a unique webhook URL for receiving inbound invoices with configurable lifespan, authentication mode (auto, hmac, static_secret, secret_url), and default event type.",
   },
 };
 
@@ -157,13 +213,23 @@ export const testWebhookValidation = {
   body: t.Optional(
     t.Object({
       testPayload: t.Optional(t.Record(t.String(), t.Any())),
+      authStrategy: t.Optional(
+        t.Union([
+          t.Literal("hmac"),
+          t.Literal("static_secret"),
+          t.Literal("bearer"),
+          t.Literal("query"),
+          t.Literal("body"),
+          t.Literal("secret_url"),
+        ]),
+      ),
     }),
   ),
   detail: {
     tags: ["Onboarding"],
     security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
     summary: "Test Webhook",
-    description: "Send a test webhook to verify connectivity",
+    description: "Send a test webhook to verify connectivity with configurable authentication strategy",
   },
 };
 

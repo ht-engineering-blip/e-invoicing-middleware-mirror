@@ -1,0 +1,23 @@
+# Example Prometheus scrape config for EC2 production.
+# Copy values into prometheus.yml on the monitoring host (replace IPs).
+
+scrape_configs:
+  - job_name: e-invoicing-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 10.0.1.10:3000
+          # - 10.0.1.11:3000   # add more API instances
+        labels:
+          env: production
+          component: api
+
+  - job_name: e-invoicing-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 10.0.1.10:3002
+          # - 10.0.1.12:3002
+        labels:
+          env: production
+          component: worker

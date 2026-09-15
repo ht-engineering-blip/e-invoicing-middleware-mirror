@@ -21,10 +21,18 @@ export {
 } from "./schema-validator";
 export type { FIRSInvoice } from "./schema-validator";
 export { normalizeInvoicePayload } from "./payload-normalizer";
+export { DeterministicCompleter } from "./deterministic-completer";
+export { TransformerCircuitBreaker } from "./circuit-breaker";
+export { DeterministicMappingEngine } from "./deterministic-engine";
+export {
+  NRSSchemaRegistry,
+  type NRSSchemaVersionInfo,
+} from "./nrs-schema-registry";
+export * from "./mapping-spec.types";
 
 import { sanitizeInvoicePayload } from "../invoice-sanitizer.util";
 
-const ALLOWED_LLM_FIELDS = new Set([
+export const ALLOWED_LLM_FIELDS = new Set([
   "business_id",
   "irn",
   "issue_date",
@@ -54,7 +62,7 @@ const ALLOWED_LLM_FIELDS = new Set([
   "notes",
 ]);
 
-function filterAllowedLLMFields(
+export function filterAllowedLLMFields(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
   const filtered: Record<string, unknown> = {};
@@ -85,13 +93,13 @@ export class FIRSInvoiceTransformer {
   constructor(
     apiKey: string,
     apiEndpoint: string = "https://api.openai.com/v1/chat/completions",
-    provider: string = "gemini",
+    provider: string = "openai",
     model: string = "gpt-4o-mini",
   ) {
     this.apiKey = apiKey;
     this.apiEndpoint = apiEndpoint;
-    this.provider = provider;
-    this.model = model;
+    this.provider = provider || "openai";
+    this.model = model || "gpt-4o-mini";
   }
 
   /**
@@ -224,14 +232,14 @@ export class FIRSInvoiceTransformer {
     let content: string | undefined;
 
     if (isGemini) {
-      const candidates = result.candidates as
-        | Array<{ content?: { parts?: Array<{ text?: string }> } }>
-        | undefined;
+      const candidates = result.candidates as Array<{
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
       content = candidates?.[0]?.content?.parts?.[0]?.text;
     } else {
-      const choices = result.choices as
-        | Array<{ message?: { content?: string } }>
-        | undefined;
+      const choices = result.choices as Array<{
+        message?: { content?: string };
+      }>;
       content = choices?.[0]?.message?.content;
     }
 
@@ -310,7 +318,7 @@ export class FIRSInvoiceTransformer {
           if (original === "381" || original === "380" || original === "384") {
             fixed.invoice_type_code = original;
           } else {
-            fixed.invoice_type_code = "396";
+            fixed.invoice_type_code = "381";
           }
         } else if (path === "document_currency_code") {
           fixed.document_currency_code = "NGN";

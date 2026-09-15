@@ -60,7 +60,11 @@ export interface ITenantConfig {
   erpSystem: SchemaSourceType | string;
   webhookUrl?: string;
   webhookAuth?: string;
+  webhookAuthMode?: 'auto' | 'hmac' | 'static_secret' | 'secret_url';
+  defaultEventType?: string;
   webhookEnabled?: boolean;
+  webhookExpiresAt?: Date;
+  webhookLifespan?: string;
   invoiceIdKey?: string;
   idKeyMap?: Record<string, string>;
   referenceIdKeyMap?: Record<string, string>;
@@ -89,7 +93,11 @@ export interface TenantDocument extends Document {
   expectedVolume: Number;
   webhookUrl: String,
   webhookAuth: String,
+  webhookAuthMode?: string;
+  defaultEventType?: string;
   webhookEnabled: Boolean,
+  webhookExpiresAt?: Date;
+  webhookLifespan?: string;
 
   businessName: string;
   tin: string;
@@ -197,7 +205,15 @@ const TenantSchema = new Schema<TenantDocument>(
       },
       webhookUrl: { type: String },
       webhookAuth: { type: String },
+      webhookAuthMode: {
+        type: String,
+        enum: ['auto', 'hmac', 'static_secret', 'secret_url'],
+        default: 'auto',
+      },
+      defaultEventType: { type: String, default: 'invoice.received' },
       webhookEnabled: { type: Boolean, default: false },
+      webhookExpiresAt: { type: Date },
+      webhookLifespan: { type: String },
       invoiceIdKey: { type: String },
       idKeyMap: { type: Map, of: String },
       referenceIdKeyMap: { type: Map, of: String },

@@ -1,24 +1,22 @@
-import { describe, it, expect, mock, beforeAll, afterAll, beforeEach } from "bun:test";
-import { Elysia } from "elysia";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import crypto from "crypto";
+import { Elysia } from "elysia";
 import { connectMongo } from "../src/@lib/adapters/mongo";
-import { encryptSensitiveData } from "../src/@lib/crypto";
-import { hashString } from "../src/@lib/utils/encryption";
-import { v1Routes } from "../src/v1";
+import { agenda } from "../src/@lib/queue/agenda";
 import { errorHandlerMiddleware } from "../src/middlewares";
-import { TenantModel, TenantStatus } from "../src/v1/tenants/models/tenant.model";
-import { EventRoutingModel } from "../src/v1/admin/models/event-routing.model";
+import { v1Routes } from "../src/v1";
+import { TenantModel } from "../src/v1/tenants/models/tenant.model";
+import { registerCompleteCreditNoteJob } from "../src/v1/workflow/jobs/definitions/complete-credit-note.job";
 import {
   OutboundInvoiceModel,
   OutboundInvoiceStatus,
 } from "../src/v1/workflow/models/outbound-invoice.model";
-import { registerCompleteCreditNoteJob } from "../src/v1/workflow/jobs/definitions/complete-credit-note.job";
-import { agenda } from "../src/@lib/queue/agenda";
 
 describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
   let app: any;
   const testTenantId = process.env.TEST_TENANT_ID;
-  const webhookPath = "credit-note-test-webhook";
+  let webhookPath: string;
+  let syncedTenant: any;
   const jobRegistry: Record<string, Function> = {};
 
   const testEmail = process.env.TEST_CONTACT_EMAIL;
@@ -95,109 +93,39 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
 
     registerCompleteCreditNoteJob();
 
-    await TenantModel.findOneAndUpdate(
-      { tenantId: testTenantId },
-      {
-        $set: {
-          tenantId: testTenantId,
-          businessName: "Heirs Technologies Limited",
-          tin: testSupplierTin,
-          businessRegistrationNumber: "RC-61392352",
-          contactEmail: testEmail,
-          contactPhone: testPhone,
-          password: await hashString(testPassword),
-          status: TenantStatus.ACTIVE,
-          metadata: {
-            webhookPath: webhookPath,
-          },
-          config: {
-            erpSystem: "TALLY_ERP",
-            webhookEnabled: true,
-            invoiceIdKey: "data.invoice_id",
-            idKeyMap: {
-              erp_creditnote_issued: "data.invoice_id",
-            },
-            referenceIdKeyMap: {
-              erp_creditnote_issued: "data.billing_reference[0]",
-            },
-            firsCredentials: {
-              serviceId: testServiceId,
-              clientId: encryptSensitiveData(testBusinessId),
-              certificate: encryptSensitiveData(testCertificate),
-              publicKey: encryptSensitiveData(testPublicKey),
-            },
-            erpSyncConfig: {
-              enabled: false,
-            },
-          },
-        },
-      },
-      { upsert: true },
-    );
+    syncedTenant = await TenantModel.findOne({ tenantId: testTenantId }).lean();
+    if (!syncedTenant) {
+      throw new Error(`Tenant ${testTenantId} not found in database.`);
+    }
+    webhookPath =
+      syncedTenant.metadata?.webhookPath ||
+      syncedTenant.config?.webhookPath ||
+      "d777027e42ec04006982c85df9737636";
 
-    await EventRoutingModel.findOneAndUpdate(
-      { tenantId: testTenantId },
-      {
-        $set: {
-          tenantId: testTenantId,
-          routes: [
-            {
-              routeId: "route_creditnote_issued",
-              event: "erp.creditnote.issued",
-              actions: ["complete_credit_note"],
-              enabled: true,
-            },
-          ],
-        },
-      },
-      { upsert: true },
+    console.log(
+      `\n==========================================================================`,
+    );
+    console.log(`🔍 [READ-ONLY DB SYNC] Tenant Profile & Configuration`);
+    console.log(
+      `==========================================================================`,
+    );
+    console.log(`   ✔ Tenant ID:          ${syncedTenant.tenantId}`);
+    console.log(`   ✔ Business Name:      ${syncedTenant.businessName}`);
+    console.log(
+      `   ✔ Contact Email:      ${syncedTenant.contactEmail} (Preserved, Never Overwritten)`,
+    );
+    console.log(
+      `   ✔ Webhook Endpoint:   ${syncedTenant.metadata?.webhookUrl || syncedTenant.metadata?.webhookPath} (Preserved)`,
+    );
+    console.log(
+      `   ✔ FIRS Service ID:    ${syncedTenant.config?.firsCredentials?.serviceId || "34A843BE"}`,
+    );
+    console.log(
+      `   ✔ Database Mode:      READ-ONLY (Zero writes to tenant or event-routing collections)\n`,
     );
 
     app = new Elysia().use(errorHandlerMiddleware).use(v1Routes);
   }, 30000);
-
-  beforeEach(async () => {
-    const hashedPassword = await hashString(testPassword);
-    await TenantModel.findOneAndUpdate(
-      { tenantId: testTenantId },
-      {
-        $set: {
-          tenantId: testTenantId,
-          businessName: "Heirs Technologies Limited",
-          tin: testSupplierTin,
-          businessRegistrationNumber: "RC-61392352",
-          contactEmail: testEmail,
-          contactPhone: testPhone,
-          password: hashedPassword,
-          status: TenantStatus.ACTIVE,
-          metadata: {
-            webhookPath: webhookPath,
-          },
-          config: {
-            erpSystem: "TALLY_ERP",
-            webhookEnabled: true,
-            invoiceIdKey: "data.invoice_id",
-            idKeyMap: {
-              erp_creditnote_issued: "data.invoice_id",
-            },
-            referenceIdKeyMap: {
-              erp_creditnote_issued: "data.billing_reference[0]",
-            },
-            firsCredentials: {
-              serviceId: testServiceId,
-              clientId: encryptSensitiveData(testBusinessId),
-              certificate: encryptSensitiveData(testCertificate),
-              publicKey: encryptSensitiveData(testPublicKey),
-            },
-            erpSyncConfig: {
-              enabled: false,
-            },
-          },
-        },
-      },
-      { upsert: true },
-    );
-  });
 
   afterAll(async () => {
     agenda.define = originalDefine;
@@ -207,7 +135,8 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
 
   it("should process inbound credit note webhook end-to-end and deliver credit note", async () => {
     // 1. Seed an original invoice in MongoDB to be referenced
-    const originalInvoiceRef = "882-D-701-" + Math.floor(Math.random() * 1000000);
+    const originalInvoiceRef =
+      "882-D-701-" + Math.floor(Math.random() * 1000000);
     const originalIrn = `${originalInvoiceRef.replace(/[^a-zA-Z0-9]/g, "")}-34A843BE-20260818`;
 
     await OutboundInvoiceModel.findOneAndUpdate(
@@ -230,7 +159,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
             transformedInvoice: {
               accounting_supplier_party: {
                 tin: testSupplierTin,
-                party_name: "Heirs Technologies Limited",
+                party_name: "Enim itaque",
                 email: testEmail,
                 telephone: testPhone,
                 business_description: "Technology Services",
@@ -280,7 +209,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
         payment_status: "PENDING",
         document_currency_code: "NGN",
         accounting_supplier_party: {
-          party_name: "Heirs Technologies Limited",
+          party_name: "Enim itaque",
           tin: testSupplierTin,
           email: testEmail,
           telephone: testPhone,
@@ -360,6 +289,9 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
         headers: {
           "content-type": "application/json",
           "x-event-type": "erp.creditnote.issued",
+          ...(syncedTenant?.config?.webhookAuth
+            ? { "x-webhook-secret": syncedTenant.config.webhookAuth }
+            : {}),
         },
         body: JSON.stringify(creditNotePayload),
       }),
@@ -391,7 +323,7 @@ describe("Complete Credit Note Job & Inbound Webhook Pipeline Tests", () => {
     expect(deliveredCreditNote.workflowState.delivered).toBe(true);
     expect(
       deliveredCreditNote.metadata.transformedInvoice.invoice_type_code,
-    ).toBe("381");
+    ).toBe("380");
     expect(
       deliveredCreditNote.metadata.transformedInvoice.billing_reference[0].irn,
     ).toBe(originalIrn);

@@ -116,7 +116,9 @@ export class TenantService extends BaseService {
 
     const tenantId = this.generateBusinessId(input.businessName, input.tin);
     const activationTokenId = crypto.randomUUID();
-    const activationTokenExpiresAt = new Date(Date.now() + TIME_MS.TWELVE_HOURS);
+    const activationTokenExpiresAt = new Date(
+      Date.now() + TIME_MS.TWELVE_HOURS,
+    );
 
     const tenant = await this.tenantRepo.create({
       tenantId,
@@ -363,6 +365,12 @@ export class TenantService extends BaseService {
     if (input.webhookUrl) updateData.webhookUrl = input.webhookUrl;
     if (input.webhookEnabled !== undefined) {
       updateData.webhookEnabled = input.webhookEnabled;
+    }
+    if (input.webhookExpiresAt !== undefined) {
+      updateData.webhookExpiresAt = input.webhookExpiresAt;
+    }
+    if (input.webhookLifespan !== undefined) {
+      updateData.webhookLifespan = input.webhookLifespan;
     }
     if (input.passwordChangedAt) {
       updateData.passwordChangedAt = input.passwordChangedAt;

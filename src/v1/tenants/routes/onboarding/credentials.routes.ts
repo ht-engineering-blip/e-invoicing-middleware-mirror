@@ -3,7 +3,7 @@ import { firsConfig, appConfig } from "../../../../@config";
 import { logger, ResponseBuilder, TIME_MS } from "../../../../@lib";
 import { MailContent, withTemplate } from "../../../../@lib/messaging";
 import { requireAuth, getActor } from "../../../../middlewares/auth";
-import { onlySelf } from "../../../auth/utils/access-checks";
+import { onlySelf, onlyTenantAdmin } from "../../../auth/utils/access-checks";
 import { AuthService } from "../../../auth/services";
 import { TenantService } from "../../services/tenant.service";
 import { AuditService } from "../../../audit/services/audit.service";
@@ -30,7 +30,7 @@ export const onboardingCredentialsRoutes = new Elysia()
     "/:tenantId/credentials",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Updating tenant credentials", {
           tenantId: params.tenantId,
@@ -109,7 +109,7 @@ export const onboardingCredentialsRoutes = new Elysia()
     "/:tenantId/business-id",
     async ({ params, body, auth, tenantService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Updating tenant business ID", {
           tenantId: params.tenantId,
@@ -150,7 +150,7 @@ export const onboardingCredentialsRoutes = new Elysia()
     "/resend/token/:tenantId",
     async ({ params, auth, tenantService, authService, auditService, set }) => {
       try {
-        onlySelf(auth!, params.tenantId);
+        onlyTenantAdmin(auth!, params.tenantId);
 
         logger.info("Resending activation email", {
           tenantId: params.tenantId,

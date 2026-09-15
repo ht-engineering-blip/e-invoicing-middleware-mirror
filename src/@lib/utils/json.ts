@@ -88,23 +88,40 @@ function cleanJsonString(jsonString: string, options = {}) {
  */
 function extractJsonFromString(str: any) {
   if (typeof str !== "string") return str;
+  let trimmed = str.trim();
 
-  // Remove common wrapper patterns
-  const patterns = [
-    /^.*?(\{.*\}).*?$/s, // JSON object in middle of string
-    /^.*?(\[.*\]).*?$/s, // JSON array in middle of string
-    /^```json\s*([\s\S]*?)\s*```$/i, // Markdown code block
-    /^`([\s\S]*?)`$/, // Backtick wrapper
-  ];
-
-  for (const pattern of patterns) {
-    const match = str.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
+  // 1. Remove markdown code block wrappers (e.g. ```json ... ``` or ``` ... ```)
+  const markdownMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (markdownMatch && markdownMatch[1]) {
+    trimmed = markdownMatch[1].trim();
   }
 
-  return str.trim();
+  // 2. If already valid starting with [ or {, return directly
+  if (
+    (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+    (trimmed.startsWith("{") && trimmed.endsWith("}"))
+  ) {
+    return trimmed;
+  }
+
+  // 3. Find outermost [ ... ] or { ... } boundaries
+  const firstBracket = trimmed.indexOf("[");
+  const lastBracket = trimmed.lastIndexOf("]");
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+
+  const hasArray = firstBracket !== -1 && lastBracket > firstBracket;
+  const hasObject = firstBrace !== -1 && lastBrace > firstBrace;
+
+  if (hasArray && (!hasObject || firstBracket < firstBrace)) {
+    return trimmed.substring(firstBracket, lastBracket + 1).trim();
+  }
+
+  if (hasObject) {
+    return trimmed.substring(firstBrace, lastBrace + 1).trim();
+  }
+
+  return trimmed;
 }
 
 // Combined utility function

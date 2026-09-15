@@ -85,6 +85,10 @@ services:
 
 
   # Job Worker — processes Agenda job queue and serves Agendash dashboard
+  # Metrics: API :3000/metrics , Worker :3002/metrics
+  # Monitoring stack (Prometheus + Grafana): 
+  #   docker compose -f ops/docker-compose.monitoring.yml up -d
+  # See ops/ec2-monitoring-host.md for EC2 production layout.
 
 
 volumes:

@@ -4,5 +4,6 @@ export * from './utils';
 export * from './types';
 export * from './services/base.service';
 export * from './constants';
+export * from './metrics';
 
 

@@ -4,7 +4,7 @@ export const FIRS_SCHEMA_EXAMPLE = `{
     "issue_date": "2024-05-14",
     "due_date": "2024-06-14",
     "issue_time": "17:59:04",
-    "invoice_type_code": "396",
+    "invoice_type_code": "380",
     "invoice_kind": "B2B",
     "payment_status": "PENDING",
     "note": "dummy_note (will be encryted in storage)",
@@ -168,9 +168,7 @@ CRITICAL REQUIREMENTS:
 MANDATORY FIELDS (MUST BE PRESENT):
 - business_id: Use "{{TEST_BUSINESS_ID}}" if not provided
 - irn: Generate a unique invoice reference if not provided (format: INVYYYYMMDDXXX)
-- issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, default to "396" if not specified
-- invoice_kind: REQUIRED, default to "B2B" if not specified
+- invoice_type_code: REQUIRED, default to "381" (Commercial Invoice) if not specified (use "380" for Credit Note, "384" for Debit Note)
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -187,7 +185,7 @@ TAX TOTAL REQUIREMENTS (VERY IMPORTANT):
 - Each tax_subtotal must contain:
   * taxable_amount: amount subject to tax
   * tax_amount: tax amount for this subtotal
-  * tax_category: object with id and percent
+  * tax_category: object with id (e.g. "STANDARD_VAT") and percent (MUST BE 7.5 for STANDARD_VAT, and 0 for ZERO_VAT / EXEMPT_VAT)
 
 DATE FORMATTING RULES:
 1. ALL dates MUST be in YYYY-MM-DD format (e.g., "2024-05-14")

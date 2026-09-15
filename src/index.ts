@@ -17,13 +17,14 @@ if (
 import { Elysia } from "elysia";
 import { appConfig, docsConfig } from "./@config";
 import { v1Routes } from "./v1";
-import { docsAuthMiddleware, errorHandlerMiddleware } from "./middlewares";
+import { docsAuthMiddleware, errorHandlerMiddleware, securityHeadersMiddleware } from "./middlewares";
 import { logger } from "./@lib/logger";
 import { mongoPlugin, connectMongo } from "./@lib/adapters/mongo";
 import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import mongoose from "mongoose";
+import { getMetricsContentType, getMetricsText } from "./@lib/metrics";
 
 if (!appConfig) {
   throw new Error("App configuration is not defined");
@@ -58,6 +59,30 @@ const openapiPlugin = docsConfig.enabled
           { name: "Tenants", description: "Tenant & Onboarding Operations" },
           { name: "Admin", description: "Super Admin & Event Routing" },
         ],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: "http",
+              scheme: "bearer",
+              bearerFormat: "JWT",
+            },
+            adminKey: {
+              type: "apiKey",
+              description: "Admin Key",
+              name: "x-admin-key",
+              in: "header",
+            },
+            apiKey: {
+              type: "apiKey",
+              description: "API Key",
+              name: "x-api-key",
+              in: "header",
+            },
+          },
+        },
+      },
+      scalar: {
+        tagsSorter: "alpha",
       },
     })
   : new Elysia();
@@ -103,6 +128,7 @@ const isOriginAllowed = (origin: string): boolean => {
 };
 
 const app = new Elysia()
+  .use(securityHeadersMiddleware)
   .use(
     cors({
       origin: (request: Request | any) => {
@@ -137,8 +163,26 @@ const app = new Elysia()
   .use(dtsPlugin)
   .use(docsAuthMiddleware)
   .use(openapiPlugin)
+  .get(
+    "/metrics",
+    async ({ set }) => {
+      set.headers["content-type"] = getMetricsContentType();
+      return getMetricsText();
+    },
+    { detail: { hide: true } },
+  )
   .use(errorHandlerMiddleware)
   .use(v1Routes)
+  .get(
+    "/docs",
+    ({ redirect }) => redirect("/openapi"),
+    { detail: { hide: true } },
+  )
+  .get(
+    "/swagger",
+    ({ redirect }) => redirect("/openapi"),
+    { detail: { hide: true } },
+  )
   .get(
     "/",
     () => ({

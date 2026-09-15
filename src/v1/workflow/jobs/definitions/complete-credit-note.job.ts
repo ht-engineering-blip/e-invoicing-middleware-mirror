@@ -15,6 +15,8 @@ import {
   resolveOriginalInvoices,
   composeCreditNotePayload,
 } from "../../utils/credit-note-pipeline.helper";
+import { InvoiceTypeCode } from "../../utils/invoice-type";
+
 
 const outboundService = new OutboundWorkflowService();
 const transformService = new TransformWorkflowService();
@@ -31,7 +33,7 @@ export function registerCompleteCreditNoteJob(): void {
       logger.info("[Job:complete-credit-note] Starting", {
         jobChainId,
         tenantId,
-        mode: context.transformedInvoice ? "finalize" : "full-pipeline",
+        hasTransformedInvoice: !!context.transformedInvoice,
       });
 
       let irn = context.irn;
@@ -39,16 +41,13 @@ export function registerCompleteCreditNoteJob(): void {
       try {
         let qrCode: string | undefined;
         let firsSignedData: unknown;
-        let creditNotePayload = context.transformedInvoice as
-          | CreditNotePayload
-          | undefined;
-        const source =
-          (context.source as OutboundInvoiceSource) ??
-          OutboundInvoiceSource.WEBHOOK;
+        let creditNotePayload = context.transformedInvoice as CreditNotePayload;
+
+        const source = context.source ?? OutboundInvoiceSource.WEBHOOK;
         let transmissionFailed = false;
 
-        if (!context.transformedInvoice) {
-          // 1. Full-pipeline mode: Resolve references & assemble credit note payload
+        if (!creditNotePayload && context.originalPayload) {
+          // Resolve references & assemble credit note payload
           const rawPayload = (context.originalPayload || {}) as Record<
             string,
             unknown
@@ -61,12 +60,6 @@ export function registerCompleteCreditNoteJob(): void {
             outboundRepo,
             context.erpInvoiceId,
           );
-
-          irn =
-            irn ??
-            (resolvedOriginals.originalInvoices[0]?.irn
-              ? undefined
-              : undefined);
 
           creditNotePayload = await composeCreditNotePayload({
             payload: rawPayload,
@@ -92,48 +85,43 @@ export function registerCompleteCreditNoteJob(): void {
                 resolvedOriginals.creditNoteId ?? context.erpInvoiceId,
               metadata: {
                 ...(resolvedOriginals.originalInvoices[0]?.metadata ?? {}),
+                originalPayload: context.originalPayload,
                 transformedInvoice: creditNotePayload,
               },
             });
             await outboundRepo.updateWorkflowState(irn, { transformed: true });
           }
+        }
 
-          // 2. Transmit outbound workflow
+        irn = irn ?? creditNotePayload?.irn;
+
+        if (creditNotePayload && irn) {
+          creditNotePayload.invoice_type_code = InvoiceTypeCode.CREDIT_NOTE;
+
           logger.info(
-            "[Job:complete-credit-note] Executing outbound workflow (validate → sign → transmit → QR)...",
+            "[Job:complete-credit-note] Executing outbound workflow...",
             { jobChainId, irn },
           );
+
 
           const outboundResult = await outboundService.handleOutboundWorkflow(
             creditNotePayload as any,
             true,
           );
 
-          qrCode = outboundResult.qrCode as string;
-          firsSignedData = outboundResult.data;
-          transmissionFailed = Boolean(outboundResult.transmissionFailed);
-        } else {
-          // Finalize mode
-          logger.info("[Job:complete-credit-note] Finalize mode", {
-            jobChainId,
-            irn,
-          });
-
-          if (!irn) {
-            throw new Error(
-              "IRN is required for complete-credit-note finalize step",
-            );
-          }
-
+          qrCode = outboundResult?.qrCode as string;
+          firsSignedData = outboundResult?.data;
+          transmissionFailed = Boolean(outboundResult?.transmissionFailed);
+        } else if (irn) {
           const result = await outboundService.generateQRCode(
             irn,
             authContext?.tenantId ?? tenantId,
           );
-          qrCode = result.qrCode;
-          firsSignedData = result.data;
+          qrCode = result?.qrCode;
+          firsSignedData = result?.data;
         }
 
-        // 3. Persist final state
+        // Persist final state
         if (irn) {
           const finalStatus = transmissionFailed
             ? OutboundInvoiceStatus.TRANSMISTION_FAILED
@@ -155,12 +143,13 @@ export function registerCompleteCreditNoteJob(): void {
             tenantId,
           );
 
-          if (!transmissionFailed) {
-            await outboundRepo.updateWorkflowState(irn, { delivered: true });
-          }
+          await outboundRepo.updateWorkflowState(irn, {
+            transmitted: !transmissionFailed,
+            delivered: !transmissionFailed || !!qrCode,
+          });
         }
 
-        logger.info("[Job:complete-credit-note] Done — credit note DELIVERED", {
+        logger.info("[Job:complete-credit-note] Done — credit note finalized", {
           jobChainId,
           irn,
         });

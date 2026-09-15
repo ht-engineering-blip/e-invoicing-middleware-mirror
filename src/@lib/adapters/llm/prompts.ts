@@ -51,6 +51,72 @@ Valid ${format} list of objects with the following fields/keys: field_id,field_p
 If payload is invalid/empty: Output ${format} fields only
 `;
 
+export const MAPPING_RULES_PROMPT = (
+  erp: string,
+  samplePayload: any,
+  firsTargetSchema?: string,
+) => `
+You are an Expert Enterprise Integration & E-Invoicing Data Architect.
+Your task is to analyze a sample invoice payload from the "${erp}" ERP system and generate deterministic 1-to-1 and array field mapping rules to map source ERP fields to standard Nigerian FIRS UBL 2.1 e-invoicing schema fields.
+
+# Input ERP Payload:
+${JSON.stringify(samplePayload, null, 2)}
+
+# Target FIRS UBL Standard Schema Reference:
+- id: Invoice number / identifier (string)
+- issue_date: Invoice issue date YYYY-MM-DD (string)
+- issue_time: Invoice issue time HH:MM:SS (string)
+- invoice_type_code: Invoice type code e.g. "380" (Credit Note), "381" (Commercial Invoice), "384" (Debit Note), "385" (Self Billed Invoice), "388" (Factored Invoice), "389" (Statement of Account)
+- tax_currency_code: Tax currency code (e.g. "NGN")
+- invoice_kind: "B2B", "B2C", or "B2G"
+- accounting_supplier_party.party_name: Supplier business name
+- accounting_supplier_party.party_tax_scheme.company_id: Supplier TIN
+- accounting_supplier_party.postal_address.street_name: Supplier street
+- accounting_supplier_party.postal_address.city_name: Supplier city
+- accounting_supplier_party.postal_address.country_subentity: Supplier state
+- accounting_customer_party.party_name: Customer business / person name
+- accounting_customer_party.party_tax_scheme.company_id: Customer TIN / ID
+- accounting_customer_party.postal_address.street_name: Customer street
+- accounting_customer_party.postal_address.city_name: Customer city
+- accounting_customer_party.postal_address.country_subentity: Customer state
+- legal_monetary_total.line_extension_amount: Sum of line net amounts (number)
+- legal_monetary_total.tax_exclusive_amount: Total before tax (number)
+- legal_monetary_total.tax_inclusive_amount: Total including tax (number)
+- legal_monetary_total.payable_amount: Final total payable amount (number)
+- legal_monetary_total.allowance_total_amount: Total discounts (number, optional)
+- tax_total[0].tax_amount: Total tax amount (number)
+- tax_total[0].tax_subtotal[0].taxable_amount: Net amount subject to tax
+- tax_total[0].tax_subtotal[0].tax_amount: Tax subtotal amount
+- tax_total[0].tax_subtotal[0].tax_category.id: Standard FIRS tax category ID (e.g. "STANDARD_VAT", "ZERO_VAT", "EXEMPT_VAT")
+- tax_total[0].tax_subtotal[0].tax_category.percent: Tax percentage rate (MUST be 7.5 for STANDARD_VAT, 0 for ZERO_VAT / EXEMPT_VAT)
+- invoice_line[*].item.name: Item name (string)
+- invoice_line[*].item.description: Item description (string)
+- invoice_line[*].invoiced_quantity: Quantity invoiced (number)
+- invoice_line[*].price.price_amount: Unit price (number)
+- invoice_line[*].price.price_unit: Unit code (e.g. "H87" for piece)
+- invoice_line[*].line_extension_amount: Line net amount = quantity * unit price (number)
+- invoice_line[*].hsn_code: Harmonized system commodity code (string, optional)
+- invoice_line[*].product_category: Product or service category (string, optional)
+
+${firsTargetSchema ? `# Additional Schema Constraints:\n${firsTargetSchema}\n` : ""}
+
+# Output Format:
+Return ONLY a valid JSON array of objects with the structure:
+[
+  {
+    "source": "dot.path.or.array[*].path.in.source",
+    "target": "target.firs.field.path"
+  }
+]
+
+# CRITICAL RULES:
+1. "source" MUST match exact keys from the sample payload.
+2. For line item arrays, use [*] notation for both source and target (e.g. source: "invoice.line_items[*].name", target: "invoice_line[*].item.name").
+3. Map every available field from the source payload that has a corresponding FIRS field.
+4. For standard VAT (7.5%), tax_category.id MUST be "STANDARD_VAT" and tax_category.percent MUST be 7.5. For zero/exempt tax, use "ZERO_VAT" or "EXEMPT_VAT" with percent 0.
+5. Output ONLY valid JSON array with no markdown backticks, no markdown fencing, and no explanations.
+`;
+
 /**
  * Format schema fields into a readable mapping guide for the LLM
  */
@@ -137,13 +203,11 @@ export const SYSTEM_PROMPT_V2 = (
     .padStart(3, "0")}`;
   const invoiceDate =
     invoice?.date || invoice?.issue_date || invoice?.issueDate;
-  let irn =
-    invoice?.irn ||
-    generateIRN(
-      invoiceRef,
-      authContext?.serviceId,
-      invoiceDate ? new Date(invoiceDate) : undefined,
-    );
+  let irn = generateIRN(
+    invoiceRef,
+    authContext?.serviceId,
+    invoiceDate ? new Date(invoiceDate) : undefined,
+  );
   // Build source schema section
   let sourceSchemaSection = "";
   if (sourceSchema && sourceSchema.length > 0) {
@@ -213,8 +277,8 @@ ${firsSchemaSection}
 - "irn": Generate unique reference if not provided, use "${irn}" as default
 - irn should follow the format {invoiceReference}-{ServiceID}-${generateDatestamp(invoice?.date || invoice?.issue_date || new Date())}
 - issue_date: REQUIRED, use today (${today}) if not provided
-- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "396" for standard Commercial Invoice request, "380" for Credit Note, "384" for Debit Note), default to "396" if not specified. NOTE: Credit Note ("380", "393", "395") and Debit Note ("383", "384") represent adjustment documents and REQUIRE "billing_reference".
-- billing_reference: REQUIRED for Credit Notes ("380", "393", "395") and Debit Notes ("383", "384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
+- invoice_type_code: REQUIRED, derive from invoice payload and map to the right VALID INVOICE TYPES (e.g., "381" for a standard Commercial Invoice, "380" for Credit Note, "384" for Debit Note, "385" for Self Billed Invoice, "388" for Factored Invoice, "389" for Statement of Account), default to "381" if not specified. NOTE: Credit Note ("380") and Debit Note ("384") represent adjustment documents and REQUIRE "billing_reference".
+- billing_reference: REQUIRED for Credit Notes ("380") and Debit Notes ("384"). Must contain an array of objects linking the credit/debit note to the original invoice(s), each object must have "irn" and "issue_date". Optional for other invoice types. Do not include empty array if not a Credit/Debit Note.
 - document_currency_code: REQUIRED, default to "NGN"
 - accounting_supplier_party: REQUIRED with party_name, tin, email, and postal_address, for outbound you should use business context if supplier information is not provided
 - accounting_customer_party: REQUIRED with party_name, tin, email, and postal_address
@@ -286,7 +350,7 @@ Each invoice_line must contain:
 11. Focus on mandatory fields by FIRS, only populate optional fields if provided.
 12. invoice_unique_number should be "irn" in the final result
 13. For any field representing a state or LGA (Local Government Area), return the corresponding FIRS code (e.g., "NG-LA", "NG-LA-IKJ") and NOT the full name.
-14. Map ERP standard invoice_type_code 381 (Commercial Invoice) to FIRS code 396 (Invoice Request) unless it is explicitly a Credit Note (380).
+14. A standard commercial invoice is 380. Only use an adjustment code when the source document is explicitly a credit or debit note.
 
 ## MAPPING RULES TO USE INCASE THE FIELDS EXIST:
 ${JSON.stringify(mappingRules)}
@@ -323,16 +387,25 @@ export const generateTransformPrompt = async (
   let invoiceTypes: InvoiceType[] = [];
 
   try {
-    const [taxCatRes, invoiceTypeRes] = await Promise.all([
-      firsService.getResource<TaxCategory>("tax-categories"),
-      firsService.getResource<InvoiceType>("invoice-types"),
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("FIRS resources prompt timeout")),
+        1000,
+      ),
+    );
+    const [taxCatRes, invoiceTypeRes] = await Promise.race([
+      Promise.all([
+        firsService.getResource<TaxCategory>("tax-categories"),
+        firsService.getResource<InvoiceType>("invoice-types"),
+      ]),
+      timeoutPromise,
     ]);
     taxCategories = taxCatRes || [];
     invoiceTypes = invoiceTypeRes || [];
   } catch (error) {
-    console.error(
-      "Error fetching FIRS resources for prompt generation:",
-      error,
+    console.warn(
+      "Using offline defaults for prompt generation:",
+      (error as any)?.message || error,
     );
   }
 
@@ -369,4 +442,140 @@ export const generateTransformPrompt = async (
     mappingRules,
     metaContext,
   );
+};
+
+export const MAPPING_TEMPLATE_PROMPT = (
+  erp: string,
+  samplePayload: any,
+  nrsTargetVersion: string = "v1.0",
+  nrsTargetSchemaOrSample?: any,
+) => {
+  let targetSchemaSection = `
+# Target NRS / FIRS Standard Fields:
+- business_id (String, required)
+- irn (String, required)
+- issue_date (Date YYYY-MM-DD, required)
+- issue_time (Time HH:MM:SS, optional)
+- due_date (Date YYYY-MM-DD, optional)
+- invoice_type_code (String, default: "380")
+- document_currency_code (String, default: "NGN")
+- tax_currency_code (String, default: "NGN")
+- invoice_kind (String, default: "B2B")
+- accounting_supplier_party.tin (String, required)
+- accounting_supplier_party.party_name (String, required)
+- accounting_supplier_party.email (String, optional)
+- accounting_supplier_party.telephone (String, optional)
+- accounting_supplier_party.postal_address.street_name (String, optional)
+- accounting_supplier_party.postal_address.city_name (String, optional)
+- accounting_supplier_party.postal_address.state (String, optional)
+- accounting_supplier_party.postal_address.postal_zone (String, optional)
+- accounting_supplier_party.postal_address.country (String, default: "NG")
+- accounting_customer_party.tin (String, required)
+- accounting_customer_party.party_name (String, required)
+- accounting_customer_party.email (String, required)
+- accounting_customer_party.telephone (String, optional)
+- accounting_customer_party.postal_address.street_name (String, optional)
+- accounting_customer_party.postal_address.city_name (String, optional)
+- accounting_customer_party.postal_address.state (String, optional)
+- accounting_customer_party.postal_address.postal_zone (String, optional)
+- accounting_customer_party.postal_address.country (String, default: "NG")
+- invoice_line (Array of items):
+  - item.name (String, required)
+  - item.description (String, optional)
+  - invoiced_quantity (Number, required)
+  - price.price_amount (Number, required)
+  - price.price_unit (String, default: "H87")
+  - line_extension_amount (Number, required)
+  - hsn_code (String, optional)
+  - product_category (String, optional)
+`;
+
+  if (nrsTargetSchemaOrSample) {
+    if (Array.isArray(nrsTargetSchemaOrSample)) {
+      targetSchemaSection = `
+# Target NRS / FIRS Schema Requirements (from Database Dictionary):
+${formatSchemaFields(nrsTargetSchemaOrSample, "NRS Schema")}
+`;
+    } else if (typeof nrsTargetSchemaOrSample === "object") {
+      targetSchemaSection = `
+# Target NRS / FIRS Standard Structure & Schema (from Database):
+${JSON.stringify(nrsTargetSchemaOrSample, null, 2)}
+`;
+    }
+  }
+
+  return `
+You are an Expert Enterprise Integration & E-Invoicing Data Architect.
+Your task is to analyze a sample invoice payload from "${erp}" and generate a complete, deterministic, production-grade MappingTemplate JSON object to map the ERP payload to the standard Nigerian NRS / FIRS UBL 2.1 e-invoicing schema (version: ${nrsTargetVersion}).
+
+# Source ERP Inbound Payload:
+${JSON.stringify(samplePayload, null, 2)}
+${targetSchemaSection}
+# Supported Field Transformers:
+- "toDate"
+- "toTime"
+- "toNumber"
+- "toString"
+- "trim"
+- "uppercase"
+- "lowercase"
+- "sanitizePhone"
+- "sanitizeHsn"
+- "sanitizePriceUnit"
+
+# System Dynamic Fallback Placeholders (Normalized to ALL CAPS):
+When the source ERP payload does NOT provide values for auto-generated or tenant-managed fields, use the following placeholder tokens as "default_value" (or fallback). The middleware recognizes any {{...}} token, normalizes it to ALL CAPS, and automatically resolves it dynamically:
+- "irn": use "{{IRN}}" as default_value (system auto-generates compliance-grade IRN)
+- "business_id": use "{{BUSINESS_ID}}"
+- "accounting_supplier_party.tin": use "{{SUPPLIER_TIN}}"
+- "accounting_supplier_party.party_name": use "{{SUPPLIER_NAME}}"
+- "accounting_supplier_party.email": use "{{SUPPLIER_EMAIL}}"
+- "issue_date": use "{{ISSUE_DATE}}"
+- "issue_time": use "{{ISSUE_TIME}}"
+
+# Desired Output JSON Structure:
+{
+  "erp_source": "${erp}",
+  "nrs_schema_version": "${nrsTargetVersion}",
+  "field_mappings": [
+    {
+      "target": "irn",
+      "source": "exact.source.path",
+      "fallback_sources": ["alternative.source.path"],
+      "default_value": "{{IRN}}",
+      "transform": "trim"
+    },
+    {
+      "target": "accounting_supplier_party.tin",
+      "source": null,
+      "default_value": "{{SUPPLIER_TIN}}"
+    },
+    {
+      "target": "accounting_supplier_party.party_name",
+      "source": null,
+      "default_value": "{{SUPPLIER_NAME}}"
+    }
+  ],
+  "array_mappings": [
+    {
+      "source_array": "source_items_array_path",
+      "target_array": "invoice_line",
+      "item_mappings": [
+        { "target": "item.name", "source": "name", "transform": "trim" },
+        { "target": "invoiced_quantity", "source": "qty", "transform": "toNumber" },
+        { "target": "price.price_amount", "source": "unit_price", "transform": "toNumber" },
+        { "target": "line_extension_amount", "source": "total", "transform": "toNumber" }
+      ]
+    }
+  ],
+  "constants": {
+    "document_currency_code": "NGN",
+    "tax_currency_code": "NGN",
+    "invoice_type_code": "380"
+  }
+}
+
+# Output Instructions:
+Output ONLY the valid JSON object described above with no markdown formatting, no backticks, no notes.
+`;
 };
