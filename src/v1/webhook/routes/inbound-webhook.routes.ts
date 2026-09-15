@@ -6,7 +6,6 @@ import {
   logger,
   ResponseBuilder,
 } from "../../../@lib";
-import { recordInvoiceSubmitted } from "../../../@lib/metrics";
 import { EventRoutingRepository } from "../../admin/repos/event-routing.repo";
 import { TenantRepository } from "../../tenants/repos/tenant.repo";
 import { scheduleJobChain } from "../../workflow/jobs/orchestrator";
@@ -246,13 +245,6 @@ export const inboundWebhookRoutes = new Elysia()
 
       const channel = `wh:${webhookPath}`;
       webhookBus.emit(channel, savedEvent);
-
-      recordInvoiceSubmitted({
-        tenantId: tenant.tenantId,
-        source: OutboundInvoiceSource.WEBHOOK,
-        eventType,
-        erpSystem: config?.erpSystem ?? "UNKNOWN",
-      });
 
       if (routedActions.length > 0) {
         scheduleJobChain({
