@@ -1,0 +1,28 @@
+groups:
+  - name: einvoice_request_monitoring
+    interval: 30s
+    rules:
+      - record: einvoice:submitted:rate5m
+        expr: sum(rate(einvoice_invoices_submitted_total[5m]))
+
+      - record: einvoice:accepted:rate5m
+        expr: sum(rate(einvoice_invoices_accepted_total[5m]))
+
+      - record: einvoice:success_rate:5m
+        expr: |
+          sum(rate(einvoice_invoices_processed_total{result="success"}[5m]))
+          /
+          clamp_min(sum(rate(einvoice_invoices_processed_total[5m])), 1e-9)
+
+      - record: einvoice:processing_duration:p95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(einvoice_invoice_processing_duration_seconds_bucket[5m]))
+          )
+
+      - record: einvoice:submitted:increase1h
+        expr: sum(increase(einvoice_invoices_submitted_total[1h]))
+
+      - record: einvoice:accepted:increase1h
+        expr: sum(increase(einvoice_invoices_accepted_total[1h]))

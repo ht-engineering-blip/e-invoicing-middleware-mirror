@@ -24,6 +24,7 @@ import { dts } from "elysia-remote-dts";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import mongoose from "mongoose";
+import { getMetricsContentType, getMetricsText } from "./@lib/metrics";
 
 if (!appConfig) {
   throw new Error("App configuration is not defined");
@@ -162,6 +163,14 @@ const app = new Elysia()
   .use(dtsPlugin)
   .use(docsAuthMiddleware)
   .use(openapiPlugin)
+  .get(
+    "/metrics",
+    async ({ set }) => {
+      set.headers["content-type"] = getMetricsContentType();
+      return getMetricsText();
+    },
+    { detail: { hide: true } },
+  )
   .use(errorHandlerMiddleware)
   .use(v1Routes)
   .get(

@@ -30,6 +30,10 @@ interface JobChainData {
     originalPayload: any;
     sourceType?: string;
     source?: import("../models").OutboundInvoiceSource; // OutboundInvoiceSource ('webhook' | 'api')
+    /** Epoch ms when the invoice was accepted for processing (for duration metrics) */
+    metricsStartedAt?: number;
+    /** ERP system name for Grafana filtering (from tenant.config.erpSystem) */
+    erpSystem?: string;
     irn?: string;
     erpInvoiceId?: string;
     transformedInvoice?: any; // FIRS-formatted invoice (output of transform)
