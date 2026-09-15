@@ -46,11 +46,54 @@ export class OutboundInvoiceRepository {
       } else if (key === "_or" && Array.isArray(value)) {
         query.$or = value.map((cond) => this.buildOutboundInvoiceQuery(cond));
       } else if (key === "search" && typeof value === "string") {
+        const sRegex = safeSearchRegExp(value);
         query.$or = [
-          { invoiceNumber: safeSearchRegExp(value) },
-          { customerName: safeSearchRegExp(value) },
-          { customerTIN: safeSearchRegExp(value) },
-          { irn: safeSearchRegExp(value) },
+          { invoiceNumber: sRegex },
+          { customerName: sRegex },
+          { customerTIN: sRegex },
+          { irn: sRegex },
+          { erpInvoiceId: sRegex },
+          { "metadata.invoiceNumber": sRegex },
+          { "metadata.InvoiceNumber": sRegex },
+          { "metadata.invoice_number": sRegex },
+          { "metadata.transformedInvoice.invoice_number": sRegex },
+          { "metadata.transformedInvoice.invoice_reference": sRegex },
+          { "metadata.transformedInvoice.invoiceNumber": sRegex },
+          { "metadata.originalPayload.invoice_number": sRegex },
+          { "metadata.originalPayload.invoiceNumber": sRegex },
+          { "metadata.customerName": sRegex },
+          { "metadata.customer_name": sRegex },
+          { "metadata.accounting_customer_party.party_name": sRegex },
+          { "metadata.AccountingCustomerParty.Party.PartyName.0.Name": sRegex },
+          { "metadata.transformedInvoice.accounting_customer_party.party_name": sRegex },
+          { "metadata.originalPayload.customer_name": sRegex },
+          { "metadata.originalPayload.customerName": sRegex },
+        ];
+      } else if (key === "invoiceNumber" && typeof value === "string") {
+        const invRegex = safeSearchRegExp(value);
+        query.$or = [
+          { invoiceNumber: invRegex },
+          { erpInvoiceId: invRegex },
+          { "metadata.invoiceNumber": invRegex },
+          { "metadata.InvoiceNumber": invRegex },
+          { "metadata.invoice_number": invRegex },
+          { "metadata.transformedInvoice.invoice_number": invRegex },
+          { "metadata.transformedInvoice.invoice_reference": invRegex },
+          { "metadata.transformedInvoice.invoiceNumber": invRegex },
+          { "metadata.originalPayload.invoice_number": invRegex },
+          { "metadata.originalPayload.invoiceNumber": invRegex },
+        ];
+      } else if (key === "customerName" && typeof value === "string") {
+        const custRegex = safeSearchRegExp(value);
+        query.$or = [
+          { customerName: custRegex },
+          { "metadata.customerName": custRegex },
+          { "metadata.customer_name": custRegex },
+          { "metadata.accounting_customer_party.party_name": custRegex },
+          { "metadata.AccountingCustomerParty.Party.PartyName.0.Name": custRegex },
+          { "metadata.transformedInvoice.accounting_customer_party.party_name": custRegex },
+          { "metadata.originalPayload.customer_name": custRegex },
+          { "metadata.originalPayload.customerName": custRegex },
         ];
       } else if (
         value &&
@@ -125,6 +168,8 @@ export class OutboundInvoiceRepository {
     paymentStatus?: string;
     irn?: string;
     search?: string;
+    invoiceNumber?: string;
+    customerName?: string;
     from?: Date;
     to?: Date;
     page?: number;
@@ -146,65 +191,182 @@ export class OutboundInvoiceRepository {
       const isAdmin = auth?.isAdmin;
 
       // 1. Build outbound match query
-      const outboundMatch: any = {};
-      if (!isAdmin && tenantId) outboundMatch.tenantId = tenantId;
+      const outboundAnd: any[] = [];
+      if (!isAdmin && tenantId) outboundAnd.push({ tenantId });
       if (params.status?.trim()) {
         const statusVal = params.status.trim().toUpperCase();
         if (statusVal === "FAILED") {
-          outboundMatch.status = { $in: ["FAILED", "TRANSMISTION_FAILED"] };
+          outboundAnd.push({ status: { $in: ["FAILED", "TRANSMISTION_FAILED"] } });
         } else {
-          outboundMatch.status = statusVal;
+          outboundAnd.push({ status: statusVal });
         }
       }
-      if (params.source?.trim()) outboundMatch.source = params.source.trim();
+      if (params.source?.trim()) outboundAnd.push({ source: params.source.trim() });
       if (params.erpInvoiceId?.trim())
-        outboundMatch.erpInvoiceId = params.erpInvoiceId.trim();
+        outboundAnd.push({ erpInvoiceId: params.erpInvoiceId.trim() });
       if (params.irn?.trim())
-        outboundMatch.irn = safeSearchRegExp(params.irn.trim());
-      if (params.search?.trim()) {
-        const searchRegex = safeSearchRegExp(params.search.trim());
-        outboundMatch.$or = [
-          { invoiceNumber: searchRegex },
-          { customerName: searchRegex },
-          { customerTIN: searchRegex },
-          { irn: searchRegex },
-        ];
-      }
-      if (params.from || params.to) {
-        outboundMatch.createdAt = {};
-        if (params.from) outboundMatch.createdAt.$gte = params.from;
-        if (params.to) outboundMatch.createdAt.$lte = params.to;
+        outboundAnd.push({ irn: safeSearchRegExp(params.irn.trim()) });
+
+      if (params.invoiceNumber?.trim()) {
+        const invNumRegex = safeSearchRegExp(params.invoiceNumber.trim());
+        outboundAnd.push({
+          $or: [
+            { invoiceNumber: invNumRegex },
+            { erpInvoiceId: invNumRegex },
+            { "metadata.invoiceNumber": invNumRegex },
+            { "metadata.InvoiceNumber": invNumRegex },
+            { "metadata.invoice_number": invNumRegex },
+            { "metadata.transformedInvoice.invoice_number": invNumRegex },
+            { "metadata.transformedInvoice.invoice_reference": invNumRegex },
+            { "metadata.transformedInvoice.invoiceNumber": invNumRegex },
+            { "metadata.originalPayload.invoice_number": invNumRegex },
+            { "metadata.originalPayload.invoiceNumber": invNumRegex },
+            { "metadata.originalPayload.InvoiceNumber": invNumRegex },
+            { "metadata.originalPayload.invoice.invoice_number": invNumRegex },
+            { "metadata.originalPayload.invoice.invoiceNumber": invNumRegex },
+          ],
+        });
       }
 
-      // 2. Build inbound match query
-      const inboundMatch: any = {};
-      if (businessId?.trim()) {
-        inboundMatch.businessId = businessId.trim();
-      } else if (!isAdmin && tenantId) {
-        inboundMatch.tenantId = tenantId;
+      if (params.customerName?.trim()) {
+        const custNameRegex = safeSearchRegExp(params.customerName.trim());
+        outboundAnd.push({
+          $or: [
+            { customerName: custNameRegex },
+            { "metadata.customerName": custNameRegex },
+            { "metadata.customer_name": custNameRegex },
+            { "metadata.AccountingCustomerParty.Party.PartyName.0.Name": custNameRegex },
+            { "metadata.accounting_customer_party.party_name": custNameRegex },
+            { "metadata.transformedInvoice.accounting_customer_party.party_name": custNameRegex },
+            { "metadata.transformedInvoice.customerName": custNameRegex },
+            { "metadata.transformedInvoice.customer_name": custNameRegex },
+            { "metadata.originalPayload.customer_name": custNameRegex },
+            { "metadata.originalPayload.customerName": custNameRegex },
+            { "metadata.originalPayload.customer.customer_name": custNameRegex },
+            { "metadata.originalPayload.invoice.customer_name": custNameRegex },
+          ],
+        });
       }
-      if (params.status?.trim()) {
-        inboundMatch.status = params.status.trim().toUpperCase();
-      }
-      if (params.paymentStatus?.trim()) {
-        inboundMatch["payment.paymentStatus"] = params.paymentStatus.trim();
-      }
-      if (params.irn?.trim())
-        inboundMatch.irn = safeSearchRegExp(params.irn.trim());
+
       if (params.search?.trim()) {
         const searchRegex = safeSearchRegExp(params.search.trim());
-        inboundMatch.$or = [
-          { invoiceNumber: searchRegex },
-          { supplierName: searchRegex },
-          { supplierTIN: searchRegex },
-          { irn: searchRegex },
-        ];
+        outboundAnd.push({
+          $or: [
+            { invoiceNumber: searchRegex },
+            { customerName: searchRegex },
+            { customerTIN: searchRegex },
+            { irn: searchRegex },
+            { erpInvoiceId: searchRegex },
+            { "metadata.invoiceNumber": searchRegex },
+            { "metadata.InvoiceNumber": searchRegex },
+            { "metadata.invoice_number": searchRegex },
+            { "metadata.transformedInvoice.invoice_number": searchRegex },
+            { "metadata.transformedInvoice.invoice_reference": searchRegex },
+            { "metadata.transformedInvoice.invoiceNumber": searchRegex },
+            { "metadata.originalPayload.invoice_number": searchRegex },
+            { "metadata.originalPayload.invoiceNumber": searchRegex },
+            { "metadata.originalPayload.InvoiceNumber": searchRegex },
+            { "metadata.originalPayload.invoice.invoice_number": searchRegex },
+            { "metadata.originalPayload.invoice.invoiceNumber": searchRegex },
+            { "metadata.customerName": searchRegex },
+            { "metadata.customer_name": searchRegex },
+            { "metadata.accounting_customer_party.party_name": searchRegex },
+            { "metadata.AccountingCustomerParty.Party.PartyName.0.Name": searchRegex },
+            { "metadata.transformedInvoice.accounting_customer_party.party_name": searchRegex },
+            { "metadata.transformedInvoice.customerName": searchRegex },
+            { "metadata.transformedInvoice.customer_name": searchRegex },
+            { "metadata.originalPayload.customer_name": searchRegex },
+            { "metadata.originalPayload.customerName": searchRegex },
+            { "metadata.originalPayload.customer.customer_name": searchRegex },
+            { "metadata.originalPayload.invoice.customer_name": searchRegex },
+          ],
+        });
       }
+
       if (params.from || params.to) {
-        inboundMatch.createdAt = {};
-        if (params.from) inboundMatch.createdAt.$gte = params.from;
-        if (params.to) inboundMatch.createdAt.$lte = params.to;
+        const dateCond: any = {};
+        if (params.from) dateCond.$gte = params.from;
+        if (params.to) dateCond.$lte = params.to;
+        outboundAnd.push({ createdAt: dateCond });
       }
+
+      const outboundMatch = outboundAnd.length > 0 ? { $and: outboundAnd } : {};
+
+      // 2. Build inbound match query
+      const inboundAnd: any[] = [];
+      if (businessId?.trim()) {
+        inboundAnd.push({ businessId: businessId.trim() });
+      } else if (!isAdmin && tenantId) {
+        inboundAnd.push({ tenantId });
+      }
+      if (params.status?.trim()) {
+        inboundAnd.push({ status: params.status.trim().toUpperCase() });
+      }
+      if (params.paymentStatus?.trim()) {
+        inboundAnd.push({ "payment.paymentStatus": params.paymentStatus.trim() });
+      }
+      if (params.irn?.trim()) {
+        inboundAnd.push({ irn: safeSearchRegExp(params.irn.trim()) });
+      }
+
+      if (params.invoiceNumber?.trim()) {
+        const invNumRegex = safeSearchRegExp(params.invoiceNumber.trim());
+        inboundAnd.push({
+          $or: [
+            { invoiceNumber: invNumRegex },
+            { "invoice.invoiceNumber": invNumRegex },
+            { "invoice.invoice_number": invNumRegex },
+            { "invoice.invoice_reference": invNumRegex },
+            { "invoice.invoice.invoiceNumber": invNumRegex },
+            { "metadata.invoiceNumber": invNumRegex },
+          ],
+        });
+      }
+
+      if (params.customerName?.trim()) {
+        const custNameRegex = safeSearchRegExp(params.customerName.trim());
+        inboundAnd.push({
+          $or: [
+            { customerName: custNameRegex },
+            { "invoice.accounting_customer_party.party_name": custNameRegex },
+            { "invoice.customerName": custNameRegex },
+            { "invoice.customer_name": custNameRegex },
+            { "metadata.customerName": custNameRegex },
+            { supplierName: custNameRegex },
+          ],
+        });
+      }
+
+      if (params.search?.trim()) {
+        const searchRegex = safeSearchRegExp(params.search.trim());
+        inboundAnd.push({
+          $or: [
+            { invoiceNumber: searchRegex },
+            { "invoice.invoiceNumber": searchRegex },
+            { "invoice.invoice_number": searchRegex },
+            { "invoice.invoice_reference": searchRegex },
+            { "invoice.invoice.invoiceNumber": searchRegex },
+            { "metadata.invoiceNumber": searchRegex },
+            { customerName: searchRegex },
+            { "invoice.accounting_customer_party.party_name": searchRegex },
+            { "invoice.customerName": searchRegex },
+            { "invoice.customer_name": searchRegex },
+            { "metadata.customerName": searchRegex },
+            { supplierName: searchRegex },
+            { supplierTIN: searchRegex },
+            { irn: searchRegex },
+          ],
+        });
+      }
+
+      if (params.from || params.to) {
+        const dateCond: any = {};
+        if (params.from) dateCond.$gte = params.from;
+        if (params.to) dateCond.$lte = params.to;
+        inboundAnd.push({ createdAt: dateCond });
+      }
+
+      const inboundMatch = inboundAnd.length > 0 ? { $and: inboundAnd } : {};
 
       const outboundProjectStage = {
         $project: {
@@ -219,6 +381,15 @@ export class OutboundInvoiceRepository {
               "$metadata.invoiceNumber",
               "$metadata.InvoiceNumber",
               "$metadata.invoice_number",
+              "$metadata.transformedInvoice.invoice_number",
+              "$metadata.transformedInvoice.invoice_reference",
+              "$metadata.transformedInvoice.invoiceNumber",
+              "$metadata.originalPayload.invoice_number",
+              "$metadata.originalPayload.invoiceNumber",
+              "$metadata.originalPayload.InvoiceNumber",
+              "$metadata.originalPayload.invoice.invoice_number",
+              "$metadata.originalPayload.invoice.invoiceNumber",
+              "$erpInvoiceId",
               null,
             ],
           },
@@ -237,9 +408,17 @@ export class OutboundInvoiceRepository {
           customerName: {
             $ifNull: [
               "$customerName",
+              "$metadata.customerName",
+              "$metadata.customer_name",
               "$metadata.AccountingCustomerParty.Party.PartyName.0.Name",
               "$metadata.accounting_customer_party.party_name",
-              "$metadata.customerName",
+              "$metadata.transformedInvoice.accounting_customer_party.party_name",
+              "$metadata.transformedInvoice.customerName",
+              "$metadata.transformedInvoice.customer_name",
+              "$metadata.originalPayload.customer_name",
+              "$metadata.originalPayload.customerName",
+              "$metadata.originalPayload.customer.customer_name",
+              "$metadata.originalPayload.invoice.customer_name",
               null,
             ],
           },
@@ -289,7 +468,15 @@ export class OutboundInvoiceRepository {
           type: { $literal: "inbound" },
           direction: { $literal: "INBOUND" },
           invoiceNumber: {
-            $ifNull: ["$invoiceNumber", "$invoice.invoiceNumber", null],
+            $ifNull: [
+              "$invoiceNumber",
+              "$invoice.invoiceNumber",
+              "$invoice.invoice_number",
+              "$invoice.invoice_reference",
+              "$invoice.invoice.invoiceNumber",
+              "$metadata.invoiceNumber",
+              null,
+            ],
           },
           status: { $ifNull: ["$status", "TRANSMITTED"] },
           paymentStatus: {
@@ -304,6 +491,8 @@ export class OutboundInvoiceRepository {
               "$customerName",
               "$invoice.accounting_customer_party.party_name",
               "$invoice.customerName",
+              "$invoice.customer_name",
+              "$metadata.customerName",
               null,
             ],
           },
@@ -651,6 +840,7 @@ export class OutboundInvoiceRepository {
       }
 
       const cleanSet = { ...mutableFields };
+
       for (const key of Object.keys(setOnInsert)) {
         delete cleanSet[key];
       }
@@ -1135,13 +1325,28 @@ export class OutboundInvoiceRepository {
     try {
       const offset = (page - 1) * limit;
 
+      const searchRegex = safeSearchRegExp(searchQuery);
       const query: any = {
         businessId,
         $or: [
-          { invoiceNumber: safeSearchRegExp(searchQuery) },
-          { customerName: safeSearchRegExp(searchQuery) },
-          { customerTIN: safeSearchRegExp(searchQuery) },
-          { irn: safeSearchRegExp(searchQuery) },
+          { invoiceNumber: searchRegex },
+          { customerName: searchRegex },
+          { customerTIN: searchRegex },
+          { irn: searchRegex },
+          { erpInvoiceId: searchRegex },
+          { "metadata.invoiceNumber": searchRegex },
+          { "metadata.InvoiceNumber": searchRegex },
+          { "metadata.invoice_number": searchRegex },
+          { "metadata.transformedInvoice.invoice_number": searchRegex },
+          { "metadata.transformedInvoice.invoice_reference": searchRegex },
+          { "metadata.transformedInvoice.invoiceNumber": searchRegex },
+          { "metadata.originalPayload.invoice_number": searchRegex },
+          { "metadata.originalPayload.invoiceNumber": searchRegex },
+          { "metadata.customerName": searchRegex },
+          { "metadata.customer_name": searchRegex },
+          { "metadata.accounting_customer_party.party_name": searchRegex },
+          { "metadata.AccountingCustomerParty.Party.PartyName.0.Name": searchRegex },
+          { "metadata.transformedInvoice.accounting_customer_party.party_name": searchRegex },
         ],
       };
 
