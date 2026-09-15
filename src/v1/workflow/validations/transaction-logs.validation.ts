@@ -8,6 +8,8 @@ export const listOutboundInvoicesValidation = {
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
     irn: t.Optional(t.String()),
+    invoiceNumber: t.Optional(t.String({ description: "Filter by invoice number" })),
+    customerName: t.Optional(t.String({ description: "Filter by customer name" })),
     search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
@@ -98,6 +100,8 @@ export const listInboundInvoicesValidation = {
     status: t.Optional(t.String()),
     paymentStatus: t.Optional(t.String()),
     irn: t.Optional(t.String()),
+    invoiceNumber: t.Optional(t.String({ description: "Filter by invoice number" })),
+    customerName: t.Optional(t.String({ description: "Filter by customer name" })),
     search: t.Optional(t.String()),
     from: t.Optional(t.String()),
     to: t.Optional(t.String()),
@@ -122,6 +126,18 @@ export const getInboundInvoiceValidation = {
   },
 };
 
+export const getInvoiceValidation = {
+  params: t.Object({
+    irn: t.String(),
+  }),
+  detail: {
+    tags: ["Transaction Logs"],
+    security: [{ apiKey: [] }, { bearerAuth: [] }] as any,
+    summary: "Get Invoice by IRN",
+    description: "Get invoice details by IRN across outbound and inbound",
+  },
+};
+
 export const listAllInvoicesValidation = {
   query: t.Object({
     page: t.Optional(t.String()),
@@ -129,6 +145,8 @@ export const listAllInvoicesValidation = {
     source: t.Optional(t.String()),
     erpInvoiceId: t.Optional(t.String()),
     irn: t.Optional(t.String()),
+    invoiceNumber: t.Optional(t.String({ description: "Filter by invoice number" })),
+    customerName: t.Optional(t.String({ description: "Filter by customer name" })),
     type: t.Optional(
       t.String({
         description:

@@ -30,11 +30,39 @@ export class InboundInvoiceRepository {
       } else if (key === "_or" && Array.isArray(value)) {
         query.$or = value.map((cond) => this.buildInboundInvoiceQuery(cond));
       } else if (key === "search" && typeof value === "string") {
+        const sRegex = safeSearchRegExp(value);
         query.$or = [
-          { invoiceNumber: safeSearchRegExp(value) },
-          { supplierName: safeSearchRegExp(value) },
-          { supplierTIN: safeSearchRegExp(value) },
-          { irn: safeSearchRegExp(value) },
+          { invoiceNumber: sRegex },
+          { "invoice.invoiceNumber": sRegex },
+          { "invoice.invoice_number": sRegex },
+          { "invoice.invoice_reference": sRegex },
+          { "metadata.invoiceNumber": sRegex },
+          { customerName: sRegex },
+          { "invoice.accounting_customer_party.party_name": sRegex },
+          { "invoice.customerName": sRegex },
+          { "invoice.customer_name": sRegex },
+          { "metadata.customerName": sRegex },
+          { supplierName: sRegex },
+          { supplierTIN: sRegex },
+          { irn: sRegex },
+        ];
+      } else if (key === "invoiceNumber" && typeof value === "string") {
+        const invRegex = safeSearchRegExp(value);
+        query.$or = [
+          { invoiceNumber: invRegex },
+          { "invoice.invoiceNumber": invRegex },
+          { "invoice.invoice_number": invRegex },
+          { "invoice.invoice_reference": invRegex },
+          { "metadata.invoiceNumber": invRegex },
+        ];
+      } else if (key === "customerName" && typeof value === "string") {
+        const custRegex = safeSearchRegExp(value);
+        query.$or = [
+          { customerName: custRegex },
+          { "invoice.accounting_customer_party.party_name": custRegex },
+          { "invoice.customerName": custRegex },
+          { "invoice.customer_name": custRegex },
+          { "metadata.customerName": custRegex },
         ];
       } else if (
         value &&
@@ -536,13 +564,23 @@ export class InboundInvoiceRepository {
     try {
       const offset = (page - 1) * limit;
 
+      const searchRegex = safeSearchRegExp(searchQuery);
       const query: any = {
         businessId,
         $or: [
-          { invoiceNumber: safeSearchRegExp(searchQuery) },
-          { supplierName: safeSearchRegExp(searchQuery) },
-          { supplierTIN: safeSearchRegExp(searchQuery) },
-          { irn: safeSearchRegExp(searchQuery) },
+          { invoiceNumber: searchRegex },
+          { "invoice.invoiceNumber": searchRegex },
+          { "invoice.invoice_number": searchRegex },
+          { "invoice.invoice_reference": searchRegex },
+          { "metadata.invoiceNumber": searchRegex },
+          { customerName: searchRegex },
+          { "invoice.accounting_customer_party.party_name": searchRegex },
+          { "invoice.customerName": searchRegex },
+          { "invoice.customer_name": searchRegex },
+          { "metadata.customerName": searchRegex },
+          { supplierName: searchRegex },
+          { supplierTIN: searchRegex },
+          { irn: searchRegex },
         ],
       };
 

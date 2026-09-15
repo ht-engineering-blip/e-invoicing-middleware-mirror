@@ -108,7 +108,7 @@ export class TenantErpConfigService extends BaseService {
    */
   getDecryptedERPSyncConfig(tenant: TenantDocument): ERPSyncConfigInput | null {
     const tenantObj = (tenant as any).toObject
-      ? (tenant as any).toObject({ flattenMaps: true })
+      ? tenant.toObject({ flattenMaps: true })
       : JSON.parse(JSON.stringify(tenant));
 
     const config = tenantObj.config?.erpSyncConfig;
