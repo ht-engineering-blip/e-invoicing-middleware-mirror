@@ -2,7 +2,7 @@ import type { Job } from "agenda";
 import { agenda } from "../../../@lib/queue/agenda";
 import { logger } from "../../../@lib/logger";
 import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
-import { isInvoicePipeline, recordInvoiceProcessed } from "../../../@lib/metrics";
+import { isInvoicePipeline, recordInvoiceAcceptedByNrs, recordInvoiceProcessed } from "../../../@lib/metrics";
 import { ACTION_TO_JOB } from "./types";
 import { OutboundInvoiceStatus } from "../models/outbound-invoice.model";
 
@@ -63,9 +63,9 @@ export async function chainNext(
     }
 
     if (isInvoicePipeline(data.actions)) {
-      recordInvoiceProcessed({
+      recordInvoiceAcceptedByNrs({
         tenantId: data.tenantId,
-        result: "success",
+        eventType: data.eventType,
         startedAtMs: updatedContext.metricsStartedAt,
         erpSystem:
           updatedContext.erpSystem ??

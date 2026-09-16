@@ -24,30 +24,37 @@ function normalizeErp(erp?: string): string {
   return value.length ? value : 'unknown';
 }
 
+/**
+ * Business metrics (worker scrape):
+ * - submitted  = invoice entered the e-invoicing app / processing pipeline
+ * - accepted   = accepted by NRS (FIRS) — successful end-to-end outcome
+ * - processed{result=failure} = failed before/at NRS outcome
+ * - duration   = time from submit (chain start) → success or failure
+ */
 export const invoicesSubmittedTotal = new client.Counter({
   name: 'einvoice_invoices_submitted_total',
-  help: 'Total invoices submitted for processing (recorded on worker when chain starts)',
+  help: 'Invoices submitted to the e-invoicing app (pipeline started)',
   labelNames: ['tenant_id', 'source', 'event_type', 'erp_system'] as const,
   registers: [metricsRegistry],
 });
 
 export const invoicesAcceptedTotal = new client.Counter({
   name: 'einvoice_invoices_accepted_total',
-  help: 'Total invoices accepted for processing (recorded on worker when chain starts)',
+  help: 'Invoices accepted by NRS/FIRS (successful processing outcome)',
   labelNames: ['tenant_id', 'event_type', 'erp_system'] as const,
   registers: [metricsRegistry],
 });
 
 export const invoicesProcessedTotal = new client.Counter({
   name: 'einvoice_invoices_processed_total',
-  help: 'Total invoices that reached a terminal processing outcome',
+  help: 'Invoices that reached a terminal outcome (success=NRS accepted, failure=rejected/failed)',
   labelNames: ['tenant_id', 'result', 'erp_system'] as const,
   registers: [metricsRegistry],
 });
 
 export const invoiceProcessingDurationSeconds = new client.Histogram({
   name: 'einvoice_invoice_processing_duration_seconds',
-  help: 'End-to-end invoice processing duration from accept to terminal state',
+  help: 'Time from invoice submit to NRS success or failure outcome',
   labelNames: ['tenant_id', 'result', 'erp_system'] as const,
   buckets: [0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800],
   registers: [metricsRegistry],
@@ -77,18 +84,26 @@ export function recordInvoiceSubmitted(labels: {
   );
 }
 
-export function recordInvoiceAccepted(labels: {
+/** NRS/FIRS accepted the invoice (successful terminal outcome). */
+export function recordInvoiceAcceptedByNrs(labels: {
   tenantId: string;
   eventType: string;
   erpSystem?: string;
+  startedAtMs?: number;
 }): void {
-  safeInc(() =>
+  safeInc(() => {
     invoicesAcceptedTotal.inc({
       tenant_id: labels.tenantId || 'unknown',
       event_type: labels.eventType || 'unknown',
       erp_system: normalizeErp(labels.erpSystem),
-    })
-  );
+    });
+  });
+  recordInvoiceProcessed({
+    tenantId: labels.tenantId,
+    result: 'success',
+    startedAtMs: labels.startedAtMs,
+    erpSystem: labels.erpSystem,
+  });
 }
 
 export function recordInvoiceProcessed(labels: {
@@ -111,29 +126,5 @@ export function recordInvoiceProcessed(labels: {
         seconds
       );
     }
-  });
-}
-
-/**
- * Record submitted + accepted on the worker when a pipeline chain's first
- * job starts. Keeps all request-monitoring series on the EC2 scrape target
- * (API on Vercel is not scraped).
- */
-export function recordInvoiceChainStarted(labels: {
-  tenantId: string;
-  source?: string;
-  eventType: string;
-  erpSystem?: string;
-}): void {
-  recordInvoiceSubmitted({
-    tenantId: labels.tenantId,
-    source: labels.source || 'unknown',
-    eventType: labels.eventType,
-    erpSystem: labels.erpSystem,
-  });
-  recordInvoiceAccepted({
-    tenantId: labels.tenantId,
-    eventType: labels.eventType,
-    erpSystem: labels.erpSystem,
   });
 }
