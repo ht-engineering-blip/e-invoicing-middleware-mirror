@@ -1,14 +1,12 @@
 /**
- * Worker-side invoice intake metrics.
- *
- * Submitted/accepted must be recorded here (not on the Vercel API) so
- * Prometheus scraping heirs-inv-middleware:3002 sees all request panels.
+ * Worker-side: count invoices submitted when a pipeline chain starts.
+ * NRS acceptance is recorded separately on successful chain completion.
  */
 import type { Job } from "agenda";
 import { agenda } from "../../../@lib/queue/agenda";
 import {
   isInvoicePipeline,
-  recordInvoiceChainStarted,
+  recordInvoiceSubmitted,
 } from "../../../@lib/metrics";
 import { logger } from "../../../@lib/logger";
 
@@ -47,14 +45,14 @@ export function registerInvoiceIntakeMetrics(): void {
             ? String(data.context.source)
             : "unknown";
 
-      recordInvoiceChainStarted({
+      recordInvoiceSubmitted({
         tenantId: data.tenantId,
         source,
         eventType: data.eventType,
         erpSystem,
       });
     } catch (err: any) {
-      logger.warn("[Metrics] Failed to record invoice chain start", {
+      logger.warn("[Metrics] Failed to record invoice submit", {
         error: err?.message,
       });
     }
