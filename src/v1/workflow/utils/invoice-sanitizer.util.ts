@@ -813,11 +813,28 @@ export function sanitizeInvoicePayload(
   }
 
   if (Array.isArray(invoice.allowance_charge)) {
+    const validAc: Array<Record<string, unknown>> = [];
     for (const rawAc of invoice.allowance_charge) {
       if (!rawAc || typeof rawAc !== "object") continue;
-      const ac = rawAc as Record<string, unknown>;
-      ac.amount = toFloat(ac.amount);
+      const ac = { ...(rawAc as Record<string, unknown>) };
+      if (
+        ac.amount !== undefined &&
+        ac.amount !== null &&
+        ac.amount !== "" &&
+        !isNaN(Number(ac.amount))
+      ) {
+        ac.amount = toFloat(ac.amount);
+        ac.charge_indicator = Boolean(ac.charge_indicator);
+        validAc.push(ac);
+      }
     }
+    if (validAc.length > 0) {
+      invoice.allowance_charge = validAc;
+    } else {
+      delete invoice.allowance_charge;
+    }
+  } else if (invoice.allowance_charge !== undefined) {
+    delete invoice.allowance_charge;
   }
 
   return enforceFirsRequiredFields(invoice);
@@ -1096,11 +1113,28 @@ export function enforceFirsRequiredFields(
 
   // ── Allowance Charge ─────────────────────────────────────────────────────
   if (Array.isArray(invoice.allowance_charge)) {
+    const validAc: Array<Record<string, unknown>> = [];
     for (const rawAc of invoice.allowance_charge) {
       if (!rawAc || typeof rawAc !== "object") continue;
-      const ac = rawAc as Record<string, unknown>;
-      ac.amount = asNumber(ac.amount);
+      const ac = { ...(rawAc as Record<string, unknown>) };
+      if (
+        ac.amount !== undefined &&
+        ac.amount !== null &&
+        ac.amount !== "" &&
+        !isNaN(Number(ac.amount))
+      ) {
+        ac.amount = asNumber(ac.amount);
+        ac.charge_indicator = Boolean(ac.charge_indicator);
+        validAc.push(ac);
+      }
     }
+    if (validAc.length > 0) {
+      invoice.allowance_charge = validAc;
+    } else {
+      delete invoice.allowance_charge;
+    }
+  } else if (invoice.allowance_charge !== undefined) {
+    delete invoice.allowance_charge;
   }
 
   return invoice;
@@ -1274,6 +1308,15 @@ export function autoFixInvoiceFromFIRSError(
         }
       }
     }
+  }
+
+  // 10. Allowance / Charge Auto-Heal Fix
+  if (
+    errString.includes("allowancecharge") ||
+    errString.includes("allowance_charge") ||
+    errString.includes("allowance charge")
+  ) {
+    delete target.allowance_charge;
   }
 
   return target;

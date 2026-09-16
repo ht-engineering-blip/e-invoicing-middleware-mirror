@@ -212,29 +212,89 @@ export class NRSSchemaRegistry {
         const isReq =
           field.is_required || field?.validation_rules?.includes("required");
 
-        const { arrayFound, values } = this.getWildcardValues(payload, path);
+        // Special handling for invoice_line discriminated union (Goods vs Services)
+        const isInvoiceLinePath =
+          path.startsWith("invoice_line[*].") ||
+          path.startsWith("invoice_line.");
 
-        // Check required presence
-        if (isReq) {
-          if (!arrayFound || values.length === 0) {
-            errors.push(
-              `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
-            );
-          } else {
-            const hasMissingValue = values.some(
-              (val) =>
-                val === undefined ||
-                val === null ||
-                val === "" ||
-                (Array.isArray(val) && val.length === 0),
-            );
-            if (hasMissingValue) {
+        if (
+          isInvoiceLinePath &&
+          Array.isArray((payload as any).invoice_line)
+        ) {
+          const lines = (payload as any).invoice_line as any[];
+          const lineProp = path
+            .replace(/^invoice_line\[\*\]\./, "")
+            .replace(/^invoice_line\./, "");
+
+          if (isReq) {
+            if (lines.length === 0) {
               errors.push(
                 `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
               );
+            } else {
+              for (const line of lines) {
+                const isService = Boolean(
+                  line?.isic_code || line?.service_category,
+                );
+
+                // Service lines do not require (and must not have) goods-specific fields
+                if (
+                  isService &&
+                  (lineProp === "hsn_code" || lineProp === "product_category")
+                ) {
+                  continue;
+                }
+
+                // Goods lines do not require (and must not have) service-specific fields
+                if (
+                  !isService &&
+                  (lineProp === "isic_code" || lineProp === "service_category")
+                ) {
+                  continue;
+                }
+
+                const lineVal = this.getPathValue(line, lineProp);
+                if (
+                  lineVal === undefined ||
+                  lineVal === null ||
+                  lineVal === "" ||
+                  (Array.isArray(lineVal) && lineVal.length === 0)
+                ) {
+                  errors.push(
+                    `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
+                  );
+                  break;
+                }
+              }
+            }
+          }
+        } else {
+          const { arrayFound, values } = this.getWildcardValues(payload, path);
+
+          // Check required presence
+          if (isReq) {
+            if (!arrayFound || values.length === 0) {
+              errors.push(
+                `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
+              );
+            } else {
+              const hasMissingValue = values.some(
+                (val) =>
+                  val === undefined ||
+                  val === null ||
+                  val === "" ||
+                  (Array.isArray(val) && val.length === 0),
+              );
+              if (hasMissingValue) {
+                errors.push(
+                  `NRS DB Requirement: '${path}' (${field.description || "required field"}) is missing`,
+                );
+              }
             }
           }
         }
+
+        const { values } = this.getWildcardValues(payload, path);
 
         // Check enum constraints if defined in DB
         if (

@@ -732,10 +732,31 @@ export class FIRSInvoiceTransformerV2 {
       }
 
       if (Array.isArray(completed.allowance_charge)) {
+        const validCharges: Array<{
+          charge_indicator: boolean;
+          amount: number;
+        }> = [];
         for (const ac of completed.allowance_charge as Record<string, any>[]) {
-          if (!ac) continue;
-          ac.amount = toFloat(ac.amount);
+          if (!ac || typeof ac !== "object") continue;
+          if (
+            ac.amount !== undefined &&
+            ac.amount !== null &&
+            ac.amount !== "" &&
+            !isNaN(Number(ac.amount))
+          ) {
+            validCharges.push({
+              charge_indicator: Boolean(ac.charge_indicator),
+              amount: toFloat(ac.amount),
+            });
+          }
         }
+        if (validCharges.length > 0) {
+          completed.allowance_charge = validCharges;
+        } else {
+          delete completed.allowance_charge;
+        }
+      } else if (completed.allowance_charge !== undefined) {
+        delete completed.allowance_charge;
       }
 
       const finalValidation = this.validateWithZod(completed, firsZodSchema);
