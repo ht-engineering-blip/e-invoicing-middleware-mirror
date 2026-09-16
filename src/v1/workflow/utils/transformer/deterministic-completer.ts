@@ -476,7 +476,16 @@ export class DeterministicCompleter {
       }> = [];
       for (const ac of res.allowance_charge) {
         if (!ac || typeof ac !== "object") continue;
+        if (
+          ac.amount === undefined ||
+          ac.amount === null ||
+          ac.amount === "" ||
+          isNaN(Number(ac.amount))
+        ) {
+          continue; // FIRS requires amount if allowance_charge item is present
+        }
         const amt = this.toFloat(ac.amount, 0);
+
         let indicator = false;
         if (typeof ac.charge_indicator === "boolean") {
           indicator = ac.charge_indicator;
