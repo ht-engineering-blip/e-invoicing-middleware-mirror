@@ -198,6 +198,108 @@ describe("NRSSchemaRegistry Wildcard Array Validation", () => {
     expect(result.success).toBe(false);
     expect(result.errors?.some((e) => e.includes("invoice_line[*].item.name"))).toBe(true);
   });
+
+  it("should respect FIRS discriminated union: Service lines pass when hsn_code and product_category are marked required in DB", () => {
+    const fieldsWithHsnAndProductCat = [
+      ...dbFields,
+      {
+        field_id: "hsn_code",
+        field_path: "invoice_line[*].hsn_code",
+        data_type: "String",
+        is_required: true,
+        description: "HSN code for item.",
+      },
+      {
+        field_id: "product_category",
+        field_path: "invoice_line[*].product_category",
+        data_type: "String",
+        is_required: true,
+        description: "Product category name.",
+      },
+    ];
+
+    // Service line: has isic_code & service_category, NO hsn_code or product_category
+    const servicePayload = {
+      irn: "INV-000001-234556-20260915",
+      invoice_line: [
+        {
+          isic_code: "5689",
+          service_category: "56677",
+          invoiced_quantity: 1,
+          line_extension_amount: 56000,
+          item: {
+            name: "Web Design",
+            description: "this is for web design",
+          },
+          price: {
+            price_amount: 56000,
+            base_quantity: 1,
+            price_unit: "H87",
+          },
+        },
+      ],
+      tax_total: [{ tax_amount: 4200 }],
+    };
+
+    const result = NRSSchemaRegistry.validate(
+      servicePayload,
+      "v1.0",
+      fieldsWithHsnAndProductCat,
+    );
+    expect(result.success).toBe(true);
+    expect(result.errors).toBeUndefined();
+  });
+
+  it("should respect FIRS discriminated union: Goods lines pass when isic_code and service_category are marked required in DB", () => {
+    const fieldsWithIsicAndServiceCat = [
+      ...dbFields,
+      {
+        field_id: "isic_code",
+        field_path: "invoice_line[*].isic_code",
+        data_type: "String",
+        is_required: true,
+        description: "ISIC code for service.",
+      },
+      {
+        field_id: "service_category",
+        field_path: "invoice_line[*].service_category",
+        data_type: "String",
+        is_required: true,
+        description: "Service category name.",
+      },
+    ];
+
+    // Goods line: has hsn_code & product_category, NO isic_code or service_category
+    const goodsPayload = {
+      irn: "INV-000002-234556-20260915",
+      invoice_line: [
+        {
+          hsn_code: "8471.00",
+          product_category: "Computer Hardware",
+          invoiced_quantity: 2,
+          line_extension_amount: 120000,
+          item: {
+            name: "Laptop Computer",
+            description: "Dell Latitude 5420",
+          },
+          price: {
+            price_amount: 60000,
+            base_quantity: 1,
+            price_unit: "H87",
+          },
+        },
+      ],
+      tax_total: [{ tax_amount: 9000 }],
+    };
+
+    const result = NRSSchemaRegistry.validate(
+      goodsPayload,
+      "v1.0",
+      fieldsWithIsicAndServiceCat,
+    );
+    expect(result.success).toBe(true);
+    expect(result.errors).toBeUndefined();
+  });
 });
 
 import { DeterministicMappingEngine } from "../../src/v1/workflow/utils/transformer/deterministic-engine";
