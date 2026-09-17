@@ -33,6 +33,9 @@ export function registerInvoiceIntakeMetrics(): void {
       if (!data.context.metricsStartedAt) {
         data.context.metricsStartedAt = Date.now();
       }
+      if (!(data.context as any).stepStartedAt) {
+        (data.context as any).stepStartedAt = Date.now();
+      }
 
       const erpSystem =
         data.context.erpSystem ??

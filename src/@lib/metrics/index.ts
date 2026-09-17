@@ -2,6 +2,8 @@ import { metricsRegistry } from './registry';
 
 export * from './registry';
 export * from './invoice.metrics';
+export * from './http.metrics';
+export * from './pipeline.metrics';
 
 /** Render Prometheus exposition format for /metrics scrapers. */
 export async function getMetricsText(): Promise<string> {
