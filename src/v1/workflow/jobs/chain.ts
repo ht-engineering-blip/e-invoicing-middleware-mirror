@@ -3,6 +3,7 @@ import { agenda } from "../../../@lib/queue/agenda";
 import { logger } from "../../../@lib/logger";
 import { WebhookEventRepository } from "../../webhook/repos/webhook-event.repo";
 import { isInvoicePipeline, recordInvoiceAcceptedByNrs, recordInvoiceProcessed } from "../../../@lib/metrics";
+import { recordPipelineStep } from "../../../@lib/metrics/pipeline.metrics";
 import { ACTION_TO_JOB } from "./types";
 import { OutboundInvoiceStatus } from "../models/outbound-invoice.model";
 
@@ -25,10 +26,34 @@ export async function chainNext(
   stepOutput: Partial<JobChainData["context"]>,
 ): Promise<void> {
   const data = job.attrs.data;
+  const completedAction = data.actions[data.stepIndex];
   const nextIndex = data.stepIndex + 1;
+  const erpSystem =
+    data.context?.erpSystem ??
+    data.context?.sourceType ??
+    data.authContext?.tenantERP;
+
+  // Step succeeded
+  if (completedAction) {
+    const stepStartedAt = (data.context as any)?.stepStartedAt as
+      | number
+      | undefined;
+    recordPipelineStep({
+      step: completedAction,
+      result: "success",
+      erpSystem,
+      durationSeconds: stepStartedAt
+        ? (Date.now() - stepStartedAt) / 1000
+        : undefined,
+    });
+  }
 
   // Merge step output into the shared context
-  const updatedContext = { ...data.context, ...stepOutput };
+  const updatedContext = {
+    ...data.context,
+    ...stepOutput,
+    stepStartedAt: Date.now(),
+  };
 
   if (nextIndex >= data.actions.length) {
     // ── Chain complete ─────────────────────────────────────────────────────
@@ -243,6 +268,23 @@ export async function chainFail(
     error: errorMessage,
     providerError,
   });
+
+  if (action) {
+    const stepStartedAt = (data.context as any)?.stepStartedAt as
+      | number
+      | undefined;
+    recordPipelineStep({
+      step: action,
+      result: "failure",
+      erpSystem:
+        data.context?.erpSystem ??
+        data.context?.sourceType ??
+        data.authContext?.tenantERP,
+      durationSeconds: stepStartedAt
+        ? (Date.now() - stepStartedAt) / 1000
+        : undefined,
+    });
+  }
 
   if (isInvoicePipeline(data.actions)) {
     recordInvoiceProcessed({

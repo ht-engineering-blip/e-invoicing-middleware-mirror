@@ -34,6 +34,8 @@ interface JobChainData {
     metricsStartedAt?: number;
     /** ERP system name for Grafana filtering (from tenant.config.erpSystem) */
     erpSystem?: string;
+    /** Epoch ms when the current pipeline step started (per-step duration) */
+    stepStartedAt?: number;
     irn?: string;
     erpInvoiceId?: string;
     transformedInvoice?: any; // FIRS-formatted invoice (output of transform)
