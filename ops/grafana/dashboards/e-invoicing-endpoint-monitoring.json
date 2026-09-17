@@ -1,0 +1,400 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "row",
+      "title": "API overview (HTTP)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1
+    },
+    {
+      "id": 2,
+      "title": "Total API requests",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum(increase(einvoice_http_requests_total{route=~\"$route\"}[$__range])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 3,
+      "title": "Successful (2xx)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum(increase(einvoice_http_requests_total{route=~\"$route\",status_class=\"2xx\"}[$__range])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 4,
+      "title": "Failed (4xx+5xx)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum(increase(einvoice_http_requests_total{route=~\"$route\",status_class=~\"4xx|5xx\"}[$__range])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "red" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 5,
+      "title": "API success rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "clamp_min(round(sum(increase(einvoice_http_requests_total{route=~\"$route\",status_class=\"2xx\"}[$__range]))), 0) / clamp_min(round(sum(increase(einvoice_http_requests_total{route=~\"$route\"}[$__range]))), 1)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.9 },
+              { "color": "green", "value": 0.98 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "row",
+      "title": "HTTP endpoints — requests / success / failed (integers)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 10
+    },
+    {
+      "id": 11,
+      "title": "Requests by endpoint",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum by (method, route) (increase(einvoice_http_requests_total{route=~\"$route\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "round(sum by (method, route) (increase(einvoice_http_requests_total{route=~\"$route\",status_class=\"2xx\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        },
+        {
+          "expr": "round(sum by (method, route) (increase(einvoice_http_requests_total{route=~\"$route\",status_class=~\"4xx|5xx\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "C"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "seriesToColumns",
+          "options": { "byField": "route" }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true },
+            "renameByName": {
+              "method": "Method",
+              "route": "Endpoint",
+              "Value #A": "Requests",
+              "Value #B": "Success",
+              "Value #C": "Failed"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0 }
+      }
+    },
+    {
+      "id": 12,
+      "title": "HTTP requests per hour by endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum by (route) (increase(einvoice_http_requests_total{route=~\"$route\"}[1h])))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal", "group": "A" } }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "HTTP failures per hour (4xx+5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum by (route) (increase(einvoice_http_requests_total{route=~\"$route\",status_class=~\"4xx|5xx\"}[1h])))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 50 }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "HTTP p95 latency by endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(einvoice_http_request_duration_seconds_bucket{route=~\"$route\"}[$__rate_interval])))",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "decimals": 2, "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Worker pipeline / NRS steps (Agenda jobs)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 20
+    },
+    {
+      "id": 21,
+      "title": "Pipeline steps — success count (selected range)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum(increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"success\",erp_system=~\"$erp\"}[$__range])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 22,
+      "title": "Pipeline steps — failed count (selected range)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum(increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"failure\",erp_system=~\"$erp\"}[$__range])))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "red" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 23,
+      "title": "Pipeline step success rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "clamp_min(round(sum(increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"success\",erp_system=~\"$erp\"}[$__range]))), 0) / clamp_min(round(sum(increase(einvoice_pipeline_step_total{step=~\"$step\",erp_system=~\"$erp\"}[$__range]))), 1)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "id": 24,
+      "title": "NRS / pipeline steps — success vs failed per hour",
+      "description": "transform, validate, sign, transmit, complete_outbound, etc. (worker jobs)",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 37 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum by (step) (increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"success\",erp_system=~\"$erp\"}[1h])))",
+          "legendFormat": "ok {{step}}",
+          "refId": "A"
+        },
+        {
+          "expr": "round(sum by (step) (increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"failure\",erp_system=~\"$erp\"}[1h])))",
+          "legendFormat": "fail {{step}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal", "group": "A" } }
+        }
+      }
+    },
+    {
+      "id": 25,
+      "title": "Pipeline step duration p95",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 37 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, step) (rate(einvoice_pipeline_step_duration_seconds_bucket{step=~\"$step\",erp_system=~\"$erp\"}[$__rate_interval])))",
+          "legendFormat": "{{step}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "decimals": 2, "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      }
+    },
+    {
+      "id": 26,
+      "title": "Step breakdown table (selected range)",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 46 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "round(sum by (step) (increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"success\",erp_system=~\"$erp\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "round(sum by (step) (increase(einvoice_pipeline_step_total{step=~\"$step\",result=\"failure\",erp_system=~\"$erp\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "seriesToColumns",
+          "options": { "byField": "step" }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true },
+            "renameByName": {
+              "step": "Step",
+              "Value #A": "Success",
+              "Value #B": "Failed"
+            }
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0 } }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["e-invoicing", "endpoints", "nrs", "http"],
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "HTTP endpoint",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(einvoice_http_requests_total, route)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "step",
+        "label": "Pipeline step",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(einvoice_pipeline_step_total, step)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "erp",
+        "label": "Source ERP",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(einvoice_pipeline_step_total, erp_system)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d", "90d"]
+  },
+  "timezone": "browser",
+  "title": "E-Invoicing — Endpoint & NRS Step Monitoring",
+  "uid": "einvoice-endpoint-monitoring",
+  "version": 1
+}
